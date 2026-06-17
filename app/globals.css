@@ -1,0 +1,112 @@
+@import "tailwindcss";
+
+/* ============================================================
+   QORAX — Design Tokens (Cyber Minimal)
+   ============================================================ */
+
+:root {
+  /* Base surfaces */
+  --bg: #0c111d;
+  --bg-raised: #11182b;
+  --bg-raised-2: #161f38;
+
+  /* Text */
+  --text-primary: #f4f6fb;
+  --text-secondary: #8993ab;
+  --text-tertiary: #5b6480;
+
+  /* Accents — use sparingly, one per element */
+  --lime: #d6ff3f;
+  --cyan: #8cf6ff;
+
+  /* Hairline borders */
+  --border-hairline: rgba(255, 255, 255, 0.08);
+  --border-hairline-strong: rgba(255, 255, 255, 0.14);
+
+  /* Bar palette (from logo) */
+  --bar-1: #d6ff3f;
+  --bar-2: #2fd9e8;
+  --bar-3: #8cf6ff;
+  --bar-4: #f4f6fb;
+  --bar-5: #5b6480;
+
+  /* Motion easing — custom curves, never default CSS easing */
+  --ease-out-strong: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
+
+  /* Motion durations — from design system (button:100-160ms, dropdown:150-250ms, modal:200-500ms) */
+  --duration-fast: 140ms;
+  --duration-base: 220ms;
+  --duration-slow: 420ms;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-bg-raised: var(--bg-raised);
+  --color-bg-raised-2: var(--bg-raised-2);
+  --color-text-primary: var(--text-primary);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-tertiary: var(--text-tertiary);
+  --color-lime: var(--lime);
+  --color-cyan: var(--cyan);
+  --color-border-hairline: var(--border-hairline);
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --font-mono: var(--font-mono);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--bg);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text-primary);
+  font-family: var(--font-body), -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: var(--lime);
+  color: var(--bg);
+}
+
+/* Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Visible keyboard focus — accessibility floor */
+:focus-visible {
+  outline: 2px solid var(--cyan);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* Hairline divider utility */
+.hairline {
+  border-color: var(--border-hairline);
+}
+
+/* Display typography — Space Grotesk, used with restraint for headlines only */
+.font-display {
+  font-family: var(--font-display), -apple-system, sans-serif;
+  letter-spacing: -0.02em;
+}
+
+/* Tabular numerals for any displayed metric — data should align */
+.tabular {
+  font-feature-settings: "tnum" 1;
+  font-variant-numeric: tabular-nums;
+}
