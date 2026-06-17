@@ -1,16 +1,45 @@
-import { PulseWaveform } from "./components/PulseWaveform";
 import { Reveal } from "./components/Reveal";
 import { QoraxLogo } from "./components/QoraxLogo";
-import { PainCard } from "./components/PainCard";
 import { AuditForm } from "./components/AuditForm";
+import { LiveMonitorPanel } from "./components/LiveMonitorPanel";
+import { AiInsightPreview } from "./components/AiInsightPreview";
+import { SpeedTrendPreview } from "./components/SpeedTrendPreview";
 
 export default function Home() {
   return (
     <main className="flex flex-col">
       <SiteHeader />
       <Hero />
-      <PainSection />
-      <HowItWorksSection />
+      <ProductSection
+        index="01"
+        eyebrow="МОНІТОРИНГ"
+        title="Бачите все, поки клієнт нічого не помічає"
+        description="П'ять перевірок щохвилини: доступність, швидкість, SSL, биті посилання, мобільна версія. Якщо щось ламається вночі — ви дізнаєтесь першими, не з відгуку в Google."
+        align="right"
+      >
+        <LiveMonitorPanel />
+      </ProductSection>
+
+      <ProductSection
+        index="02"
+        eyebrow="AI-ПОЯСНЕННЯ"
+        title="Не «виправте title tag». А скільки це коштує"
+        description="Кожна знайдена проблема перекладається у просту мову та орієнтовний грошовий вплив — те, що дійсно зрозуміє власник бізнесу, а не лише розробник."
+        align="left"
+      >
+        <AiInsightPreview />
+      </ProductSection>
+
+      <ProductSection
+        index="03"
+        eyebrow="ІСТОРІЯ У ЧАСІ"
+        title="Швидкість — це графік, а не випадкове число"
+        description="Кожен замір лягає в історію. Через місяць видно тренд: погіршується сайт чи навпаки — і чи дало ефект те, що ви виправили."
+        align="right"
+      >
+        <SpeedTrendPreview />
+      </ProductSection>
+
       <PlansSection />
       <FinalCta />
       <SiteFooter />
@@ -28,9 +57,6 @@ function SiteHeader() {
       <div className="mx-auto max-w-6xl px-6 sm:px-8 h-16 flex items-center justify-between">
         <QoraxLogo size="sm" />
         <nav className="hidden md:flex items-center gap-8 text-sm text-[var(--text-secondary)]">
-          <a href="#how" className="hover:text-[var(--text-primary)] transition-colors">
-            Як це працює
-          </a>
           <a href="#plans" className="hover:text-[var(--text-primary)] transition-colors">
             Тарифи
           </a>
@@ -56,14 +82,14 @@ function SiteHeader() {
 }
 
 // ============================================================
-// Hero
+// Hero — real product slice, not decoration
 // ============================================================
 
 function Hero() {
   return (
     <section className="relative overflow-hidden">
-      <div className="mx-auto max-w-6xl px-6 sm:px-8 pt-20 sm:pt-28 pb-20 sm:pb-24">
-        <div className="grid lg:grid-cols-[1.1fr_0.9fr] gap-16 items-center">
+      <div className="mx-auto max-w-6xl px-6 sm:px-8 pt-16 sm:pt-24 pb-20 sm:pb-24">
+        <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-16 items-center">
           <div>
             <Reveal>
               <span className="inline-flex items-center gap-2 rounded-full border hairline px-3 py-1 text-xs font-mono text-[var(--text-tertiary)] mb-7">
@@ -73,7 +99,7 @@ function Hero() {
             </Reveal>
 
             <Reveal delay={0.06}>
-              <h1 className="font-display text-4xl sm:text-5xl lg:text-[3.4rem] font-semibold leading-[1.08] tracking-tight text-[var(--text-primary)]">
+              <h1 className="font-display text-4xl sm:text-5xl lg:text-[3.3rem] font-semibold leading-[1.07] tracking-tight text-[var(--text-primary)]">
                 Сайт працює,
                 <br />
                 поки ви не дивитесь?
@@ -83,7 +109,7 @@ function Hero() {
             <Reveal delay={0.12}>
               <p className="mt-6 text-lg text-[var(--text-secondary)] leading-relaxed max-w-md">
                 Qorax стежить за швидкістю, безпекою та SEO вашого сайту
-                щодня — і одразу каже, скільки грошей коштує кожна проблема.
+                щодня — і каже, скільки грошей коштує кожна знайдена проблема.
               </p>
             </Reveal>
 
@@ -95,16 +121,8 @@ function Hero() {
             </Reveal>
           </div>
 
-          <Reveal delay={0.15} y={24}>
-            <div className="rounded-3xl border hairline bg-[var(--bg-raised)] p-8 sm:p-10 flex flex-col items-center">
-              <PulseWaveform />
-              <div className="mt-8 w-full pt-6 border-t hairline flex items-center justify-between">
-                <span className="text-xs text-[var(--text-tertiary)]">Останній скан</span>
-                <span className="font-mono text-xs tabular text-[var(--text-secondary)]">
-                  4 хв тому
-                </span>
-              </div>
-            </div>
+          <Reveal delay={0.15} y={20}>
+            <LiveMonitorPanel />
           </Reveal>
         </div>
       </div>
@@ -113,49 +131,68 @@ function Hero() {
 }
 
 // ============================================================
-// Pain section
+// ProductSection — Linear-style numbered section with real UI slice
 // ============================================================
 
-function PainSection() {
+function ProductSection({
+  index,
+  eyebrow,
+  title,
+  description,
+  align,
+  children,
+}: {
+  index: string;
+  eyebrow: string;
+  title: string;
+  description: string;
+  align: "left" | "right";
+  children: React.ReactNode;
+}) {
+  const textCol = (
+    <div>
+      <Reveal>
+        <div className="flex items-baseline gap-3 mb-5">
+          <span className="font-mono text-sm text-[var(--text-tertiary)]">{index}</span>
+          <span className="font-mono text-xs tracking-wide text-[var(--text-tertiary)]">
+            {eyebrow}
+          </span>
+        </div>
+      </Reveal>
+      <Reveal delay={0.04}>
+        <h2 className="font-display text-2xl sm:text-3xl font-semibold leading-tight max-w-md">
+          {title}
+        </h2>
+      </Reveal>
+      <Reveal delay={0.08}>
+        <p className="mt-4 text-[15px] leading-relaxed text-[var(--text-secondary)] max-w-sm">
+          {description}
+        </p>
+      </Reveal>
+    </div>
+  );
+
+  const visualCol = (
+    <Reveal delay={0.1} y={20}>
+      {children}
+    </Reveal>
+  );
+
   return (
     <section className="border-t hairline">
-      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-24">
-        <Reveal>
-          <p className="font-mono text-xs text-[var(--text-tertiary)] mb-3 tracking-wide">
-            ЩО ВІДБУВАЄТЬСЯ, КОЛИ НІХТО НЕ СЛІДКУЄ
-          </p>
-        </Reveal>
-        <Reveal delay={0.04}>
-          <h2 className="font-display text-3xl sm:text-4xl font-semibold max-w-xl leading-tight">
-            Сайт зробили — і забули
-          </h2>
-        </Reveal>
-
-        <div className="mt-12 grid sm:grid-cols-2 lg:grid-cols-3 gap-5">
-          <Reveal delay={0.06}>
-            <PainCard
-              metric="60% бізнесів"
-              title="Закриваються після збою"
-              description="Сайт ліг на ніч — клієнти пішли до конкурента. Власник дізнався про це через тиждень, з відгуку у Google."
-              icon={<IconBolt />}
-            />
-          </Reveal>
-          <Reveal delay={0.1}>
-            <PainCard
-              metric="−53% відвідувачів"
-              title="Повільний сайт втрачає людей"
-              description="Кожна зайва секунда завантаження — це частина клієнтів, які просто закрили вкладку, не дочекавшись."
-              icon={<IconGauge />}
-            />
-          </Reveal>
-          <Reveal delay={0.14}>
-            <PainCard
-              metric="43% атак"
-              title="Спрямовані на малий бізнес"
-              description="SSL спливає, плагіни застарівають, ніхто не оновлює — і сайт стає легкою ціллю."
-              icon={<IconShield />}
-            />
-          </Reveal>
+      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-16 sm:py-20">
+        <div className="grid lg:grid-cols-2 gap-12 lg:gap-16 items-center">
+          {align === "left" ? (
+            <>
+              {textCol}
+              {visualCol}
+            </>
+          ) : (
+            <>
+              <div className="lg:order-2">{textCol}</div>
+              <div className="lg:order-1">{visualCol}</div>
+            </>
+          )}
         </div>
       </div>
     </section>
@@ -163,172 +200,135 @@ function PainSection() {
 }
 
 // ============================================================
-// How it works
-// ============================================================
-
-function HowItWorksSection() {
-  const steps = [
-    {
-      title: "Вводите адресу сайту",
-      description: "Без встановлення коду, без доступу до хостингу. Просто URL.",
-    },
-    {
-      title: "Qorax перевіряє все за раз",
-      description:
-        "Швидкість, SSL, домен, биті посилання, мобільну версію, SEO-теги — паралельно.",
-    },
-    {
-      title: "Отримуєте план дій у грошах",
-      description: "Не «виправте meta description», а «це коштує вам ~$140 на місяць».",
-    },
-  ];
-
-  return (
-    <section id="how" className="border-t hairline">
-      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-24">
-        <Reveal>
-          <p className="font-mono text-xs text-[var(--text-tertiary)] mb-3 tracking-wide">
-            ЯК ЦЕ ПРАЦЮЄ
-          </p>
-        </Reveal>
-        <Reveal delay={0.04}>
-          <h2 className="font-display text-3xl sm:text-4xl font-semibold max-w-xl leading-tight">
-            Три кроки до спокою
-          </h2>
-        </Reveal>
-
-        <div className="mt-14 grid md:grid-cols-3 gap-x-10 gap-y-12">
-          {steps.map((step, i) => (
-            <Reveal key={step.title} delay={0.06 * i}>
-              <div className="relative pl-0">
-                <div
-                  className="font-display text-5xl font-semibold mb-5"
-                  style={{ color: i === 0 ? "var(--lime)" : i === 1 ? "var(--cyan)" : "var(--text-tertiary)" }}
-                >
-                  {String(i + 1).padStart(2, "0")}
-                </div>
-                <h3 className="font-display text-xl font-medium mb-2">{step.title}</h3>
-                <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                  {step.description}
-                </p>
-              </div>
-            </Reveal>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-// ============================================================
-// Plans
+// Plans — asymmetric bento layout, Growth visually dominant
 // ============================================================
 
 function PlansSection() {
-  const plans = [
-    {
-      name: "Starter",
-      price: "$49",
-      tagline: "Один сайт, спокійний сон",
-      features: [
-        "Uptime моніторинг",
-        "Швидкість + графік у часі",
-        "SSL та домен — алерти",
-        "Биті посилання",
-        "AI-пояснення простою мовою",
-        "PDF-звіт щомісяця",
-      ],
-      highlighted: false,
-    },
-    {
-      name: "Growth",
-      price: "$99",
-      tagline: "Коли вже росте трафік",
-      features: [
-        "Все з Starter",
-        "Core Web Vitals",
-        "SEO: meta, schema, sitemap",
-        "Google Search Console",
-        "AI: вплив на дохід у $",
-        "Моніторинг 1 конкурента",
-        "Telegram-алерти",
-        "Живий дашборд",
-      ],
-      highlighted: true,
-    },
-    {
-      name: "Agency",
-      price: "$199",
-      tagline: "До 5 сайтів під одним дахом",
-      features: [
-        "Все з Growth, на 5 сайтів",
-        "White-label звіти",
-        "AI генерація текстів і SEO",
-        "Конкуренти на кожен сайт",
-        "Пріоритетна підтримка",
-      ],
-      highlighted: false,
-    },
-  ];
-
   return (
     <section id="plans" className="border-t hairline">
       <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-24">
         <Reveal>
-          <p className="font-mono text-xs text-[var(--text-tertiary)] mb-3 tracking-wide">
-            ТАРИФИ
-          </p>
+          <div className="flex items-baseline gap-3 mb-5">
+            <span className="font-mono text-sm text-[var(--text-tertiary)]">04</span>
+            <span className="font-mono text-xs tracking-wide text-[var(--text-tertiary)]">
+              ТАРИФИ
+            </span>
+          </div>
         </Reveal>
         <Reveal delay={0.04}>
           <h2 className="font-display text-3xl sm:text-4xl font-semibold max-w-xl leading-tight">
-            У 3-10 разів дешевше за
-            <br />
-            найм підрядника
+            У 3-10 разів дешевше за найм підрядника
           </h2>
         </Reveal>
 
-        <div className="mt-14 grid md:grid-cols-3 gap-5">
-          {plans.map((plan, i) => (
-            <Reveal key={plan.name} delay={0.06 * i}>
-              <div
-                className="rounded-2xl border p-7 sm:p-8 h-full flex flex-col"
-                style={{
-                  borderColor: plan.highlighted
-                    ? "var(--cyan)"
-                    : "var(--border-hairline)",
-                  background: plan.highlighted ? "var(--bg-raised-2)" : "var(--bg-raised)",
-                }}
-              >
-                <div className="flex items-baseline justify-between mb-1">
-                  <h3 className="font-display text-xl font-medium">{plan.name}</h3>
-                  {plan.highlighted && (
-                    <span
-                      className="font-mono text-[10px] tracking-wide px-2 py-1 rounded-full"
-                      style={{ background: "var(--cyan)", color: "#0c111d" }}
-                    >
-                      ПОПУЛЯРНИЙ
-                    </span>
-                  )}
-                </div>
-                <p className="text-sm text-[var(--text-secondary)] mb-6">{plan.tagline}</p>
-                <div className="font-mono text-3xl tabular mb-7">
-                  {plan.price}
-                  <span className="text-sm text-[var(--text-tertiary)] font-sans">/міс</span>
-                </div>
-                <ul className="space-y-3 flex-1">
-                  {plan.features.map((f) => (
-                    <li key={f} className="flex items-start gap-2.5 text-sm text-[var(--text-secondary)]">
-                      <span className="mt-1.5 h-1 w-1 rounded-full shrink-0" style={{ background: "var(--text-tertiary)" }} />
-                      {f}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </Reveal>
-          ))}
+        <div className="mt-12 grid lg:grid-cols-[0.85fr_1.15fr_0.85fr] gap-5 items-stretch">
+          <Reveal delay={0.06} className="lg:pt-6">
+            <PlanCard
+              name="Starter"
+              price="$49"
+              tagline="Один сайт, спокійний сон"
+              features={[
+                "Uptime моніторинг",
+                "Швидкість + графік у часі",
+                "SSL та домен — алерти",
+                "Биті посилання",
+                "AI-пояснення простою мовою",
+                "PDF-звіт щомісяця",
+              ]}
+              variant="default"
+            />
+          </Reveal>
+
+          <Reveal delay={0.1}>
+            <PlanCard
+              name="Growth"
+              price="$99"
+              tagline="Коли вже росте трафік"
+              features={[
+                "Все з Starter",
+                "Core Web Vitals",
+                "SEO: meta, schema, sitemap",
+                "Google Search Console",
+                "AI: вплив на дохід у $",
+                "Моніторинг 1 конкурента",
+                "Telegram-алерти",
+                "Живий дашборд",
+              ]}
+              variant="highlighted"
+            />
+          </Reveal>
+
+          <Reveal delay={0.14} className="lg:pt-6">
+            <PlanCard
+              name="Agency"
+              price="$199"
+              tagline="До 5 сайтів під одним дахом"
+              features={[
+                "Все з Growth, на 5 сайтів",
+                "White-label звіти",
+                "AI генерація текстів і SEO",
+                "Конкуренти на кожен сайт",
+                "Пріоритетна підтримка",
+              ]}
+              variant="default"
+            />
+          </Reveal>
         </div>
       </div>
     </section>
+  );
+}
+
+function PlanCard({
+  name,
+  price,
+  tagline,
+  features,
+  variant,
+}: {
+  name: string;
+  price: string;
+  tagline: string;
+  features: string[];
+  variant: "default" | "highlighted";
+}) {
+  const highlighted = variant === "highlighted";
+  return (
+    <div
+      className="rounded-2xl border p-7 sm:p-8 h-full flex flex-col"
+      style={{
+        borderColor: highlighted ? "var(--cyan)" : "var(--border-hairline)",
+        background: highlighted ? "var(--bg-raised-2)" : "var(--bg-raised)",
+      }}
+    >
+      <div className="flex items-baseline justify-between mb-1">
+        <h3 className="font-display text-xl font-medium">{name}</h3>
+        {highlighted && (
+          <span
+            className="font-mono text-[10px] tracking-wide px-2 py-1 rounded-full"
+            style={{ background: "var(--cyan)", color: "#0c111d" }}
+          >
+            ПОПУЛЯРНИЙ
+          </span>
+        )}
+      </div>
+      <p className="text-sm text-[var(--text-secondary)] mb-6">{tagline}</p>
+      <div className="font-mono text-3xl tabular mb-7">
+        {price}
+        <span className="text-sm text-[var(--text-tertiary)] font-sans">/міс</span>
+      </div>
+      <ul className="space-y-3 flex-1">
+        {features.map((f) => (
+          <li key={f} className="flex items-start gap-2.5 text-sm text-[var(--text-secondary)]">
+            <span
+              className="mt-1.5 h-1 w-1 rounded-full shrink-0"
+              style={{ background: highlighted ? "var(--cyan)" : "var(--text-tertiary)" }}
+            />
+            {f}
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -367,33 +367,5 @@ function SiteFooter() {
         </p>
       </div>
     </footer>
-  );
-}
-
-// ============================================================
-// Icons — minimal inline SVG, no icon library dependency for 3 icons
-// ============================================================
-
-function IconBolt() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path d="M13 2L4 14h6l-1 8 9-12h-6l1-8z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconGauge() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path d="M12 13l4-4M12 21a9 9 0 100-18 9 9 0 000 18z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
-
-function IconShield() {
-  return (
-    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6">
-      <path d="M12 22s8-4 8-11V5l-8-3-8 3v6c0 7 8 11 8 11z" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
   );
 }
