@@ -158,8 +158,6 @@ async function handleAuditRequest(
       sslValid: basic.sslValid,
       visibleFindings,
       hiddenFindingsCount: hiddenCount,
-      // Тимчасове діагностичне поле — прибрати після підтвердження що PageSpeed працює стабільно
-      _debugPageSpeedError: pageSpeed.errorMessage,
     },
     200,
     origin
