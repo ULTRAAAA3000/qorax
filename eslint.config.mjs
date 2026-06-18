@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // worker/ — отдельный проект (Cloudflare Worker), своя конфигурация
+    "worker/**",
   ]),
 ]);
 

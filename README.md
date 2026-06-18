@@ -27,4 +27,5 @@ npm run dev
 ## Структура
 
 - `app/` — Next.js App Router, сторінки та компоненти лендінгу
+- `worker/` — Cloudflare Worker API (безкоштовний аудит, надалі — моніторинг). Деплоїться окремо, див. `worker/README.md`
 - `supabase/migrations/` — SQL-міграції схеми бази даних, застосовуються по порядку (0001 → ...)

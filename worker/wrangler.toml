@@ -1,0 +1,25 @@
+# ============================================================
+# Qorax API Worker — конфигурация Cloudflare Workers
+# ============================================================
+# Секреты (SUPABASE_SERVICE_ROLE_KEY, GEMINI_API_KEY и т.д.) НЕ хранятся
+# здесь в открытом виде — задаются через `wrangler secret put <NAME>`
+# или в Cloudflare Dashboard → Worker → Settings → Variables.
+# ============================================================
+
+name = "qorax-api"
+main = "src/index.ts"
+compatibility_date = "2025-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+[observability]
+enabled = true
+
+# Публичные (не секретные) переменные окружения
+[vars]
+ENVIRONMENT = "development"
+SUPABASE_URL = "https://your-project.supabase.co"
+
+# Пример настройки секретов (выполняется в терминале, не здесь):
+# wrangler secret put SUPABASE_SERVICE_ROLE_KEY
+# wrangler secret put GEMINI_API_KEY
+# wrangler secret put GOOGLE_PAGESPEED_API_KEY
