@@ -45,7 +45,9 @@ export async function runPageSpeedCheck(
     clearTimeout(timeout);
 
     if (!response.ok) {
+      const errorBody = await response.text();
       result.errorMessage = `PageSpeed API повернув помилку ${response.status}`;
+      console.error("PageSpeed API error", response.status, errorBody.slice(0, 500));
       return result;
     }
 
@@ -54,6 +56,7 @@ export async function runPageSpeedCheck(
     const lighthouse = data.lighthouseResult;
     if (!lighthouse) {
       result.errorMessage = "PageSpeed не повернув дані Lighthouse";
+      console.error("PageSpeed response missing lighthouseResult", JSON.stringify(data).slice(0, 500));
       return result;
     }
 
@@ -70,6 +73,7 @@ export async function runPageSpeedCheck(
       err instanceof Error && err.name === "AbortError"
         ? "PageSpeed-перевірка тривала занадто довго"
         : "Не вдалося отримати дані PageSpeed";
+    console.error("PageSpeed check threw", err instanceof Error ? err.message : err);
   }
 
   return result;
