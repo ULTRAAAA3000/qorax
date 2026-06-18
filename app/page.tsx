@@ -4,12 +4,20 @@ import { AuditForm } from "./components/AuditForm";
 import { LiveMonitorPanel } from "./components/LiveMonitorPanel";
 import { AiInsightPreview } from "./components/AiInsightPreview";
 import { SpeedTrendPreview } from "./components/SpeedTrendPreview";
+import { HeroAtmosphere } from "./components/HeroAtmosphere";
+import { StatsStrip } from "./components/StatsStrip";
+import { FeatureBento } from "./components/FeatureBento";
+import { HowItWorksSection } from "./components/HowItWorksSection";
+import { FaqSection } from "./components/FaqSection";
+import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
 
 export default function Home() {
   return (
     <main className="flex flex-col">
       <SiteHeader />
       <Hero />
+      <StatsStrip />
+
       <ProductSection
         index="01"
         eyebrow="МОНІТОРИНГ"
@@ -40,9 +48,12 @@ export default function Home() {
         <SpeedTrendPreview />
       </ProductSection>
 
+      <FeatureBento />
+      <HowItWorksSection />
       <PlansSection />
+      <FaqSection />
       <FinalCta />
-      <SiteFooter />
+      <SiteFooterExpanded />
     </main>
   );
 }
@@ -82,12 +93,13 @@ function SiteHeader() {
 }
 
 // ============================================================
-// Hero — real product slice, not decoration
+// Hero — real product slice, with subtle background atmosphere
 // ============================================================
 
 function Hero() {
   return (
     <section className="relative overflow-hidden">
+      <HeroAtmosphere />
       <div className="mx-auto max-w-6xl px-6 sm:px-8 pt-16 sm:pt-24 pb-20 sm:pb-24">
         <div className="grid lg:grid-cols-[1.05fr_0.95fr] gap-16 items-center">
           <div>
@@ -209,7 +221,7 @@ function PlansSection() {
       <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-24">
         <Reveal>
           <div className="flex items-baseline gap-3 mb-5">
-            <span className="font-mono text-sm text-[var(--text-tertiary)]">04</span>
+            <span className="font-mono text-sm text-[var(--text-tertiary)]">06</span>
             <span className="font-mono text-xs tracking-wide text-[var(--text-tertiary)]">
               ТАРИФИ
             </span>
@@ -350,22 +362,5 @@ function FinalCta() {
         </Reveal>
       </div>
     </section>
-  );
-}
-
-// ============================================================
-// Footer
-// ============================================================
-
-function SiteFooter() {
-  return (
-    <footer className="border-t hairline">
-      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <QoraxLogo size="sm" />
-        <p className="text-xs text-[var(--text-tertiary)]">
-          © {new Date().getFullYear()} Qorax. Усі сайти заслуговують на турботу.
-        </p>
-      </div>
-    </footer>
   );
 }

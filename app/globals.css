@@ -110,3 +110,30 @@ body {
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
 }
+
+/* ============================================================
+   Background atmosphere — subtle, behind content, never competing
+   with text legibility. Used once per page (hero), not repeated
+   everywhere, per the "one deliberate bet" principle.
+   ============================================================ */
+
+/* Faint dot-grid texture, the kind Linear/Vercel use under hero sections */
+.bg-grid {
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.06) 1px, transparent 0);
+  background-size: 28px 28px;
+}
+
+/* Soft radial glows — color hints, not light sources. Never animated continuously. */
+.bg-glow-lime {
+  background: radial-gradient(closest-side, rgba(214, 255, 63, 0.16), transparent 70%);
+}
+
+.bg-glow-cyan {
+  background: radial-gradient(closest-side, rgba(140, 246, 255, 0.14), transparent 70%);
+}
+
+/* Top fade so the grid/glow never reads as a hard-edged box */
+.bg-fade-mask {
+  mask-image: linear-gradient(to bottom, black, black 60%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black, black 60%, transparent 100%);
+}
