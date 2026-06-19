@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Space_Grotesk, IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Space_Grotesk, Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
 // Display face — used with restraint for headlines and the signature numerals only.
@@ -9,14 +9,14 @@ const display = Space_Grotesk({
   weight: ["500", "600", "700"],
 });
 
-// Body face — neutral, highly legible at small sizes, distinct from the display face.
-const body = IBM_Plex_Sans({
+// Body face — clean, modern, matches Raycast aesthetic.
+const body = Inter({
   variable: "--font-body",
-  subsets: ["latin", "latin-ext"],
-  weight: ["400", "500", "600"],
+  subsets: ["latin", "latin-ext", "cyrillic"],
+  weight: ["400", "500", "600", "700"],
 });
 
-// Utility face — for metrics, timestamps, anything tabular. Matches the dashboard subject matter.
+// Utility face — for metrics, timestamps, anything tabular.
 const mono = IBM_Plex_Mono({
   variable: "--font-mono",
   subsets: ["latin"],
@@ -39,7 +39,7 @@ export default function RootLayout({
       lang="uk"
       className={`${display.variable} ${body.variable} ${mono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col noise-overlay">{children}</body>
     </html>
   );
 }

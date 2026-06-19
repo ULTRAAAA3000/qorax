@@ -1,40 +1,49 @@
 @import "tailwindcss";
 
 /* ============================================================
-   QORAX — Design Tokens (Cyber Minimal)
+   QORAX — Design Tokens (Raycast-Inspired Dark Premium)
    ============================================================ */
 
 :root {
-  /* Base surfaces */
-  --bg: #0c111d;
-  --bg-raised: #11182b;
-  --bg-raised-2: #161f38;
+  /* Base surfaces — pure dark like Raycast */
+  --bg: #0a0a0a;
+  --bg-raised: rgba(255, 255, 255, 0.04);
+  --bg-raised-2: rgba(255, 255, 255, 0.07);
+  --bg-card: rgba(255, 255, 255, 0.03);
 
   /* Text */
-  --text-primary: #f4f6fb;
-  --text-secondary: #8993ab;
-  --text-tertiary: #5b6480;
+  --text-primary: #f5f5f7;
+  --text-secondary: #a1a1a6;
+  --text-tertiary: #6e6e73;
 
-  /* Accents — use sparingly, one per element */
+  /* Accents */
   --lime: #d6ff3f;
   --cyan: #8cf6ff;
+  --purple: #bf5af2;
+  --orange: #ff6b3d;
+
+  /* Gradient accent */
+  --gradient-primary: linear-gradient(135deg, #d6ff3f 0%, #8cf6ff 100%);
+  --gradient-warm: linear-gradient(135deg, #ff6b3d 0%, #bf5af2 50%, #8cf6ff 100%);
+  --gradient-subtle: linear-gradient(135deg, rgba(214, 255, 63, 0.15) 0%, rgba(140, 246, 255, 0.15) 100%);
 
   /* Hairline borders */
   --border-hairline: rgba(255, 255, 255, 0.08);
   --border-hairline-strong: rgba(255, 255, 255, 0.14);
+  --border-glow: rgba(255, 255, 255, 0.12);
 
   /* Bar palette (from logo) */
   --bar-1: #d6ff3f;
   --bar-2: #2fd9e8;
   --bar-3: #8cf6ff;
-  --bar-4: #f4f6fb;
-  --bar-5: #5b6480;
+  --bar-4: #f5f5f7;
+  --bar-5: #6e6e73;
 
-  /* Motion easing — custom curves, never default CSS easing */
+  /* Motion easing */
   --ease-out-strong: cubic-bezier(0.16, 1, 0.3, 1);
   --ease-in-out-strong: cubic-bezier(0.77, 0, 0.175, 1);
 
-  /* Motion durations — from design system (button:100-160ms, dropdown:150-250ms, modal:200-500ms) */
+  /* Motion durations */
   --duration-fast: 140ms;
   --duration-base: 220ms;
   --duration-slow: 420ms;
@@ -44,6 +53,7 @@
   --color-bg: var(--bg);
   --color-bg-raised: var(--bg-raised);
   --color-bg-raised-2: var(--bg-raised-2);
+  --color-bg-card: var(--bg-card);
   --color-text-primary: var(--text-primary);
   --color-text-secondary: var(--text-secondary);
   --color-text-tertiary: var(--text-tertiary);
@@ -99,41 +109,235 @@ body {
   border-color: var(--border-hairline);
 }
 
-/* Display typography — Space Grotesk, used with restraint for headlines only */
+/* Display typography */
 .font-display {
   font-family: var(--font-display), -apple-system, sans-serif;
   letter-spacing: -0.02em;
 }
 
-/* Tabular numerals for any displayed metric — data should align */
+/* Tabular numerals */
 .tabular {
   font-feature-settings: "tnum" 1;
   font-variant-numeric: tabular-nums;
 }
 
 /* ============================================================
-   Background atmosphere — subtle, behind content, never competing
-   with text legibility. Used once per page (hero), not repeated
-   everywhere, per the "one deliberate bet" principle.
+   Glassmorphism card — frosted glass effect
    ============================================================ */
 
-/* Faint dot-grid texture, the kind Linear/Vercel use under hero sections */
-.bg-grid {
-  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.06) 1px, transparent 0);
-  background-size: 28px 28px;
+.glass-card {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1rem;
 }
 
-/* Soft radial glows — color hints, not light sources. Never animated continuously. */
+.glass-card-strong {
+  background: rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 1rem;
+}
+
+/* ============================================================
+   Glow card — hover-responsive gradient border + glow
+   ============================================================ */
+
+.glow-card {
+  position: relative;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 1rem;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
+}
+
+.glow-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 40px rgba(214, 255, 63, 0.06), 0 0 80px rgba(140, 246, 255, 0.04);
+  transform: translateY(-2px);
+}
+
+/* ============================================================
+   Glow button — gradient background with glow shadow
+   ============================================================ */
+
+.glow-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 2rem;
+  border-radius: 0.875rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  color: #0a0a0a;
+  background: var(--gradient-primary);
+  box-shadow: 0 0 20px rgba(214, 255, 63, 0.25), 0 0 60px rgba(140, 246, 255, 0.12);
+  transition: box-shadow 0.3s ease, transform 0.15s ease;
+  cursor: pointer;
+  border: none;
+}
+
+.glow-button:hover {
+  box-shadow: 0 0 30px rgba(214, 255, 63, 0.35), 0 0 80px rgba(140, 246, 255, 0.2);
+  transform: translateY(-1px);
+}
+
+.glow-button:active {
+  transform: scale(0.97);
+}
+
+.glow-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* Secondary ghost button */
+.ghost-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.875rem 2rem;
+  border-radius: 0.875rem;
+  font-weight: 500;
+  font-size: 0.9375rem;
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  transition: background 0.2s ease, border-color 0.2s ease;
+  cursor: pointer;
+}
+
+.ghost-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+/* ============================================================
+   Gradient text utility
+   ============================================================ */
+
+.gradient-text {
+  background: var(--gradient-primary);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-warm {
+  background: var(--gradient-warm);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ============================================================
+   Background atmosphere — animated gradient orbs
+   ============================================================ */
+
+.bg-grid {
+  background-image: radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.04) 1px, transparent 0);
+  background-size: 32px 32px;
+}
+
 .bg-glow-lime {
-  background: radial-gradient(closest-side, rgba(214, 255, 63, 0.16), transparent 70%);
+  background: radial-gradient(closest-side, rgba(214, 255, 63, 0.12), transparent 70%);
 }
 
 .bg-glow-cyan {
-  background: radial-gradient(closest-side, rgba(140, 246, 255, 0.14), transparent 70%);
+  background: radial-gradient(closest-side, rgba(140, 246, 255, 0.1), transparent 70%);
 }
 
-/* Top fade so the grid/glow never reads as a hard-edged box */
+.bg-glow-purple {
+  background: radial-gradient(closest-side, rgba(191, 90, 242, 0.08), transparent 70%);
+}
+
 .bg-fade-mask {
-  mask-image: linear-gradient(to bottom, black, black 60%, transparent 100%);
-  -webkit-mask-image: linear-gradient(to bottom, black, black 60%, transparent 100%);
+  mask-image: linear-gradient(to bottom, black, black 50%, transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black, black 50%, transparent 100%);
+}
+
+/* ============================================================
+   Keyframe animations
+   ============================================================ */
+
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -20px) scale(1.05); }
+  66% { transform: translate(-20px, 15px) scale(0.95); }
+}
+
+@keyframes float-slow-reverse {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(-25px, 20px) scale(0.95); }
+  66% { transform: translate(20px, -15px) scale(1.05); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+.animate-float-slow {
+  animation: float-slow 12s ease-in-out infinite;
+}
+
+.animate-float-slow-reverse {
+  animation: float-slow-reverse 14s ease-in-out infinite;
+}
+
+.animate-pulse-glow {
+  animation: pulse-glow 3s ease-in-out infinite;
+}
+
+/* ============================================================
+   Gradient border — for highlighted cards
+   ============================================================ */
+
+.gradient-border {
+  position: relative;
+}
+
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: var(--gradient-primary);
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  pointer-events: none;
+}
+
+/* ============================================================
+   Section divider with gradient
+   ============================================================ */
+
+.gradient-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, rgba(214, 255, 63, 0.2) 30%, rgba(140, 246, 255, 0.2) 70%, transparent 100%);
+}
+
+/* ============================================================
+   Noise texture overlay — subtle grain for premium feel
+   ============================================================ */
+
+.noise-overlay::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  pointer-events: none;
+  opacity: 0.015;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
 }

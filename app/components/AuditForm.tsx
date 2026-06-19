@@ -7,9 +7,9 @@ import { isAuditError, type AuditResult } from "../lib/audit";
 import { AuditResultPanel } from "./AuditResultPanel";
 
 /**
- * AuditForm — the page's primary conversion object, wired to the real
- * Qorax API Worker. Button press feedback follows the 100-160ms rule
- * (scale, not color flash).
+ * AuditForm — glassmorphism input + gradient glow CTA button.
+ * Raycast-style: clean input with subtle glass bg, prominent gradient
+ * submit button with glow shadow.
  */
 
 type RequestState = "idle" | "loading" | "error";
@@ -61,18 +61,40 @@ export function AuditForm() {
           onChange={(e) => setUrl(e.target.value)}
           placeholder="вашсайт.com.ua"
           disabled={state === "loading"}
-          className="flex-1 rounded-xl border hairline bg-[var(--bg-raised)] px-5 py-3.5 text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--cyan)] transition-colors disabled:opacity-60"
-          style={{ transitionDuration: "180ms" }}
+          className="flex-1 rounded-xl px-5 py-3.5 text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none transition-all disabled:opacity-60"
+          style={{
+            background: "rgba(255, 255, 255, 0.06)",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            backdropFilter: "blur(12px)",
+            transitionDuration: "220ms",
+          }}
+          onFocus={(e) => {
+            e.currentTarget.style.borderColor = "rgba(140, 246, 255, 0.4)";
+            e.currentTarget.style.boxShadow = "0 0 20px rgba(140, 246, 255, 0.1)";
+          }}
+          onBlur={(e) => {
+            e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.1)";
+            e.currentTarget.style.boxShadow = "none";
+          }}
         />
         <motion.button
           type="submit"
           disabled={state === "loading"}
           whileTap={{ scale: 0.97 }}
           transition={{ duration: 0.12, ease: [0.16, 1, 0.3, 1] }}
-          className="rounded-xl px-6 py-3.5 font-medium whitespace-nowrap disabled:opacity-60"
-          style={{ background: "var(--lime)", color: "#0c111d" }}
+          className="glow-button whitespace-nowrap"
         >
-          {state === "loading" ? "Перевіряємо…" : "Перевірити безкоштовно"}
+          {state === "loading" ? (
+            <>
+              <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Перевіряємо…
+            </>
+          ) : (
+            "Перевірити безкоштовно"
+          )}
         </motion.button>
       </form>
 

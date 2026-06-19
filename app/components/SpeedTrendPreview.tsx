@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * SpeedTrendPreview — a real chart artifact (speed-over-time), the kind
- * a Growth-plan dashboard actually renders. SVG polyline, no charting
- * library needed for a static illustrative dataset.
+ * SpeedTrendPreview — glassmorphism chart card with gradient line,
+ * animated endpoint glow, and area fill.
  */
 
 const POINTS = [2.8, 2.6, 3.1, 2.4, 1.9, 1.6, 1.4, 1.3, 1.2];
@@ -24,14 +23,21 @@ export function SpeedTrendPreview() {
   const lastY = HEIGHT - (POINTS[POINTS.length - 1] / MAX) * HEIGHT;
 
   return (
-    <div className="rounded-2xl border hairline bg-[var(--bg-raised)] p-5 sm:p-6">
+    <div
+      className="rounded-2xl p-5 sm:p-6"
+      style={{
+        background: "rgba(255, 255, 255, 0.03)",
+        border: "1px solid rgba(255, 255, 255, 0.08)",
+        backdropFilter: "blur(16px)",
+      }}
+    >
       <div className="flex items-baseline justify-between mb-1">
         <span className="text-sm text-[var(--text-secondary)]">Швидкість завантаження</span>
         <span className="font-mono text-xs text-[var(--text-tertiary)]">30 днів</span>
       </div>
       <div className="flex items-baseline gap-2 mb-4">
         <span className="font-mono text-2xl tabular text-[var(--text-primary)]">1.2s</span>
-        <span className="font-mono text-xs" style={{ color: "var(--lime)" }}>
+        <span className="font-mono text-xs font-medium gradient-text">
           −57%
         </span>
       </div>
@@ -39,13 +45,21 @@ export function SpeedTrendPreview() {
       <svg viewBox={`0 0 ${WIDTH} ${HEIGHT}`} className="w-full h-auto" preserveAspectRatio="none">
         <defs>
           <linearGradient id="speedFade" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--cyan)" stopOpacity="0.18" />
+            <stop offset="0%" stopColor="var(--cyan)" stopOpacity="0.15" />
             <stop offset="100%" stopColor="var(--cyan)" stopOpacity="0" />
+          </linearGradient>
+          <linearGradient id="lineGradient" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%" stopColor="var(--lime)" />
+            <stop offset="100%" stopColor="var(--cyan)" />
           </linearGradient>
         </defs>
         <path d={`${path} L ${WIDTH} ${HEIGHT} L 0 ${HEIGHT} Z`} fill="url(#speedFade)" stroke="none" />
-        <path d={path} fill="none" stroke="var(--cyan)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-        <circle cx={lastX} cy={lastY} r="3.5" fill="var(--cyan)" />
+        <path d={path} fill="none" stroke="url(#lineGradient)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        <circle cx={lastX} cy={lastY} r="4" fill="var(--cyan)" />
+        <circle cx={lastX} cy={lastY} r="8" fill="var(--cyan)" opacity="0.2">
+          <animate attributeName="r" values="4;12;4" dur="2s" repeatCount="indefinite" />
+          <animate attributeName="opacity" values="0.3;0;0.3" dur="2s" repeatCount="indefinite" />
+        </circle>
       </svg>
     </div>
   );

@@ -5,9 +5,8 @@ import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 import { Reveal } from "./Reveal";
 
 /**
- * FaqAccordion — addresses objections per the "FAQ/Documentation" and
- * "Pricing-Focused Landing" patterns: smooth accordion open/close,
- * one question open at a time to keep the page calm.
+ * FaqSection — glassmorphism accordion with gradient accents
+ * on open items.
  */
 
 const FAQS = [
@@ -38,57 +37,77 @@ export function FaqSection() {
   const reduceMotion = useReducedMotion();
 
   return (
-    <section className="border-t hairline">
+    <section className="relative">
+      <div className="gradient-divider" />
       <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-24">
         <div className="grid lg:grid-cols-[0.8fr_1.2fr] gap-12">
           <div>
             <Reveal>
-              <span className="font-mono text-xs tracking-wide text-[var(--text-tertiary)] mb-5 block">
-                ЗАПИТАННЯ
+              <span
+                className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono text-[var(--text-tertiary)] mb-5"
+                style={{ background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)" }}
+              >
+                ✦ ЗАПИТАННЯ
               </span>
             </Reveal>
             <Reveal delay={0.04}>
               <h2 className="font-display text-3xl sm:text-4xl font-semibold leading-tight">
-                Перш ніж почати
+                Перш ніж{" "}
+                <span className="gradient-text">почати</span>
               </h2>
+            </Reveal>
+            <Reveal delay={0.08}>
+              <p className="mt-4 text-[var(--text-secondary)] text-sm leading-relaxed max-w-sm">
+                Відповіді на питання, які ви, ймовірно, вже подумали
+              </p>
             </Reveal>
           </div>
 
-          <div className="divide-y divide-[var(--border-hairline)]">
+          <div>
             {FAQS.map((item, i) => {
               const isOpen = openIndex === i;
               return (
                 <Reveal key={item.q} delay={0.03 * i}>
-                  <button
-                    onClick={() => setOpenIndex(isOpen ? null : i)}
-                    className="w-full flex items-center justify-between gap-4 py-5 text-left group"
+                  <div
+                    style={{
+                      borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+                    }}
                   >
-                    <span className="font-display text-base sm:text-lg font-medium text-[var(--text-primary)] group-hover:text-[var(--cyan)] transition-colors">
-                      {item.q}
-                    </span>
-                    <motion.span
-                      animate={{ rotate: isOpen ? 45 : 0 }}
-                      transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
-                      className="shrink-0 text-2xl font-light text-[var(--text-tertiary)] leading-none"
+                    <button
+                      onClick={() => setOpenIndex(isOpen ? null : i)}
+                      className="w-full flex items-center justify-between gap-4 py-5 text-left group"
                     >
-                      +
-                    </motion.span>
-                  </button>
-                  <AnimatePresence initial={false}>
-                    {isOpen && (
-                      <motion.div
-                        initial={reduceMotion ? undefined : { height: 0, opacity: 0 }}
-                        animate={{ height: "auto", opacity: 1 }}
-                        exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
-                        transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
-                        className="overflow-hidden"
+                      <span className="font-display text-base sm:text-lg font-medium text-[var(--text-primary)] group-hover:text-[var(--cyan)] transition-colors">
+                        {item.q}
+                      </span>
+                      <motion.span
+                        animate={{ rotate: isOpen ? 45 : 0 }}
+                        transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+                        className="shrink-0 h-6 w-6 flex items-center justify-center rounded-full text-lg font-light leading-none transition-colors"
+                        style={{
+                          color: isOpen ? "var(--lime)" : "var(--text-tertiary)",
+                          background: isOpen ? "rgba(214, 255, 63, 0.1)" : "rgba(255, 255, 255, 0.04)",
+                        }}
                       >
-                        <p className="pb-5 text-sm leading-relaxed text-[var(--text-secondary)] max-w-xl">
-                          {item.a}
-                        </p>
-                      </motion.div>
-                    )}
-                  </AnimatePresence>
+                        +
+                      </motion.span>
+                    </button>
+                    <AnimatePresence initial={false}>
+                      {isOpen && (
+                        <motion.div
+                          initial={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={reduceMotion ? undefined : { height: 0, opacity: 0 }}
+                          transition={{ duration: 0.28, ease: [0.16, 1, 0.3, 1] }}
+                          className="overflow-hidden"
+                        >
+                          <p className="pb-5 text-sm leading-relaxed text-[var(--text-secondary)] max-w-xl">
+                            {item.a}
+                          </p>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 </Reveal>
               );
             })}

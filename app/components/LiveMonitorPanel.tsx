@@ -1,17 +1,8 @@
 "use client";
 
 /**
- * LiveMonitorPanel — the hero's real subject: a believable slice of the
- * actual Qorax product UI, not an abstract illustration.
- *
- * Modeled after Linear's homepage technique: show the tool doing its job
- * (an issue list, a diff, a dashboard) rather than an icon representing
- * the idea of the tool. Here: a checks list with live status + a tiny
- * inline sparkline, exactly what a Starter/Growth dashboard would render.
- *
- * Motion is restrained and purposeful: a status dot pulses only on the
- * one row currently "running" (state indication), rows fade in once on
- * mount (entrance, not loop). Nothing spins for decoration.
+ * LiveMonitorPanel — glassmorphism dashboard preview card with glow
+ * border effect. Shows a realistic monitoring UI slice.
  */
 
 import { motion, useReducedMotion } from "motion/react";
@@ -42,21 +33,41 @@ export function LiveMonitorPanel() {
   const reduceMotion = useReducedMotion();
 
   return (
-    <div className="rounded-2xl border hairline bg-[var(--bg-raised)] overflow-hidden">
-      <div className="flex items-center justify-between px-5 py-3.5 border-b hairline">
-        <div className="flex items-center gap-2">
+    <div
+      className="rounded-2xl overflow-hidden"
+      style={{
+        background: "rgba(255, 255, 255, 0.03)",
+        border: "1px solid rgba(255, 255, 255, 0.08)",
+        backdropFilter: "blur(20px)",
+        boxShadow: "0 0 60px rgba(140, 246, 255, 0.05), 0 20px 60px rgba(0, 0, 0, 0.3)",
+      }}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center justify-between px-5 py-3.5"
+        style={{ borderBottom: "1px solid rgba(255, 255, 255, 0.06)" }}
+      >
+        <div className="flex items-center gap-2.5">
+          <div className="flex gap-1.5">
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
+            <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
+          </div>
           <span className="font-mono text-xs text-[var(--text-tertiary)]">qorax-client.com.ua</span>
         </div>
-        <span className="font-mono text-[10px] text-[var(--text-tertiary)] tabular">
-          оновлено зараз
+        <span className="font-mono text-[10px] text-[var(--text-tertiary)] tabular flex items-center gap-1.5">
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--lime)] animate-pulse-glow" />
+          live
         </span>
       </div>
 
-      <div className="divide-y divide-[var(--border-hairline)]">
+      {/* Rows */}
+      <div>
         {ROWS.map((row, i) => (
           <motion.div
             key={row.id}
             className="flex items-center gap-3 px-5 py-3.5"
+            style={{ borderBottom: i < ROWS.length - 1 ? "1px solid rgba(255, 255, 255, 0.04)" : "none" }}
             initial={reduceMotion ? undefined : { opacity: 0, x: -8 }}
             animate={reduceMotion ? undefined : { opacity: 1, x: 0 }}
             transition={{ duration: 0.4, delay: 0.08 + i * 0.07, ease: [0.16, 1, 0.3, 1] }}
@@ -92,9 +103,19 @@ export function LiveMonitorPanel() {
         ))}
       </div>
 
-      <div className="px-5 py-3 border-t hairline flex items-center justify-between bg-[var(--bg-raised-2)]">
+      {/* Footer */}
+      <div
+        className="px-5 py-3 flex items-center justify-between"
+        style={{
+          borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+          background: "rgba(255, 255, 255, 0.02)",
+        }}
+      >
         <span className="text-xs text-[var(--text-secondary)]">5 перевірок щохвилини</span>
-        <span className="font-mono text-xs text-[var(--lime)]">●  усе в нормі</span>
+        <span className="font-mono text-xs flex items-center gap-1.5" style={{ color: "var(--lime)" }}>
+          <span className="h-1.5 w-1.5 rounded-full bg-[var(--lime)]" />
+          усе в нормі
+        </span>
       </div>
     </div>
   );

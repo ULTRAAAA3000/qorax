@@ -1,9 +1,11 @@
+"use client";
+
+import { motion, useReducedMotion } from "motion/react";
 import { Reveal } from "./Reveal";
 
 /**
- * StatsStrip — real market figures from our research, presented as a
- * dense data row (Raycast/Linear style: numbers as the visual, not
- * illustrations of numbers).
+ * StatsStrip — key market metrics with gradient numbers
+ * and subtle separator lines.
  */
 
 const STATS = [
@@ -14,22 +16,32 @@ const STATS = [
 ];
 
 export function StatsStrip() {
+  const reduceMotion = useReducedMotion();
+
   return (
-    <section className="border-t hairline">
-      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-12 sm:py-14">
+    <section className="relative">
+      <div className="gradient-divider" />
+      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-14 sm:py-16">
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-8 sm:gap-6">
           {STATS.map((stat, i) => (
             <Reveal key={stat.label} delay={i * 0.05}>
-              <div className="font-mono text-2xl sm:text-3xl tabular text-[var(--text-primary)] mb-1.5">
-                {stat.value}
-              </div>
-              <div className="text-xs sm:text-[13px] text-[var(--text-tertiary)] leading-snug max-w-[150px]">
-                {stat.label}
-              </div>
+              <motion.div
+                className="relative"
+                whileHover={reduceMotion ? undefined : { y: -2 }}
+                transition={{ duration: 0.2 }}
+              >
+                <div className="font-mono text-2xl sm:text-3xl tabular font-semibold mb-1.5 gradient-text">
+                  {stat.value}
+                </div>
+                <div className="text-xs sm:text-[13px] text-[var(--text-tertiary)] leading-snug max-w-[150px]">
+                  {stat.label}
+                </div>
+              </motion.div>
             </Reveal>
           ))}
         </div>
       </div>
+      <div className="gradient-divider" />
     </section>
   );
 }
