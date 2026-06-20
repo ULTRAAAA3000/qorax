@@ -69,7 +69,7 @@ function GlassCubeScene({ pointer }: { pointer: React.RefObject<{ x: number; y: 
   });
 
   return (
-    <group ref={groupRef} position={[0, 1.1, -3]} scale={2.2}>
+    <group ref={groupRef} position={[0, 2.6, -4]} scale={1.1}>
       {/* Procedurally shaded core cube — the "cubeShader" layer */}
       <mesh scale={0.62}>
         <boxGeometry args={[1, 1, 1, 4, 4, 4]} />
@@ -82,18 +82,19 @@ function GlassCubeScene({ pointer }: { pointer: React.RefObject<{ x: number; y: 
       </mesh>
 
       {/* Outer glass shell — transmission + chromatic aberration via drei */}
-      <RoundedBox args={[1.05, 1.05, 1.05]} radius={0.06} smoothness={4}>
+      <RoundedBox args={[1.05, 1.05, 1.05]} radius={0.08} smoothness={6}>
         <MeshTransmissionMaterial
-          thickness={1}
-          roughness={0.35}
+          thickness={0.6}
+          roughness={0.12}
           transmission={1}
-          ior={1.5}
-          chromaticAberration={0.04}
-          anisotropy={0.3}
+          ior={1.4}
+          chromaticAberration={0.025}
+          anisotropy={0.2}
           distortion={0}
           temporalDistortion={0}
-          samples={6}
-          resolution={512}
+          samples={10}
+          resolution={1024}
+          background={new THREE.Color("#0c111d")}
         />
       </RoundedBox>
     </group>
