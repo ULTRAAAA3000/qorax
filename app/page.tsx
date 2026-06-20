@@ -5,6 +5,7 @@ import { LiveMonitorPanel } from "./components/LiveMonitorPanel";
 import { AiInsightPreview } from "./components/AiInsightPreview";
 import { SpeedTrendPreview } from "./components/SpeedTrendPreview";
 import { HeroAtmosphere } from "./components/HeroAtmosphere";
+import { HeroGlassCubeLazy as HeroGlassCube } from "./components/HeroGlassCubeLazy";
 import { StatsStrip } from "./components/StatsStrip";
 import { FeatureBento } from "./components/FeatureBento";
 import { HowItWorksSection } from "./components/HowItWorksSection";
@@ -116,6 +117,7 @@ function Hero() {
   return (
     <section className="relative overflow-hidden">
       <HeroAtmosphere />
+      <HeroGlassCube />
       <div className="mx-auto max-w-6xl px-6 sm:px-8 pt-20 sm:pt-32 pb-16 sm:pb-20">
         {/* Centered headline */}
         <div className="text-center max-w-3xl mx-auto">
