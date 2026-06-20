@@ -1,7 +1,17 @@
 "use client";
 
 import { motion, useReducedMotion } from "motion/react";
-import type { ReactNode } from "react";
+import type { ComponentType, CSSProperties } from "react";
+import {
+  ShieldCheck,
+  Gauge,
+  Link2,
+  BarChart3,
+  Smartphone,
+  Flag,
+  FileText,
+  MessageCircle,
+} from "lucide-react";
 import { Reveal } from "./Reveal";
 
 /**
@@ -14,7 +24,7 @@ type Tile = {
   description: string;
   span?: "wide" | "tall" | "normal";
   accent?: "lime" | "cyan" | "none";
-  icon: string;
+  icon: ComponentType<{ className?: string; strokeWidth?: number; style?: CSSProperties }>;
 };
 
 const TILES: Tile[] = [
@@ -22,51 +32,51 @@ const TILES: Tile[] = [
     title: "SSL та домен",
     description: "Алерт за 30 і 7 днів до закінчення — ніколи не дізнаєтесь про це з помилки в браузері клієнта.",
     accent: "lime",
-    icon: "🔒",
+    icon: ShieldCheck,
   },
   {
     title: "Core Web Vitals",
     description: "LCP, INP, CLS — ті самі метрики, за якими Google ранжує швидкість вашого сайту.",
     span: "wide",
     accent: "cyan",
-    icon: "⚡",
+    icon: Gauge,
   },
   {
     title: "Биті посилання",
     description: "Щотижневий обхід усіх сторінок сайту з переліком, що саме зламалось.",
     accent: "lime",
-    icon: "🔗",
+    icon: Link2,
   },
   {
     title: "Google Search Console",
     description: "Клікі, показники, середня позиція — напряму з офіційного API Google, без скрейпінгу.",
     accent: "cyan",
-    icon: "📊",
+    icon: BarChart3,
   },
   {
     title: "Мобільна версія",
     description: "Viewport, читабельність тексту, розмір тап-таргетів — усе, що Google перевіряє для mobile-first індексації.",
     accent: "lime",
-    icon: "📱",
+    icon: Smartphone,
   },
   {
     title: "Конкуренти",
     description: "Бачите, коли конкурент змінює сайт або стає швидшим за вас — без ручного відвідування щодня.",
     span: "wide",
     accent: "cyan",
-    icon: "🏁",
+    icon: Flag,
   },
   {
     title: "White-label звіти",
     description: "Для агентств: PDF-звіти з вашим логотипом і брендом, а не з нашим.",
     accent: "lime",
-    icon: "📄",
+    icon: FileText,
   },
   {
     title: "Telegram-алерти",
     description: "Сайт впав — повідомлення приходить за хвилину, не через годину, коли хтось випадково помітив.",
     accent: "cyan",
-    icon: "💬",
+    icon: MessageCircle,
   },
 ];
 
@@ -99,7 +109,11 @@ function BentoTile({ tile }: { tile: Tile }) {
           <h3 className="font-display text-base font-medium text-[var(--text-primary)] group-hover:text-white transition-colors">
             {tile.title}
           </h3>
-          <span className="text-xl opacity-60 group-hover:opacity-100 transition-opacity">{tile.icon}</span>
+          <tile.icon
+            className="h-5 w-5 opacity-60 group-hover:opacity-100 transition-opacity"
+            strokeWidth={1.5}
+            style={{ color: `rgb(${accentColor})` }}
+          />
         </div>
         <p className="text-[13px] leading-relaxed text-[var(--text-secondary)]">
           {tile.description}

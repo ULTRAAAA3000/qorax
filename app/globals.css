@@ -303,20 +303,29 @@ body {
 
 .gradient-border {
   position: relative;
+  isolation: isolate;
 }
 
 .gradient-border::before {
   content: "";
   position: absolute;
   inset: 0;
+  z-index: 0;
   border-radius: inherit;
   padding: 1px;
   background: var(--gradient-primary);
-  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
-  mask-composite: exclude;
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
   -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  mask-composite: exclude;
   pointer-events: none;
+}
+
+/* Страховка: если mask-composite не поддерживается браузером (редкий случай),
+   контент карточки всё равно должен быть выше псевдоэлемента, а не перекрыт им. */
+.gradient-border > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* ============================================================
