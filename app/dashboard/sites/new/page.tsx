@@ -39,7 +39,7 @@ export default async function NewSitePage({
             color: "#F5675A",
           }}
         >
-          {decodeURIComponent(error)}
+          {error}
         </div>
       )}
 

@@ -19,7 +19,7 @@ export async function addSite(formData: FormData) {
   const displayName = formData.get("display_name") as string;
 
   if (!url) {
-    redirect("/dashboard/sites/new?error=Вкажіть адресу сайту");
+    redirect(`/dashboard/sites/new?error=${encodeURIComponent("Вкажіть адресу сайту")}`);
   }
 
   // Нормалізуємо URL
@@ -31,7 +31,7 @@ export async function addSite(formData: FormData) {
   try {
     new URL(normalizedUrl);
   } catch {
-    redirect("/dashboard/sites/new?error=Невірний формат адреси сайту");
+    redirect(`/dashboard/sites/new?error=${encodeURIComponent("Невірний формат адреси сайту")}`);
   }
 
   // Знаходимо organization поточного користувача
@@ -42,7 +42,9 @@ export async function addSite(formData: FormData) {
     .single();
 
   if (!membership) {
-    redirect("/dashboard/sites/new?error=Організацію не знайдено — зверніться до підтримки");
+    redirect(
+      `/dashboard/sites/new?error=${encodeURIComponent("Організацію не знайдено — зверніться до підтримки")}`
+    );
   }
 
   // Перевіряємо ліміт сайтів (plan-based)
@@ -59,7 +61,9 @@ export async function addSite(formData: FormData) {
 
   if (siteCount !== null && org && siteCount >= org.site_limit) {
     redirect(
-      `/dashboard/sites/new?error=Досягнуто ліміт сайтів (${org.site_limit}). Оновіть план для додавання більше сайтів`
+      `/dashboard/sites/new?error=${encodeURIComponent(
+        `Досягнуто ліміт сайтів (${org.site_limit}). Оновіть план для додавання більше сайтів`
+      )}`
     );
   }
 
@@ -77,7 +81,7 @@ export async function addSite(formData: FormData) {
 
   if (error) {
     console.error("Failed to add site:", error.message);
-    redirect("/dashboard/sites/new?error=Не вдалося додати сайт, спробуйте ще раз");
+    redirect(`/dashboard/sites/new?error=${encodeURIComponent("Не вдалося додати сайт, спробуйте ще раз")}`);
   }
 
   redirect(`/dashboard?site=${site.id}&new=1`);

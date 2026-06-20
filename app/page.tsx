@@ -118,7 +118,7 @@ function Hero() {
     <section className="relative overflow-hidden">
       <HeroAtmosphere />
       <HeroGlassCube />
-      <div className="mx-auto max-w-6xl px-6 sm:px-8 pt-20 sm:pt-32 pb-16 sm:pb-20">
+      <div className="relative z-10 mx-auto max-w-6xl px-6 sm:px-8 pt-20 sm:pt-32 pb-16 sm:pb-20">
         {/* Centered headline */}
         <div className="text-center max-w-3xl mx-auto">
           <Reveal>

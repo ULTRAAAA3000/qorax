@@ -11,11 +11,11 @@ export async function signUp(formData: FormData) {
   const fullName = formData.get("full_name") as string;
 
   if (!email || !password) {
-    redirect("/register?error=Заповніть усі поля");
+    redirect(`/register?error=${encodeURIComponent("Заповніть усі поля")}`);
   }
 
   if (password.length < 8) {
-    redirect("/register?error=Пароль має бути мінімум 8 символів");
+    redirect(`/register?error=${encodeURIComponent("Пароль має бути мінімум 8 символів")}`);
   }
 
   const { data, error } = await supabase.auth.signUp({
@@ -28,13 +28,13 @@ export async function signUp(formData: FormData) {
 
   if (error) {
     if (error.message.includes("already registered")) {
-      redirect("/register?error=Цей email вже зареєстровано");
+      redirect(`/register?error=${encodeURIComponent("Цей email вже зареєстровано")}`);
     }
     redirect(`/register?error=${encodeURIComponent(error.message)}`);
   }
 
   if (!data.user) {
-    redirect("/register?error=Щось пішло не так, спробуйте ще раз");
+    redirect(`/register?error=${encodeURIComponent("Щось пішло не так, спробуйте ще раз")}`);
   }
 
   // Після реєстрації — створюємо organization та прив'язуємо користувача
@@ -79,7 +79,7 @@ export async function signIn(formData: FormData) {
 
   if (error) {
     if (error.message.includes("Invalid login credentials")) {
-      redirect("/login?error=Невірний email або пароль");
+      redirect(`/login?error=${encodeURIComponent("Невірний email або пароль")}`);
     }
     redirect(`/login?error=${encodeURIComponent(error.message)}`);
   }

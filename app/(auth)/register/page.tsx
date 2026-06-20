@@ -42,7 +42,7 @@ export default async function RegisterPage({
                 color: "#F5675A",
               }}
             >
-              {decodeURIComponent(error)}
+              {error}
             </div>
           )}
 

@@ -13,11 +13,11 @@ import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead } from "./lib/supabase";
 
 // Список доменов, с которых разрешены запросы к API.
-// На этапе разработки на бесплатном поддомене сюда нужно добавить
-// реальный *.pages.dev адрес после первого деплоя фронтенда.
+// Фронтенд живёт на Cloudflare Workers Builds (не Pages — см. миграцию
+// с *.pages.dev), поэтому именно *.workers.dev должен быть в whitelist.
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
-  "https://qorax.pages.dev",
+  "https://qorax.mrcru96.workers.dev",
 ];
 
 function corsHeaders(origin: string | null): Record<string, string> {

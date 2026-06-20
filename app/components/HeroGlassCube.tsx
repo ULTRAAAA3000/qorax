@@ -69,7 +69,7 @@ function GlassCubeScene({ pointer }: { pointer: React.RefObject<{ x: number; y: 
   });
 
   return (
-    <group ref={groupRef}>
+    <group ref={groupRef} position={[0, 1.1, -3]} scale={2.2}>
       {/* Procedurally shaded core cube — the "cubeShader" layer */}
       <mesh scale={0.62}>
         <boxGeometry args={[1, 1, 1, 4, 4, 4]} />
@@ -135,14 +135,15 @@ export function HeroGlassCube() {
     <div
       aria-hidden="true"
       onPointerMove={handlePointerMove}
-      className="absolute inset-0 -z-10"
-      style={{ pointerEvents: "none" }}
+      className="absolute inset-0 overflow-hidden"
+      style={{ pointerEvents: "none", zIndex: 0 }}
     >
       <Canvas
         camera={{ position: [0, 0, 4.2], fov: 35 }}
         dpr={[1, 1.5]}
         gl={{ alpha: true, antialias: true }}
-        style={{ pointerEvents: "auto" }}
+        style={{ pointerEvents: "auto", width: "100%", height: "100%", display: "block" }}
+        resize={{ scroll: false, debounce: 0 }}
         onPointerMove={handlePointerMove}
       >
         <Suspense fallback={null}>
