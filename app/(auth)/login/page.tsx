@@ -9,9 +9,9 @@ export const metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; info?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, info } = await searchParams;
 
   return (
     <div
@@ -32,6 +32,19 @@ export default async function LoginPage({
           <p className="text-sm text-[var(--text-secondary)] mb-7">
             Ваш дашборд чекає.
           </p>
+
+          {info && (
+            <div
+              className="rounded-xl px-4 py-3 mb-5 text-sm"
+              style={{
+                background: "rgba(140,246,255,0.08)",
+                border: "1px solid rgba(140,246,255,0.3)",
+                color: "var(--cyan)",
+              }}
+            >
+              {info}
+            </div>
+          )}
 
           {error && (
             <div

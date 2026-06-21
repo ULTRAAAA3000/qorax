@@ -37,33 +37,22 @@ export async function signUp(formData: FormData) {
     redirect(`/register?error=${encodeURIComponent("Щось пішло не так, спробуйте ще раз")}`);
   }
 
-  // Після реєстрації — створюємо organization та прив'язуємо користувача
-  const { data: org, error: orgError } = await supabase
-    .from("organizations")
-    .insert({
-      name: fullName || email.split("@")[0],
-      org_type: "client",
-      site_limit: 1,
-    })
-    .select("id")
-    .single();
+  // Organization + organization_member створюються автоматично тригером
+  // handle_new_user() в БД (див. migrations/0014) — він спрацьовує при
+  // INSERT в auth.users і не залежить від того, чи є клієнтська сесія.
+  // Раніше це робилося тут вручну через anon-клієнта, але якщо в Supabase
+  // Auth увімкнено підтвердження email, signUp() не відкриває сесію одразу
+  // (data.session === null), і insert падав без помилки через RLS —
+  // organization просто не створювалась. Тригер у БД не залежить від цього.
 
-  if (orgError || !org) {
-    console.error("Failed to create organization on signup:", orgError?.message);
-    redirect("/dashboard?welcome=1");
-  }
-
-  // Прив'язуємо користувача до організації як власника
-  const { error: memberError } = await supabase
-    .from("organization_members")
-    .insert({
-      organization_id: org.id,
-      user_id: data.user.id,
-      role: "owner",
-    });
-
-  if (memberError) {
-    console.error("Failed to create organization member:", memberError.message);
+  if (!data.session) {
+    // Підтвердження email увімкнено — сесії ще немає, редірект на
+    // /dashboard тут безглуздий: middleware однаково поверне на /login.
+    redirect(
+      `/login?info=${encodeURIComponent(
+        "Перевірте пошту та підтвердіть email, щоб увійти"
+      )}`
+    );
   }
 
   redirect("/dashboard?welcome=1");
