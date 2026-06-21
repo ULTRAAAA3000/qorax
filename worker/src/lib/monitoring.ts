@@ -11,7 +11,7 @@
 // ============================================================
 
 import { runBasicCheck } from "./basicCheck";
-import { runPageSpeedCheck } from "./pageSpeed";
+import { runPageSpeedChecks } from "./pageSpeed";
 import { selectRows, insertRow, upsertRow, updateRows } from "./supabase";
 
 interface SiteRow {
@@ -230,7 +230,7 @@ async function checkSingleSiteSpeed(
 ): Promise<void> {
   const [basic, pageSpeed] = await Promise.all([
     runBasicCheck(site.url),
-    runPageSpeedCheck(site.url, pageSpeedApiKey),
+    runPageSpeedChecks(site.url, pageSpeedApiKey),
   ]);
 
   // speed_checks — простой замер времени ответа (приближение к load time;
@@ -238,23 +238,44 @@ async function checkSingleSiteSpeed(
   // потребовал бы headless browser, чего у нас пока нет).
   await insertRow(
     "speed_checks",
-    { site_id: site.id, load_time_ms: basic.responseTimeMs ?? 0 },
+    {
+      site_id: site.id,
+      load_time_ms: basic.responseTimeMs ?? 0,
+      page_size_kb: basic.pageSizeKb,
+    },
     supabaseUrl,
     serviceRoleKey
   );
 
-  if (pageSpeed.available) {
-    await insertRow(
-      "core_web_vitals_checks",
-      {
-        site_id: site.id,
-        lcp_ms: pageSpeed.lcpMs ? Math.round(pageSpeed.lcpMs) : null,
-        inp_ms: pageSpeed.inpMs ? Math.round(pageSpeed.inpMs) : null,
-        cls_score: pageSpeed.clsScore,
-        performance_score: pageSpeed.performanceScore,
-      },
-      supabaseUrl,
-      serviceRoleKey
-    );
-  }
+  // Записываем mobile и desktop как отдельные строки (см. миграцию 0015) —
+  // это два независимых Lighthouse-прогона с разным throttling-профилем,
+  // объединять их в одну запись потеряло бы либо одно из двух значений.
+  await Promise.all([
+    insertCwvRow(site.id, "mobile", pageSpeed.mobile, supabaseUrl, serviceRoleKey),
+    insertCwvRow(site.id, "desktop", pageSpeed.desktop, supabaseUrl, serviceRoleKey),
+  ]);
+}
+
+async function insertCwvRow(
+  siteId: string,
+  strategy: "mobile" | "desktop",
+  result: { available: boolean; lcpMs: number | null; inpMs: number | null; clsScore: number | null; performanceScore: number | null },
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<void> {
+  if (!result.available) return;
+
+  await insertRow(
+    "core_web_vitals_checks",
+    {
+      site_id: siteId,
+      strategy,
+      lcp_ms: result.lcpMs ? Math.round(result.lcpMs) : null,
+      inp_ms: result.inpMs ? Math.round(result.inpMs) : null,
+      cls_score: result.clsScore,
+      performance_score: result.performanceScore,
+    },
+    supabaseUrl,
+    serviceRoleKey
+  );
 }

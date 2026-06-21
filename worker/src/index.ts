@@ -8,7 +8,7 @@
 import type { Env } from "./types";
 import { normalizeAndValidateUrl } from "./lib/url";
 import { runBasicCheck } from "./lib/basicCheck";
-import { runPageSpeedCheck } from "./lib/pageSpeed";
+import { runPageSpeedChecks } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead } from "./lib/supabase";
 import { runUptimeChecks, runSpeedChecks } from "./lib/monitoring";
@@ -115,11 +115,11 @@ async function handleAuditRequest(
     typeof body.email === "string" && body.email.includes("@") ? body.email.trim() : null;
 
   // Шаг 1: базовая проверка (быстрая, fetch + парсинг HTML) и
-  // PageSpeed (медленнее, Lighthouse) — параллельно, чтобы не ждать
-  // их по очереди.
+  // PageSpeed (медленнее, Lighthouse, mobile + desktop параллельно) —
+  // всё вместе, чтобы не ждать их по очереди.
   const [basic, pageSpeed] = await Promise.all([
     runBasicCheck(validation.url),
-    runPageSpeedCheck(validation.url, env.GOOGLE_PAGESPEED_API_KEY),
+    runPageSpeedChecks(validation.url, env.GOOGLE_PAGESPEED_API_KEY),
   ]);
 
   // Если сайт вообще недоступен — нет смысла гнать его через AI,
@@ -135,11 +135,14 @@ async function handleAuditRequest(
     );
   }
 
-  // Шаг 2: AI-анализ собранных данных
+  // Шаг 2: AI-анализ собранных данных. AI получает оба score (mobile —
+  // приоритетный, як основний сигнал для prompt'у, бо Google теж
+  // mobile-first при індексації) — десктопний показуємо окремо на UI,
+  // але в текст висновку AI не дублюємо, щоб не плутати власника сайту.
   const aiAnalysis = await runAiAnalysis(
     validation.hostname,
     basic,
-    pageSpeed,
+    pageSpeed.mobile,
     env.GEMINI_API_KEY
   );
 
@@ -151,9 +154,11 @@ async function handleAuditRequest(
 
   const previewResults = {
     overallSummary: aiAnalysis.overallSummary,
-    performanceScore: pageSpeed.performanceScore,
+    performanceScoreMobile: pageSpeed.mobile.performanceScore,
+    performanceScoreDesktop: pageSpeed.desktop.performanceScore,
     responseTimeMs: basic.responseTimeMs,
     sslValid: basic.sslValid,
+    pageSizeKb: basic.pageSizeKb,
     findings: aiAnalysis.findings,
   };
 
@@ -175,9 +180,11 @@ async function handleAuditRequest(
     {
       url: validation.url,
       overallSummary: aiAnalysis.overallSummary,
-      performanceScore: pageSpeed.performanceScore,
+      performanceScoreMobile: pageSpeed.mobile.performanceScore,
+      performanceScoreDesktop: pageSpeed.desktop.performanceScore,
       responseTimeMs: basic.responseTimeMs,
       sslValid: basic.sslValid,
+      pageSizeKb: basic.pageSizeKb,
       visibleFindings,
       hiddenFindingsCount: hiddenCount,
     },

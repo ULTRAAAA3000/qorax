@@ -14,9 +14,11 @@ export interface AuditFinding {
 export interface AuditSuccessResult {
   url: string;
   overallSummary: string;
-  performanceScore: number | null;
+  performanceScoreMobile: number | null;
+  performanceScoreDesktop: number | null;
   responseTimeMs: number | null;
   sslValid: boolean;
+  pageSizeKb: number | null;
   visibleFindings: AuditFinding[];
   hiddenFindingsCount: number;
 }

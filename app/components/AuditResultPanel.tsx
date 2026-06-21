@@ -37,22 +37,27 @@ export function AuditResultPanel({ result }: { result: AuditSuccessResult }) {
         </p>
       </div>
 
-      <div className="grid grid-cols-3 divide-x divide-[var(--border-hairline)] border-b hairline">
+      <div className="grid grid-cols-2 sm:grid-cols-4 divide-x divide-y sm:divide-y-0 divide-[var(--border-hairline)] border-b hairline">
         <MetricCell
-          label="Швидкість"
-          value={result.performanceScore !== null ? `${result.performanceScore}/100` : "—"}
+          label="Швидкість (моб.)"
+          value={result.performanceScoreMobile !== null ? `${result.performanceScoreMobile}/100` : "—"}
           tone={
-            result.performanceScore !== null && result.performanceScore < 50 ? "bad" : "good"
+            result.performanceScoreMobile !== null && result.performanceScoreMobile < 50 ? "bad" : "good"
           }
         />
         <MetricCell
-          label="Відповідь"
-          value={result.responseTimeMs !== null ? `${result.responseTimeMs} мс` : "—"}
+          label="Швидкість (ПК)"
+          value={result.performanceScoreDesktop !== null ? `${result.performanceScoreDesktop}/100` : "—"}
           tone={
-            result.responseTimeMs !== null && result.responseTimeMs > 1500 ? "bad" : "good"
+            result.performanceScoreDesktop !== null && result.performanceScoreDesktop < 50 ? "bad" : "good"
           }
         />
         <MetricCell label="SSL" value={result.sslValid ? "Діє" : "Відсутній"} tone={result.sslValid ? "good" : "bad"} />
+        <MetricCell
+          label="Розмір сторінки"
+          value={result.pageSizeKb !== null ? `${result.pageSizeKb} КБ` : "—"}
+          tone={result.pageSizeKb !== null && result.pageSizeKb > 3000 ? "bad" : "good"}
+        />
       </div>
 
       <div className="divide-y divide-[var(--border-hairline)]">

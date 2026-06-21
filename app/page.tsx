@@ -11,11 +11,21 @@ import { FeatureBento } from "./components/FeatureBento";
 import { HowItWorksSection } from "./components/HowItWorksSection";
 import { FaqSection } from "./components/FaqSection";
 import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
+import { createClient } from "./lib/supabase/server";
 
-export default function Home() {
+export default async function Home() {
+  // Перевіряємо чи користувач залогінений, щоб показати в шапці
+  // "До дашборду" замість "Увійти" — інакше залогінений користувач
+  // не має прямого шляху в dashboard з лендингу (тільки middleware-редірект
+  // з /login, що виглядає як зайвий хоп).
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
   return (
     <main className="flex flex-col">
-      <SiteHeader />
+      <SiteHeader isLoggedIn={!!user} />
       <Hero />
       <StatsStrip />
 
@@ -63,7 +73,7 @@ export default function Home() {
 // Header — glassmorphism navbar with full navigation
 // ============================================================
 
-function SiteHeader() {
+function SiteHeader({ isLoggedIn }: { isLoggedIn: boolean }) {
   return (
     <header
       className="sticky top-0 z-50"
@@ -91,12 +101,21 @@ function SiteHeader() {
           </a>
         </nav>
         <div className="flex items-center gap-3">
-          <a
-            href="/login"
-            className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-3 py-2"
-          >
-            Увійти
-          </a>
+          {isLoggedIn ? (
+            <a
+              href="/dashboard"
+              className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-3 py-2"
+            >
+              До дашборду
+            </a>
+          ) : (
+            <a
+              href="/login"
+              className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-3 py-2"
+            >
+              Увійти
+            </a>
+          )}
           <a
             href="#audit"
             className="glow-button text-sm !py-2 !px-4"
