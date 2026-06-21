@@ -1,17 +1,22 @@
 "use client";
 
 import { useRef, useState, useCallback, useMemo, Suspense } from "react";
-import { Canvas, useFrame } from "@react-three/fiber";
-import { MeshTransmissionMaterial } from "@react-three/drei";
+import { Canvas, useFrame, useThree } from "@react-three/fiber";
+import { MeshTransmissionMaterial, useFBO } from "@react-three/drei";
 import * as THREE from "three";
 
 /**
  * HeroGlassCube — Raycast-style glass "bars": a row of vertical glass
  * cylinders that refract and chromatically shift the colorful background
- * (HeroAtmosphere) behind them as the cursor moves. This mirrors Raycast's
- * actual hero scene (16 vertical cylinders, not a solid cube — see their
- * page_hero "cylinder" config: count 16, radius 0.5, height 15) rather than
- * a single rotating box.
+ * (HeroAtmosphere) behind them as the cursor moves.
+ *
+ * PERFORMANCE NOTE: MeshTransmissionMaterial does its own render-to-texture
+ * pass per instance unless given a shared `buffer`. With 16 cylinders each
+ * doing an independent full-resolution transmission pass, every frame was
+ * costing 16x the GPU work of a single material — this is what caused the
+ * hero section to freeze/lag. Fix: render one shared low-res FBO once per
+ * frame and pass it to every cylinder via the `buffer` prop, plus drop
+ * resolution/samples to something a real-time scene can sustain.
  *
  * Skipped entirely on touch devices and prefers-reduced-motion — a WebGL
  * refraction effect serves no purpose without a cursor and has a real
@@ -21,11 +26,15 @@ import * as THREE from "three";
 const CYLINDER_COUNT = 16;
 const CYLINDER_RADIUS = 0.5;
 const CYLINDER_HEIGHT = 15;
+const FBO_RESOLUTION = 256;
 
 function GlassBars({ pointer }: { pointer: React.RefObject<{ x: number; y: number }> }) {
   const groupRef = useRef<THREE.Group>(null);
   const currentRotation = useRef({ x: 0, y: 0 });
   const currentOffset = useRef({ x: 0, y: 0 });
+
+  const { gl, scene, camera } = useThree();
+  const fbo = useFBO(FBO_RESOLUTION, FBO_RESOLUTION);
 
   // Evenly spaced vertical cylinders along X, mirroring Raycast's row of bars.
   const positions = useMemo(() => {
@@ -52,6 +61,15 @@ function GlassBars({ pointer }: { pointer: React.RefObject<{ x: number; y: numbe
     currentOffset.current.y += (targetOffsetY - currentOffset.current.y) * 0.04;
     groupRef.current.position.x = currentOffset.current.x;
     groupRef.current.position.y = currentOffset.current.y;
+
+    // One shared render-to-texture pass per frame, reused by all 16
+    // cylinders below — this is the part that was previously happening
+    // 16 times per frame and freezing the page.
+    groupRef.current.visible = false;
+    gl.setRenderTarget(fbo);
+    gl.render(scene, camera);
+    gl.setRenderTarget(null);
+    groupRef.current.visible = true;
   });
 
   return (
@@ -62,16 +80,17 @@ function GlassBars({ pointer }: { pointer: React.RefObject<{ x: number; y: numbe
             args={[CYLINDER_RADIUS, CYLINDER_RADIUS, CYLINDER_HEIGHT, 8, 1, true]}
           />
           <MeshTransmissionMaterial
+            buffer={fbo.texture}
             thickness={1}
             roughness={0.35}
             transmission={1}
             ior={1.5}
-            chromaticAberration={3}
-            anisotropy={2.88}
+            chromaticAberration={2}
+            anisotropy={1}
             distortion={0}
             temporalDistortion={0}
-            samples={6}
-            resolution={1024}
+            samples={1}
+            resolution={FBO_RESOLUTION}
             background={new THREE.Color("#0c111d")}
           />
         </mesh>
