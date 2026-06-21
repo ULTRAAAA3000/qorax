@@ -11,6 +11,7 @@ import { runBasicCheck } from "./lib/basicCheck";
 import { runPageSpeedCheck } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead } from "./lib/supabase";
+import { runUptimeChecks, runSpeedChecks } from "./lib/monitoring";
 
 // Список доменов, с которых разрешены запросы к API.
 // Фронтенд живёт на Cloudflare Workers Builds (не Pages — см. миграцию
@@ -57,6 +58,27 @@ const worker = {
     }
 
     return json({ error: "Маршрут не знайдено" }, 404, origin);
+  },
+
+  // Cron-розклад заданий мониторингу (див. [triggers] у wrangler.toml):
+  //   */5 * * * *  — uptime + базовий SSL (часто, легка перевірка)
+  //   0 3 * * *    — швидкість + Core Web Vitals (раз на день, важка)
+  // Розрізняємо за event.cron, бо обидва тригери ведуть на один scheduled().
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    if (event.cron === "0 3 * * *") {
+      ctx.waitUntil(
+        runSpeedChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.GOOGLE_PAGESPEED_API_KEY).then(
+          (summary) => console.log("Speed monitoring run:", JSON.stringify(summary))
+        )
+      );
+      return;
+    }
+
+    ctx.waitUntil(
+      runUptimeChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY).then((summary) =>
+        console.log("Uptime monitoring run:", JSON.stringify(summary))
+      )
+    );
   },
 };
 
