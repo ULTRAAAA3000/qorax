@@ -107,12 +107,25 @@ const worker = {
     // 0 3 * * * — ежедневно в 3:00: скорость + CWV + AI инсайты
     if (event.cron === "0 3 * * *") {
       ctx.waitUntil(
-        runSpeedChecks(
-          env.SUPABASE_URL,
-          env.SUPABASE_SERVICE_ROLE_KEY,
-          env.GOOGLE_PAGESPEED_API_KEY,
-          env.GEMINI_API_KEY
-        ).then((summary) => console.log("Speed monitoring run:", JSON.stringify(summary)))
+        Promise.all([
+          runSpeedChecks(
+            env.SUPABASE_URL,
+            env.SUPABASE_SERVICE_ROLE_KEY,
+            env.GOOGLE_PAGESPEED_API_KEY,
+            env.GEMINI_API_KEY
+          ).then((summary) => console.log("Speed monitoring run:", JSON.stringify(summary))),
+          runSeoChecks(
+            env.SUPABASE_URL,
+            env.SUPABASE_SERVICE_ROLE_KEY
+          ).then((summary) => console.log("SEO checks run:", JSON.stringify(summary))),
+          runCompetitorChecks(
+            env.SUPABASE_URL,
+            env.SUPABASE_SERVICE_ROLE_KEY,
+            env.RESEND_API_KEY,
+            env.TELEGRAM_BOT_TOKEN,
+            env.APP_URL
+          ).then((summary) => console.log("Competitor checks run:", JSON.stringify(summary))),
+        ])
       );
       return;
     }
