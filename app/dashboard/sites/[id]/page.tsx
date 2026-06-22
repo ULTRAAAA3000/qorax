@@ -192,24 +192,20 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           supabaseAnonKey={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}
         />
 
-        {/* ── PageSpeed + Speed trend ── */}
-        <div className="grid sm:grid-cols-2 gap-4">
-          {/* Placeholder — speed panel remains static (daily scan) */}
-          {/* Speed trend */}
-          <div className="rounded-2xl border hairline bg-[var(--bg-raised)] p-5">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-medium flex items-center gap-2">
-                <TrendingUp size={14} className="text-[var(--text-tertiary)]" /> Час відповіді
-              </span>
-              <span className="text-xs font-mono text-[var(--text-tertiary)]">
-                {latestSpeed ? fmtMs(latestSpeed.load_time_ms) : "—"}
-              </span>
-            </div>
-            <SpeedChart checks={speedChecks ?? []} />
-            <p className="text-xs text-[var(--text-tertiary)] mt-2">
-              Останні {speedChecks?.length ?? 0} замірів
-            </p>
+        {/* ── Speed trend (full width) ── */}
+        <div className="rounded-2xl border hairline bg-[var(--bg-raised)] p-5">
+          <div className="flex items-center justify-between mb-4">
+            <span className="text-sm font-medium flex items-center gap-2">
+              <TrendingUp size={14} className="text-[var(--text-tertiary)]" /> Час відповіді (швидкість завантаження)
+            </span>
+            <span className="text-xs font-mono text-[var(--text-tertiary)]">
+              {latestSpeed ? fmtMs(latestSpeed.load_time_ms) : "—"}
+            </span>
           </div>
+          <SpeedChart checks={speedChecks ?? []} />
+          <p className="text-xs text-[var(--text-tertiary)] mt-2">
+            Останні {speedChecks?.length ?? 0} замірів · щоденний скан о 3:00
+          </p>
         </div>
 
         {/* ── Broken Links ── */}
