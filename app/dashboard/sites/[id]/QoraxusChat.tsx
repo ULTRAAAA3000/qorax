@@ -16,25 +16,21 @@ const SUGGESTED_QUESTIONS = [
 ];
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
-const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
 
-// Якщо серверний токен протух або порожній — отримуємо свіжий через Supabase REST
-async function getValidToken(serverToken: string): Promise<string> {
-  if (serverToken) return serverToken;
-  // fallback: спробуємо отримати токен через refresh
+// Завжди беремо свіжий токен із Supabase client — серверний токен
+// може бути протухлим до моменту відправки запиту з браузера.
+// accessToken з props використовуємо як fallback якщо клієнт недоступний.
+async function getFreshToken(fallbackToken: string): Promise<string> {
   try {
-    const resp = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=refresh_token`, {
-      method: "POST",
-      headers: { apikey: SUPABASE_ANON_KEY, "Content-Type": "application/json" },
-      credentials: "include",
-    });
-    if (resp.ok) {
-      const data = (await resp.json()) as { access_token?: string };
-      return data.access_token ?? "";
-    }
-  } catch { /* ignore */ }
-  return serverToken;
+    const { createClient } = await import("@/app/lib/supabase/client");
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    return refreshed.session?.access_token ?? fallbackToken;
+  } catch {
+    return fallbackToken;
+  }
 }
 
 export function QoraxusChat({
@@ -75,7 +71,7 @@ export function QoraxusChat({
     setLoading(true);
 
     try {
-      const token = await getValidToken(accessToken);
+      const token = await getFreshToken(accessToken);
       const resp = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: {

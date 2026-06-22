@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Activity, Clock } from "lucide-react";
+import { createClient } from "@/app/lib/supabase/client";
 
 interface UptimeCheck {
   status: string;
@@ -24,8 +25,6 @@ export function LiveUptimePanel({
   siteId,
   initialChecks,
   initialIsUp,
-  supabaseUrl,
-  supabaseAnonKey,
 }: LiveUptimePanelProps) {
   const [checks, setChecks] = useState<UptimeCheck[]>(initialChecks);
   const [isUp, setIsUp] = useState(initialIsUp);
@@ -35,19 +34,23 @@ export function LiveUptimePanel({
   const refresh = useCallback(async () => {
     setTicking(true);
     try {
-      const resp = await fetch(
-        `${supabaseUrl}/rest/v1/uptime_checks?select=status,response_time_ms,checked_at&site_id=eq.${siteId}&order=checked_at.desc&limit=288`,
-        { headers: { apikey: supabaseAnonKey, Authorization: `Bearer ${supabaseAnonKey}` } }
-      );
-      if (!resp.ok) return;
-      const data = (await resp.json()) as UptimeCheck[];
+      // Використовуємо Supabase client з сесією — обходить RLS через авторизований токен
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from("uptime_checks")
+        .select("status, response_time_ms, checked_at")
+        .eq("site_id", siteId)
+        .order("checked_at", { ascending: false })
+        .limit(288);
+
+      if (error || !data) return; // тримаємо старі дані при помилці
       setChecks(data);
       setIsUp(data[0]?.status === "up");
       setLastRefreshed(new Date());
     } catch { /* keep old data */ } finally {
       setTicking(false);
     }
-  }, [siteId, supabaseUrl, supabaseAnonKey]);
+  }, [siteId]);
 
   useEffect(() => {
     const t = setInterval(refresh, REFRESH_MS);
