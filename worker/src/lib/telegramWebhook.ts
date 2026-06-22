@@ -73,6 +73,8 @@ export async function handleTelegramWebhook(
     // Telegram deep link payload — дефіси заборонені)
     const orgId = rawPayload ? rawPayload.replace(/_/g, "-") : null;
 
+    console.log("[tg-webhook] /start received", { rawPayload, orgId, chatId });
+
     if (!orgId) {
       // /start без параметру — бот запущений напряму, не через наш deep link
       await sendTelegramMessage(
@@ -91,6 +93,8 @@ export async function handleTelegramWebhook(
       env.SUPABASE_URL,
       env.SUPABASE_SERVICE_ROLE_KEY
     );
+
+    console.log("[tg-webhook] org check result", { ok: orgCheck.ok, count: orgCheck.ok ? orgCheck.data.length : 0, error: orgCheck.ok ? null : orgCheck.error });
 
     if (!orgCheck.ok || !orgCheck.data[0]) {
       await sendTelegramMessage(
