@@ -127,6 +127,12 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             </div>
           </div>
           <div className="flex items-center gap-3">
+            <Link
+              href={`/dashboard/sites/${site.id}/competitor`}
+              className="inline-flex items-center gap-1.5 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
+            >
+              Конкуренти
+            </Link>
             <a
               href={site.url}
               target="_blank"

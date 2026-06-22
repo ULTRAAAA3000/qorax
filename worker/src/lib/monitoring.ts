@@ -18,6 +18,12 @@ import {
   buildSiteRecoveredEmail,
   buildSslExpiryEmail,
 } from "./email";
+import {
+  sendTelegramMessage,
+  buildSiteDownTelegram,
+  buildSiteRecoveredTelegram,
+  buildSslExpiryTelegram,
+} from "./telegram";
 import { generateSiteInsights } from "./aiInsights";
 
 interface SiteRow {
@@ -38,6 +44,8 @@ interface OrgEmailRow {
   notify_site_down: boolean;
   notify_ssl_domain_expiry: boolean;
   email_enabled: boolean;
+  telegram_enabled: boolean;
+  telegram_chat_id: string | null;
 }
 
 export interface UptimeCheckSummary {
@@ -54,7 +62,8 @@ export async function runUptimeChecks(
   supabaseUrl: string,
   serviceRoleKey: string,
   resendApiKey: string,
-  appUrl: string
+  appUrl: string,
+  telegramBotToken: string
 ): Promise<UptimeCheckSummary> {
   const summary: UptimeCheckSummary = {
     sitesChecked: 0,
@@ -80,7 +89,7 @@ export async function runUptimeChecks(
 
   await Promise.all(
     sitesResult.data.map((site) =>
-      checkSingleSite(site, supabaseUrl, serviceRoleKey, resendApiKey, appUrl, summary)
+      checkSingleSite(site, supabaseUrl, serviceRoleKey, resendApiKey, appUrl, telegramBotToken, summary)
     )
   );
 
@@ -93,6 +102,7 @@ async function checkSingleSite(
   serviceRoleKey: string,
   resendApiKey: string,
   appUrl: string,
+  telegramBotToken: string,
   summary: UptimeCheckSummary
 ): Promise<void> {
   summary.sitesChecked++;
@@ -140,6 +150,7 @@ async function checkSingleSite(
     serviceRoleKey,
     resendApiKey,
     appUrl,
+    telegramBotToken,
     summary
   );
 }
@@ -151,6 +162,7 @@ async function reconcileIncident(
   serviceRoleKey: string,
   resendApiKey: string,
   appUrl: string,
+  telegramBotToken: string,
   summary: UptimeCheckSummary
 ): Promise<void> {
   const openIncidentResult = await selectRows<OpenIncidentRow>(
@@ -168,7 +180,6 @@ async function reconcileIncident(
   const openIncident = openIncidentResult.data[0];
 
   if (status === "down" && !openIncident) {
-    // Сайт только что упал — открываем инцидент
     const insertResult = await insertRow(
       "uptime_incidents",
       { site_id: site.id, started_at: new Date().toISOString() },
@@ -177,8 +188,7 @@ async function reconcileIncident(
     );
     if (insertResult.ok) {
       summary.incidentsOpened++;
-      // Шлём алерт "сайт упал"
-      const sent = await sendDownAlert(site, supabaseUrl, serviceRoleKey, resendApiKey, appUrl);
+      const sent = await sendDownAlert(site, supabaseUrl, serviceRoleKey, resendApiKey, appUrl, telegramBotToken);
       if (sent) summary.alertsSent++;
     } else {
       summary.errors.push(insertResult.error ?? "uptime_incidents insert failed");
@@ -187,7 +197,6 @@ async function reconcileIncident(
   }
 
   if (status === "up" && openIncident) {
-    // Сайт восстановился — закрываем инцидент
     const startedAt = new Date(openIncident.started_at).getTime();
     const resolvedAt = Date.now();
     const durationSeconds = Math.round((resolvedAt - startedAt) / 1000);
@@ -204,14 +213,14 @@ async function reconcileIncident(
     );
     if (updateResult.ok) {
       summary.incidentsResolved++;
-      // Шлём алерт "сайт восстановился"
       const sent = await sendRecoveredAlert(
         site,
         Math.round(durationSeconds / 60),
         supabaseUrl,
         serviceRoleKey,
         resendApiKey,
-        appUrl
+        appUrl,
+        telegramBotToken
       );
       if (sent) summary.alertsSent++;
     } else {
@@ -220,16 +229,11 @@ async function reconcileIncident(
   }
 }
 
-// ─── Alert helpers ────────────────────────────────────────────
-
-async function getOrgEmail(
+async function getOrgNotifSettings(
   siteId: string,
   supabaseUrl: string,
   serviceRoleKey: string
 ): Promise<OrgEmailRow | null> {
-  // Джойним через organization_members → auth.users
-  // PostgREST не умеет делать джойн к auth.users напрямую,
-  // поэтому делаем два запроса: site → org → owner user → notification_settings
   const siteOrgResult = await selectRows<{ organization_id: string }>(
     "sites",
     `select=organization_id&id=eq.${siteId}`,
@@ -239,19 +243,19 @@ async function getOrgEmail(
   if (!siteOrgResult.ok || !siteOrgResult.data[0]) return null;
   const orgId = siteOrgResult.data[0].organization_id;
 
-  // Настройки уведомлений организации
   const settingsResult = await selectRows<{
     email_enabled: boolean;
+    telegram_enabled: boolean;
+    telegram_chat_id: string | null;
     notify_site_down: boolean;
     notify_ssl_domain_expiry: boolean;
   }>(
     "notification_settings",
-    `select=email_enabled,notify_site_down,notify_ssl_domain_expiry&organization_id=eq.${orgId}`,
+    `select=email_enabled,telegram_enabled,telegram_chat_id,notify_site_down,notify_ssl_domain_expiry&organization_id=eq.${orgId}`,
     supabaseUrl,
     serviceRoleKey
   );
 
-  // email owner-а
   const ownerResult = await selectRows<{ user_id: string }>(
     "organization_members",
     `select=user_id&organization_id=eq.${orgId}&role=eq.owner`,
@@ -260,7 +264,6 @@ async function getOrgEmail(
   );
   if (!ownerResult.ok || !ownerResult.data[0]) return null;
 
-  // auth.users недоступна через PostgREST напрямую — используем /auth/v1/admin/users
   try {
     const authResp = await fetch(
       `${supabaseUrl}/auth/v1/admin/users/${ownerResult.data[0].user_id}`,
@@ -275,12 +278,14 @@ async function getOrgEmail(
     const authData = (await authResp.json()) as { email?: string };
     if (!authData.email) return null;
 
-    const settings = settingsResult.data[0];
+    const s = settingsResult.data[0];
     return {
       email: authData.email,
-      email_enabled: settings?.email_enabled ?? true,
-      notify_site_down: settings?.notify_site_down ?? true,
-      notify_ssl_domain_expiry: settings?.notify_ssl_domain_expiry ?? true,
+      email_enabled: s?.email_enabled ?? true,
+      telegram_enabled: s?.telegram_enabled ?? false,
+      telegram_chat_id: s?.telegram_chat_id ?? null,
+      notify_site_down: s?.notify_site_down ?? true,
+      notify_ssl_domain_expiry: s?.notify_ssl_domain_expiry ?? true,
     };
   } catch {
     return null;
@@ -292,21 +297,38 @@ async function sendDownAlert(
   supabaseUrl: string,
   serviceRoleKey: string,
   resendApiKey: string,
-  appUrl: string
+  appUrl: string,
+  telegramBotToken: string
 ): Promise<boolean> {
-  const orgEmail = await getOrgEmail(site.id, supabaseUrl, serviceRoleKey);
-  if (!orgEmail || !orgEmail.email_enabled || !orgEmail.notify_site_down) return false;
+  const settings = await getOrgNotifSettings(site.id, supabaseUrl, serviceRoleKey);
+  if (!settings || !settings.notify_site_down) return false;
 
-  const { subject, html } = buildSiteDownEmail({
-    siteDisplayName: site.display_name,
-    siteUrl: site.url,
-    downtimeSince: new Date().toLocaleString("uk-UA"),
-    dashboardUrl: `${appUrl}/dashboard`,
-  });
+  let sent = false;
 
-  const result = await sendEmail({ to: orgEmail.email, subject, html }, resendApiKey);
-  if (!result.ok) console.error("Failed to send down alert:", result.error);
-  return result.ok;
+  if (settings.email_enabled) {
+    const { subject, html } = buildSiteDownEmail({
+      siteDisplayName: site.display_name,
+      siteUrl: site.url,
+      downtimeSince: new Date().toLocaleString("uk-UA"),
+      dashboardUrl: `${appUrl}/dashboard`,
+    });
+    const r = await sendEmail({ to: settings.email, subject, html }, resendApiKey);
+    if (r.ok) sent = true;
+    else console.error("Email down alert failed:", r.error);
+  }
+
+  if (settings.telegram_enabled && settings.telegram_chat_id) {
+    const text = buildSiteDownTelegram({
+      siteDisplayName: site.display_name,
+      siteUrl: site.url,
+      dashboardUrl: `${appUrl}/dashboard`,
+    });
+    const r = await sendTelegramMessage(settings.telegram_chat_id, text, telegramBotToken);
+    if (r.ok) sent = true;
+    else console.error("Telegram down alert failed:", r.error);
+  }
+
+  return sent;
 }
 
 async function sendRecoveredAlert(
@@ -315,21 +337,37 @@ async function sendRecoveredAlert(
   supabaseUrl: string,
   serviceRoleKey: string,
   resendApiKey: string,
-  appUrl: string
+  appUrl: string,
+  telegramBotToken: string
 ): Promise<boolean> {
-  const orgEmail = await getOrgEmail(site.id, supabaseUrl, serviceRoleKey);
-  if (!orgEmail || !orgEmail.email_enabled || !orgEmail.notify_site_down) return false;
+  const settings = await getOrgNotifSettings(site.id, supabaseUrl, serviceRoleKey);
+  if (!settings || !settings.notify_site_down) return false;
 
-  const { subject, html } = buildSiteRecoveredEmail({
-    siteDisplayName: site.display_name,
-    siteUrl: site.url,
-    downtimeDurationMinutes: durationMinutes,
-    dashboardUrl: `${appUrl}/dashboard`,
-  });
+  let sent = false;
 
-  const result = await sendEmail({ to: orgEmail.email, subject, html }, resendApiKey);
-  if (!result.ok) console.error("Failed to send recovered alert:", result.error);
-  return result.ok;
+  if (settings.email_enabled) {
+    const { subject, html } = buildSiteRecoveredEmail({
+      siteDisplayName: site.display_name,
+      siteUrl: site.url,
+      downtimeDurationMinutes: durationMinutes,
+      dashboardUrl: `${appUrl}/dashboard`,
+    });
+    const r = await sendEmail({ to: settings.email, subject, html }, resendApiKey);
+    if (r.ok) sent = true;
+  }
+
+  if (settings.telegram_enabled && settings.telegram_chat_id) {
+    const text = buildSiteRecoveredTelegram({
+      siteDisplayName: site.display_name,
+      siteUrl: site.url,
+      downtimeDurationMinutes: durationMinutes,
+      dashboardUrl: `${appUrl}/dashboard`,
+    });
+    const r = await sendTelegramMessage(settings.telegram_chat_id, text, telegramBotToken);
+    if (r.ok) sent = true;
+  }
+
+  return sent;
 }
 
 // SSL expiry checks — вызывается из runUptimeChecks раз в сутки
@@ -338,7 +376,8 @@ export async function checkSslExpiry(
   supabaseUrl: string,
   serviceRoleKey: string,
   resendApiKey: string,
-  appUrl: string
+  appUrl: string,
+  telegramBotToken: string
 ): Promise<void> {
   // Все SSL записи с days_until_expiry <= 30 и alert ещё не слали
   const sslResult = await selectRows<{
@@ -369,27 +408,36 @@ export async function checkSslExpiry(
     if (!siteResult.ok || !siteResult.data[0]) continue;
     const site = siteResult.data[0];
 
-    const orgEmail = await getOrgEmail(site.id, supabaseUrl, serviceRoleKey);
-    if (!orgEmail || !orgEmail.email_enabled || !orgEmail.notify_ssl_domain_expiry) continue;
+    const settings = await getOrgNotifSettings(site.id, supabaseUrl, serviceRoleKey);
+    if (!settings || !settings.notify_ssl_domain_expiry) continue;
 
-    const { subject, html } = buildSslExpiryEmail({
-      siteDisplayName: site.display_name,
-      siteUrl: site.url,
-      daysLeft: ssl.days_until_expiry,
-      dashboardUrl: `${appUrl}/dashboard`,
-    });
-
-    const sendResult = await sendEmail({ to: orgEmail.email, subject, html }, resendApiKey);
-    if (sendResult.ok) {
-      // Отмечаем что алерт отправлен
-      await updateRows(
-        "ssl_certificates",
-        `site_id=eq.${ssl.site_id}`,
-        isUrgent ? { alert_sent_7d: true } : { alert_sent_30d: true },
-        supabaseUrl,
-        serviceRoleKey
-      );
+    if (settings.email_enabled) {
+      const { subject, html } = buildSslExpiryEmail({
+        siteDisplayName: site.display_name,
+        siteUrl: site.url,
+        daysLeft: ssl.days_until_expiry,
+        dashboardUrl: `${appUrl}/dashboard`,
+      });
+      await sendEmail({ to: settings.email, subject, html }, resendApiKey);
     }
+
+    if (settings.telegram_enabled && settings.telegram_chat_id) {
+      const text = buildSslExpiryTelegram({
+        siteDisplayName: site.display_name,
+        siteUrl: site.url,
+        daysLeft: ssl.days_until_expiry,
+        dashboardUrl: `${appUrl}/dashboard`,
+      });
+      await sendTelegramMessage(settings.telegram_chat_id, text, telegramBotToken);
+    }
+
+    await updateRows(
+      "ssl_certificates",
+      `site_id=eq.${ssl.site_id}`,
+      isUrgent ? { alert_sent_7d: true } : { alert_sent_30d: true },
+      supabaseUrl,
+      serviceRoleKey
+    );
   }
 }
 

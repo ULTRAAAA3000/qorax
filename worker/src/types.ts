@@ -15,4 +15,6 @@ export interface Env {
   RESEND_API_KEY: string;
   // Базовый URL фронтенда — для ссылок в письмах
   APP_URL: string;
+  // Telegram Bot API токен — для Growth/Agency алертов
+  TELEGRAM_BOT_TOKEN: string;
 }

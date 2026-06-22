@@ -100,13 +100,15 @@ const worker = {
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
           env.RESEND_API_KEY,
-          env.APP_URL
+          env.APP_URL,
+          env.TELEGRAM_BOT_TOKEN
         ).then((summary) => console.log("Uptime monitoring run:", JSON.stringify(summary))),
         checkSslExpiry(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
           env.RESEND_API_KEY,
-          env.APP_URL
+          env.APP_URL,
+          env.TELEGRAM_BOT_TOKEN
         ),
       ])
     );

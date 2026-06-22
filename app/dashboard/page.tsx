@@ -63,6 +63,9 @@ export default async function DashboardPage({
         <div className="mx-auto max-w-6xl px-6 sm:px-8 h-16 flex items-center justify-between">
           <QoraxLogo size="sm" />
           <div className="flex items-center gap-4">
+            <Link href="/dashboard/settings" className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">
+              Налаштування
+            </Link>
             <span className="text-sm text-[var(--text-tertiary)]">
               {user.email}
             </span>
