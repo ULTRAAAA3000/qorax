@@ -11,7 +11,8 @@ import { runBasicCheck } from "./lib/basicCheck";
 import { runPageSpeedChecks } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead } from "./lib/supabase";
-import { runUptimeChecks, runSpeedChecks } from "./lib/monitoring";
+import { runUptimeChecks, runSpeedChecks, checkSslExpiry } from "./lib/monitoring";
+import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 
 // Список доменов, с которых разрешены запросы к API.
 // Фронтенд живёт на Cloudflare Workers Builds (не Pages — см. миграцию
@@ -57,6 +58,10 @@ const worker = {
       return handleAuditRequest(request, env, origin, ctx);
     }
 
+    if (url.pathname === "/api/report" && request.method === "GET") {
+      return handleReportRequest(request, env, origin);
+    }
+
     return json({ error: "Маршрут не знайдено" }, 404, origin);
   },
 
@@ -65,19 +70,45 @@ const worker = {
   //   0 3 * * *    — швидкість + Core Web Vitals (раз на день, важка)
   // Розрізняємо за event.cron, бо обидва тригери ведуть на один scheduled().
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+    // 0 3 * * * — ежедневно в 3:00: скорость + CWV + AI инсайты
     if (event.cron === "0 3 * * *") {
       ctx.waitUntil(
-        runSpeedChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.GOOGLE_PAGESPEED_API_KEY).then(
-          (summary) => console.log("Speed monitoring run:", JSON.stringify(summary))
+        runSpeedChecks(
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY,
+          env.GOOGLE_PAGESPEED_API_KEY,
+          env.GEMINI_API_KEY
+        ).then((summary) => console.log("Speed monitoring run:", JSON.stringify(summary)))
+      );
+      return;
+    }
+
+    // 0 4 1 * * — в первый день каждого месяца в 4:00: генерация PDF отчётов
+    if (event.cron === "0 4 1 * *") {
+      ctx.waitUntil(
+        generateMonthlyReports(env).then((count) =>
+          console.log(`Monthly reports generated: ${count}`)
         )
       );
       return;
     }
 
+    // */5 * * * * — каждые 5 минут: uptime + SSL алерты
     ctx.waitUntil(
-      runUptimeChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY).then((summary) =>
-        console.log("Uptime monitoring run:", JSON.stringify(summary))
-      )
+      Promise.all([
+        runUptimeChecks(
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY,
+          env.RESEND_API_KEY,
+          env.APP_URL
+        ).then((summary) => console.log("Uptime monitoring run:", JSON.stringify(summary))),
+        checkSslExpiry(
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY,
+          env.RESEND_API_KEY,
+          env.APP_URL
+        ),
+      ])
     );
   },
 };

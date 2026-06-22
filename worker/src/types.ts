@@ -12,4 +12,7 @@ export interface Env {
   SUPABASE_SERVICE_ROLE_KEY: string;
   GEMINI_API_KEY: string;
   GOOGLE_PAGESPEED_API_KEY: string;
+  RESEND_API_KEY: string;
+  // Базовый URL фронтенда — для ссылок в письмах
+  APP_URL: string;
 }
