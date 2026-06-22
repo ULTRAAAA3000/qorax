@@ -128,12 +128,38 @@ async function checkSingleSite(
   );
   if (!insertResult.ok) summary.errors.push(insertResult.error ?? "uptime_checks insert failed");
 
-  // 2. SSL статус (boolean уровень без точной даты)
+  // 2. SSL статус
+  // CF Workers не може читати TLS-метадані (expiry) напряму через fetch().
+  // Використовуємо безкоштовний API від SSL Labs / Cloudflare щоб отримати
+  // реальну дату закінчення. Якщо API недоступний — пишемо sentinel 999
+  // ("активний, дата невідома"), щоб UI не показував "Проблема".
+  let daysUntilExpiry: number | null = check.sslValid ? 999 : 0;
+  if (check.sslValid) {
+    try {
+      const hostname = new URL(site.url).hostname;
+      const sslResp = await fetch(
+        `https://api.ssllabs.com/api/v3/analyze?host=${hostname}&fromCache=on&maxAge=24`,
+        { headers: { Accept: "application/json" } }
+      );
+      if (sslResp.ok) {
+        const sslData = await sslResp.json() as {
+          endpoints?: { details?: { cert?: { notAfter?: number } } }[];
+        };
+        const notAfter = sslData?.endpoints?.[0]?.details?.cert?.notAfter;
+        if (notAfter) {
+          const msLeft = notAfter * 1000 - Date.now();
+          daysUntilExpiry = Math.max(0, Math.ceil(msLeft / (1000 * 60 * 60 * 24)));
+        }
+      }
+    } catch {
+      // SSL Labs API недоступний — залишаємо sentinel 999
+    }
+  }
   const sslResult = await upsertRow(
     "ssl_certificates",
     {
       site_id: site.id,
-      days_until_expiry: check.sslValid ? null : 0,
+      days_until_expiry: daysUntilExpiry,
       last_checked_at: new Date().toISOString(),
     },
     "site_id",

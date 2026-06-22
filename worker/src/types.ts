@@ -20,4 +20,6 @@ export interface Env {
   // Необов'язковий секрет для верифікації webhook-запитів від Telegram
   // (задається при `wrangler secret put TELEGRAM_WEBHOOK_SECRET` і при setWebhook)
   TELEGRAM_WEBHOOK_SECRET?: string;
+  // Токен для захищених admin-ендпоінтів
+  ADMIN_TOKEN: string;
 }

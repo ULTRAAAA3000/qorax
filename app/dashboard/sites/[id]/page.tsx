@@ -179,12 +179,15 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           <StatCard
             icon={<Shield size={15} />}
             label="SSL"
-            value={ssl?.days_until_expiry != null && ssl.days_until_expiry > 0
-              ? `${ssl.days_until_expiry}д`
-              : ssl ? "Проблема" : "—"}
+            value={ssl?.days_until_expiry != null
+              ? ssl.days_until_expiry === 999 ? "✓ OK"
+              : ssl.days_until_expiry > 0 ? `${ssl.days_until_expiry}д`
+              : "Проблема"
+              : ssl ? "Активний" : "—"}
             valueColor={
               ssl?.days_until_expiry != null
-                ? ssl.days_until_expiry <= 7 ? "#F5675A"
+                ? ssl.days_until_expiry === 0 ? "#F5675A"
+                  : ssl.days_until_expiry <= 7 ? "#F5675A"
                   : ssl.days_until_expiry <= 30 ? "#F5A623"
                   : "var(--lime)"
                 : "var(--text-tertiary)"
@@ -271,7 +274,9 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                   : <AlertTriangle size={16} style={{ color: "#F5675A" }} />}
                 <div>
                   <p className="text-sm font-medium">
-                    {ssl.days_until_expiry != null && ssl.days_until_expiry > 0
+                    {ssl.days_until_expiry === 999
+                      ? "SSL активний"
+                      : ssl.days_until_expiry != null && ssl.days_until_expiry > 0
                       ? `Дійсний ще ${ssl.days_until_expiry} днів`
                       : "Проблема з сертифікатом"}
                   </p>
@@ -280,7 +285,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                   </p>
                 </div>
               </div>
-              {ssl.days_until_expiry != null && ssl.days_until_expiry <= 30 && ssl.days_until_expiry > 0 && (
+              {ssl.days_until_expiry != null && ssl.days_until_expiry !== 999 && ssl.days_until_expiry <= 30 && ssl.days_until_expiry > 0 && (
                 <span className="text-xs px-2.5 py-1 rounded-lg" style={{ background: "rgba(245,166,35,0.12)", color: "#F5A623" }}>
                   Скоро закінчується
                 </span>

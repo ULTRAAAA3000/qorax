@@ -75,6 +75,21 @@ const worker = {
       return handleTelegramStatus(request, env, origin);
     }
 
+    // Внутренний эндпоинт для ручного запуска speed-check (защищён токеном)
+    if (url.pathname === "/api/admin/run-speed-checks" && request.method === "POST") {
+      const token = request.headers.get("x-admin-token");
+      if (token !== env.ADMIN_TOKEN) return json({ error: "Unauthorized" }, 401, origin);
+      ctx.waitUntil(
+        runSpeedChecks(
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY,
+          env.GOOGLE_PAGESPEED_API_KEY,
+          env.GEMINI_API_KEY
+        ).then((summary) => console.log("Manual speed run:", JSON.stringify(summary)))
+      );
+      return json({ ok: true, message: "Speed checks started in background" }, 200, origin);
+    }
+
     return json({ error: "Маршрут не знайдено" }, 404, origin);
   },
 
