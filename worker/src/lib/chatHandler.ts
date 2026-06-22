@@ -114,6 +114,18 @@ export async function handleChatRequest(
     return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
   }
 
+  // Верифікуємо JWT через Supabase Auth — це гарантує що запит від реального юзера
+  const userResp = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+    headers: {
+      apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+      Authorization: `Bearer ${jwt}`,
+    },
+  });
+  if (!userResp.ok) {
+    console.error("[chat] JWT verification failed:", userResp.status);
+    return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
+  }
+
   // Перевіряємо що site_id належить цьому користувачу
   // UUID не потребує encodeURIComponent (тільки hex + дефіси)
   const siteResult = await selectRows<SiteRow>(
@@ -124,7 +136,7 @@ export async function handleChatRequest(
   );
 
   if (!siteResult.ok) {
-    console.error("[chat] site lookup failed:", siteResult.error);
+    console.error("[chat] site lookup failed:", siteResult.error, "SUPABASE_URL prefix:", env.SUPABASE_URL?.slice(0, 40));
     return jsonResponse({ error: "Помилка отримання сайту", detail: siteResult.error }, 500, corsHeaders);
   }
   if (!siteResult.data[0]) {
