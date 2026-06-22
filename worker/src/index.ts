@@ -15,6 +15,9 @@ import { runUptimeChecks, runSpeedChecks, checkSslExpiry, expireTrials } from ".
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
 import { handleChatRequest } from "./lib/chatHandler";
+import { runSeoChecks } from "./lib/seoChecker";
+import { runCompetitorChecks } from "./lib/competitorChecker";
+import { runBrokenLinksChecks } from "./lib/brokenLinksChecker";
 
 // Список доменов, с которых разрешены запросы к API.
 // Фронтенд живёт на Cloudflare Workers Builds (не Pages — см. миграцию

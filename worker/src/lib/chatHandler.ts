@@ -264,7 +264,7 @@ export async function handleChatRequest(
 // ─── Збираємо контекст сайту у текст для промпту ─────────────
 
 function buildSiteContext(
-  site: SiteRow,
+  _site: SiteRow,
   uptime: UptimeRow[],
   speed: SpeedRow[],
   cwv: CwvRow[],
