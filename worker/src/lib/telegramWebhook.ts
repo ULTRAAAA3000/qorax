@@ -67,7 +67,11 @@ export async function handleTelegramWebhook(
   // Telegram замінює пробіл на _ у deep link, але при START зберігає оригінал.
   if (text.startsWith("/start")) {
     const parts = text.split(/\s+/);
-    const orgId = parts[1] ?? null;
+    const rawPayload = parts[1] ?? null;
+
+    // Відновлюємо UUID: фронт передає org_id з _ замість - (обмеження
+    // Telegram deep link payload — дефіси заборонені)
+    const orgId = rawPayload ? rawPayload.replace(/_/g, "-") : null;
 
     if (!orgId) {
       // /start без параметру — бот запущений напряму, не через наш deep link

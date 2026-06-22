@@ -92,7 +92,11 @@ export function NotificationSettingsForm({
     setTgStatus("waiting");
     // Відкриваємо бота в новій вкладці — org_id передається як deep link payload.
     // Telegram підставить його як параметр команди /start.
-    const deepLink = `https://t.me/${telegramBotName}?start=${encodeURIComponent(organizationId)}`;
+    // Telegram deep link payload підтримує лише [A-Za-z0-9_] —
+    // UUID з дефісами мовчки обрізається. Прибираємо дефіси,
+    // воркер відновить UUID назад при збереженні.
+    const safeOrgId = organizationId.replace(/-/g, "_");
+    const deepLink = `https://t.me/${telegramBotName}?start=${safeOrgId}`;
     window.open(deepLink, "_blank", "noopener,noreferrer");
     startPolling();
   }
