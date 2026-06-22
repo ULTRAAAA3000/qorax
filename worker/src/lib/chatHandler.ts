@@ -115,15 +115,20 @@ export async function handleChatRequest(
   }
 
   // Перевіряємо що site_id належить цьому користувачу
+  // UUID не потребує encodeURIComponent (тільки hex + дефіси)
   const siteResult = await selectRows<SiteRow>(
     "sites",
-    `select=id,url,display_name,organization_id&id=eq.${encodeURIComponent(site_id)}`,
+    `select=id,url,display_name,organization_id&id=eq.${site_id}`,
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  if (!siteResult.ok || !siteResult.data[0]) {
-    return jsonResponse({ error: "Сайт не знайдено" }, 404, corsHeaders);
+  if (!siteResult.ok) {
+    console.error("[chat] site lookup failed:", siteResult.error);
+    return jsonResponse({ error: "Помилка отримання сайту", detail: siteResult.error }, 500, corsHeaders);
+  }
+  if (!siteResult.data[0]) {
+    return jsonResponse({ error: "Сайт не знайдено", site_id }, 404, corsHeaders);
   }
 
   const site = siteResult.data[0];
@@ -138,6 +143,7 @@ export async function handleChatRequest(
 
   const sub = subResult.data[0];
   const planCode = (sub?.plans as PlanRow | null)?.code ?? "free";
+  console.log("[chat] plan check:", { planCode, subStatus: sub?.status, subOk: subResult.ok, subError: subResult.error });
 
   // trial і admin мають доступ для тестування
   const hasAccess = ["growth", "agency", "admin", "trial"].includes(planCode);
