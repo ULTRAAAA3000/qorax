@@ -108,6 +108,7 @@ export default async function SettingsPage() {
           initialSettings={notifSettings}
           isTelegramAvailable={isTelegramAvailable}
           planName={planName}
+          telegramBotName={process.env.NEXT_PUBLIC_TELEGRAM_BOT_NAME ?? "QoraxBot"}
         />
       </main>
     </div>

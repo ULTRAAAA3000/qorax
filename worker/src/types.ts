@@ -17,4 +17,7 @@ export interface Env {
   APP_URL: string;
   // Telegram Bot API токен — для Growth/Agency алертов
   TELEGRAM_BOT_TOKEN: string;
+  // Необов'язковий секрет для верифікації webhook-запитів від Telegram
+  // (задається при `wrangler secret put TELEGRAM_WEBHOOK_SECRET` і при setWebhook)
+  TELEGRAM_WEBHOOK_SECRET?: string;
 }

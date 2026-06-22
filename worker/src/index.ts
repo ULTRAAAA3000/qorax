@@ -10,9 +10,10 @@ import { normalizeAndValidateUrl } from "./lib/url";
 import { runBasicCheck } from "./lib/basicCheck";
 import { runPageSpeedChecks } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
-import { saveAuditLead } from "./lib/supabase";
+import { saveAuditLead, selectRows } from "./lib/supabase";
 import { runUptimeChecks, runSpeedChecks, checkSslExpiry } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
+import { handleTelegramWebhook } from "./lib/telegramWebhook";
 
 // Список доменов, с которых разрешены запросы к API.
 // Фронтенд живёт на Cloudflare Workers Builds (не Pages — см. миграцию
@@ -60,6 +61,18 @@ const worker = {
 
     if (url.pathname === "/api/report" && request.method === "GET") {
       return handleReportRequest(request, env, origin);
+    }
+
+    // Webhook від Telegram — приймає update коли користувач пише /start <org_id> боту.
+    // Не потребує CORS (Telegram шле напряму серверу, не через браузер).
+    if (url.pathname === "/api/telegram/webhook" && request.method === "POST") {
+      return handleTelegramWebhook(request, env);
+    }
+
+    // Polling-endpoint для фронту: перевіряє чи вже збережено chat_id для org.
+    // Фронт викликає кожні 3с поки показується "Очікуємо підключення..."
+    if (url.pathname === "/api/telegram/status" && request.method === "GET") {
+      return handleTelegramStatus(request, env, origin);
     }
 
     return json({ error: "Маршрут не знайдено" }, 404, origin);
@@ -224,4 +237,27 @@ async function handleAuditRequest(
     200,
     origin
   );
+}
+
+// Перевіряє чи підключений Telegram для org — фронт polling'ує кожні 3с
+// поки показується "Очікуємо підключення..." після відкриття бота
+async function handleTelegramStatus(
+  request: Request,
+  env: Env,
+  origin: string | null
+): Promise<Response> {
+  const reqUrl = new URL(request.url);
+  const orgId = reqUrl.searchParams.get("org");
+  if (!orgId) return json({ connected: false }, 400, origin);
+
+  const result = await selectRows<{ telegram_chat_id: string | null; telegram_enabled: boolean }>(
+    "notification_settings",
+    `select=telegram_chat_id,telegram_enabled&organization_id=eq.${encodeURIComponent(orgId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+
+  const row = result.ok ? result.data[0] : null;
+  const connected = !!(row?.telegram_chat_id && row?.telegram_enabled);
+  return json({ connected, chatId: connected ? row!.telegram_chat_id : null }, 200, origin);
 }
