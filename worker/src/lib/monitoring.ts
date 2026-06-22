@@ -569,3 +569,31 @@ async function insertCwvRow(
     serviceRoleKey
   );
 }
+
+// ─── Trial expiry ────────────────────────────────────────────
+// Вызывается cron'ом раз в день (0 5 * * *).
+// Делегирует всю логику хранимой функции expire_trials() в Supabase,
+// которая одним UPDATE переводит истёкшие trial → free.
+export async function expireTrials(
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<number> {
+  const response = await fetch(`${supabaseUrl}/rest/v1/rpc/expire_trials`, {
+    method: "POST",
+    headers: {
+      apikey: serviceRoleKey,
+      Authorization: `Bearer ${serviceRoleKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({}),
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    console.error("expire_trials RPC failed:", text);
+    return 0;
+  }
+
+  const count = await response.json();
+  return typeof count === "number" ? count : 0;
+}

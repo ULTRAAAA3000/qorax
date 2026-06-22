@@ -3,10 +3,18 @@ import { signOut } from "@/app/lib/auth-actions";
 import { QoraxLogo } from "@/app/components/QoraxLogo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Clock, Zap } from "lucide-react";
 
 export const metadata = {
   title: "Дашборд — Qorax",
 };
+
+// Повертає кількість днів до закінчення тріалу (0 якщо вже закінчився)
+function trialDaysLeft(trialEndsAt: string | null): number {
+  if (!trialEndsAt) return 0;
+  const ms = new Date(trialEndsAt).getTime() - Date.now();
+  return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+}
 
 export default async function DashboardPage({
   searchParams,
@@ -29,32 +37,53 @@ export default async function DashboardPage({
     .eq("user_id", user.id)
     .single();
 
-  // Отримуємо організацію окремо
-  const { data: org } = membership
-    ? await supabase
-        .from("organizations")
-        .select("name, org_type, site_limit")
-        .eq("id", membership.organization_id)
-        .single()
-    : { data: null };
-
-  // Отримуємо сайти
-  const { data: sites } = await supabase
-    .from("sites")
-    .select("id, url, display_name, monitoring_enabled, created_at")
-    .eq("organization_id", membership?.organization_id ?? "")
-    .order("created_at", { ascending: false });
-
-  const profile = await supabase
-    .from("profiles")
-    .select("full_name")
-    .eq("id", user.id)
-    .single();
+  // Отримуємо організацію та підписку паралельно
+  const [{ data: org }, { data: subscription }, { data: sites }, profile] = await Promise.all([
+    membership
+      ? supabase
+          .from("organizations")
+          .select("name, org_type, site_limit")
+          .eq("id", membership.organization_id)
+          .single()
+      : Promise.resolve({ data: null }),
+    membership
+      ? supabase
+          .from("subscriptions")
+          .select("status, trial_ends_at, plans(code, name)")
+          .eq("organization_id", membership.organization_id)
+          .in("status", ["trialing", "active", "canceled", "past_due"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .single()
+      : Promise.resolve({ data: null }),
+    supabase
+      .from("sites")
+      .select("id, url, display_name, monitoring_enabled, created_at")
+      .eq("organization_id", membership?.organization_id ?? "")
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", user.id)
+      .single(),
+  ]);
 
   const firstName =
     profile.data?.full_name?.split(" ")[0] ||
     user.email?.split("@")[0] ||
     "друже";
+
+  // Визначаємо стан плану
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const planCode = (subscription as any)?.plans?.code as string | undefined;
+  const subStatus = subscription?.status;
+  const trialEndsAt = subscription?.trial_ends_at ?? null;
+  const daysLeft = trialDaysLeft(trialEndsAt);
+
+  const isTrial = planCode === "trial" && subStatus === "trialing";
+  const isTrialExpired = planCode === "trial" && subStatus === "canceled";
+  const isFree = planCode === "free";
+  const isPaid = subStatus === "active" && planCode !== "trial" && planCode !== "free";
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
@@ -82,34 +111,96 @@ export default async function DashboardPage({
       </header>
 
       <main className="mx-auto max-w-6xl px-6 sm:px-8 py-10">
-        {/* Welcome banner */}
+
+        {/* ── Welcome banner (після реєстрації) ── */}
         {params.welcome === "1" && (
           <div
-            className="rounded-2xl border px-6 py-4 mb-8 flex items-center gap-3"
-            style={{
-              borderColor: "var(--lime)",
-              background: "rgba(214,255,63,0.06)",
-            }}
+            className="rounded-2xl border px-6 py-4 mb-6 flex items-center gap-3"
+            style={{ borderColor: "var(--lime)", background: "rgba(214,255,63,0.06)" }}
           >
             <span style={{ color: "var(--lime)" }}>✓</span>
             <p className="text-sm">
-              Ласкаво просимо, {firstName}! Акаунт створено. Додайте перший сайт, щоб розпочати моніторинг.
+              Ласкаво просимо, {firstName}! Ваш 14-денний тріал активовано. Додайте перший сайт, щоб розпочати моніторинг.
             </p>
           </div>
         )}
 
         {params.new === "1" && (
           <div
-            className="rounded-2xl border px-6 py-4 mb-8 flex items-center gap-3"
-            style={{
-              borderColor: "var(--cyan)",
-              background: "rgba(140,246,255,0.06)",
-            }}
+            className="rounded-2xl border px-6 py-4 mb-6 flex items-center gap-3"
+            style={{ borderColor: "var(--cyan)", background: "rgba(140,246,255,0.06)" }}
           >
             <span style={{ color: "var(--cyan)" }}>●</span>
             <p className="text-sm">
               Сайт додано — моніторинг розпочато. Перші дані з&apos;являться протягом кількох хвилин.
             </p>
+          </div>
+        )}
+
+        {/* ── Trial banner (активний тріал) ── */}
+        {isTrial && !isTrialExpired && (
+          <div
+            className="rounded-2xl border px-6 py-4 mb-6 flex items-center justify-between gap-4"
+            style={{
+              borderColor: daysLeft <= 3 ? "rgba(245,166,35,0.5)" : "rgba(140,246,255,0.25)",
+              background: daysLeft <= 3 ? "rgba(245,166,35,0.06)" : "rgba(140,246,255,0.04)",
+            }}
+          >
+            <div className="flex items-center gap-3">
+              <Clock size={15} style={{ color: daysLeft <= 3 ? "#F5A623" : "var(--cyan)", flexShrink: 0 }} />
+              <p className="text-sm">
+                {daysLeft > 0 ? (
+                  <>
+                    <span style={{ color: daysLeft <= 3 ? "#F5A623" : "var(--cyan)" }} className="font-medium">
+                      Тріал: залишилось {daysLeft} {daysLeft === 1 ? "день" : daysLeft < 5 ? "дні" : "днів"}
+                    </span>
+                    {" — "}повний Starter доступ безкоштовно
+                  </>
+                ) : (
+                  <span style={{ color: "#F5A623" }} className="font-medium">Тріал закінчується сьогодні</span>
+                )}
+              </p>
+            </div>
+            <Link
+              href="/dashboard/upgrade"
+              className="shrink-0 text-xs font-medium px-4 py-2 rounded-xl transition-opacity hover:opacity-80"
+              style={{ background: "var(--lime)", color: "#0c111d" }}
+            >
+              Обрати план →
+            </Link>
+          </div>
+        )}
+
+        {/* ── Trial expired banner ── */}
+        {(isTrialExpired || (isFree && !isPaid)) && (
+          <div
+            className="rounded-2xl border px-6 py-5 mb-6"
+            style={{ borderColor: "rgba(245,103,90,0.4)", background: "rgba(245,103,90,0.05)" }}
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium mb-1" style={{ color: "#F5675A" }}>
+                  {isTrialExpired ? "Ваш тріал закінчився" : "Ви на безкоштовному плані"}
+                </p>
+                <p className="text-sm text-[var(--text-secondary)]">
+                  {isTrialExpired
+                    ? "Моніторинг обмежено до базового uptime (раз на 30 хв). Оберіть план щоб відновити повний доступ — швидкість, SSL, AI-аналіз та алерти."
+                    : "Uptime перевіряється раз на 30 хв. Стартер додає перевірку кожні 5 хв, SSL, швидкість та AI-інсайти."}
+                </p>
+              </div>
+              <Link
+                href="/dashboard/upgrade"
+                className="shrink-0 text-sm font-medium px-5 py-2.5 rounded-xl transition-opacity hover:opacity-80"
+                style={{ background: "var(--lime)", color: "#0c111d" }}
+              >
+                Обрати план
+              </Link>
+            </div>
+            <div className="mt-4 grid grid-cols-3 gap-3">
+              <UpgradeFeature icon="⚡" text="Перевірка кожні 5 хвилин" />
+              <UpgradeFeature icon="🔒" text="SSL та домен моніторинг" />
+              <UpgradeFeature icon="✦" text="AI-аналіз та revenue impact" />
+            </div>
           </div>
         )}
 
@@ -119,6 +210,24 @@ export default async function DashboardPage({
             <h1 className="font-display text-2xl font-semibold">Ваші сайти</h1>
             <p className="text-sm text-[var(--text-secondary)] mt-0.5">
               {sites?.length ?? 0} з {org?.site_limit ?? 1} сайтів
+              {isTrial && !isTrialExpired && (
+                <span className="ml-2 text-xs font-mono px-2 py-0.5 rounded-md"
+                  style={{ background: "rgba(140,246,255,0.1)", color: "var(--cyan)" }}>
+                  Trial
+                </span>
+              )}
+              {isFree && !isTrial && !isTrialExpired && (
+                <span className="ml-2 text-xs font-mono px-2 py-0.5 rounded-md"
+                  style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-tertiary)" }}>
+                  Free
+                </span>
+              )}
+              {isPaid && planCode && (
+                <span className="ml-2 text-xs font-mono px-2 py-0.5 rounded-md"
+                  style={{ background: "rgba(214,255,63,0.1)", color: "var(--lime)" }}>
+                  {planCode.charAt(0).toUpperCase() + planCode.slice(1)}
+                </span>
+              )}
             </p>
           </div>
           <Link
@@ -140,7 +249,36 @@ export default async function DashboardPage({
             ))}
           </div>
         )}
+
+        {/* Upgrade CTA at bottom for trial users с несколькими днями */}
+        {isTrial && daysLeft > 0 && daysLeft <= 7 && (
+          <div className="mt-8 rounded-2xl border hairline bg-[var(--bg-raised)] p-6 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <Zap size={16} style={{ color: "var(--lime)", flexShrink: 0 }} />
+              <div>
+                <p className="text-sm font-medium">Продовжте без перерви</p>
+                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">Стартер — $49/міс · відміна в будь-який момент</p>
+              </div>
+            </div>
+            <Link
+              href="/dashboard/upgrade"
+              className="shrink-0 text-sm font-medium px-5 py-2.5 rounded-xl transition-opacity hover:opacity-80"
+              style={{ background: "var(--lime)", color: "#0c111d" }}
+            >
+              Перейти на Starter →
+            </Link>
+          </div>
+        )}
       </main>
+    </div>
+  );
+}
+
+function UpgradeFeature({ icon, text }: { icon: string; text: string }) {
+  return (
+    <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
+      <span>{icon}</span>
+      <span>{text}</span>
     </div>
   );
 }
