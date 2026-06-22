@@ -53,7 +53,13 @@ const worker = {
     }
 
     if (url.pathname === "/api/health" && request.method === "GET") {
-      return json({ status: "ok", environment: env.ENVIRONMENT }, 200, origin);
+      return json({
+        status: "ok",
+        environment: env.ENVIRONMENT,
+        supabase_url_set: !!env.SUPABASE_URL,
+        service_key_set: !!env.SUPABASE_SERVICE_ROLE_KEY,
+        supabase_url_prefix: env.SUPABASE_URL?.slice(0, 30) ?? "not set",
+      }, 200, origin);
     }
 
     if (url.pathname === "/api/audit" && request.method === "POST") {
