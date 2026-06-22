@@ -53,15 +53,22 @@ export function NotificationSettingsForm({
     initialSettings?.telegram_chat_id && initialSettings?.telegram_enabled ? "connected" : "idle"
   );
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const pollingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   function stopPolling() {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
       pollingRef.current = null;
     }
+    if (pollingTimeoutRef.current) {
+      clearTimeout(pollingTimeoutRef.current);
+      pollingTimeoutRef.current = null;
+    }
   }
 
-  // Запускаємо polling після того як користувач натиснув "Підключити"
+  // Запускаємо polling після того як користувач натиснув "Підключити".
+  // Автостоп через 5 хвилин — якщо юзер відкрив бота і нічого не зробив,
+  // polling не крутиться вічно.
   function startPolling() {
     stopPolling();
     pollingRef.current = setInterval(async () => {
@@ -83,6 +90,12 @@ export function NotificationSettingsForm({
         // мережева помилка — просто ігноруємо, продовжуємо polling
       }
     }, 3000);
+
+    // Автостоп через 5 хвилин незалежно від результату
+    pollingTimeoutRef.current = setTimeout(() => {
+      stopPolling();
+      setTgStatus(prev => prev === "waiting" ? "idle" : prev);
+    }, 5 * 60 * 1000);
   }
 
   // Зупиняємо polling при розмонтуванні компоненту
