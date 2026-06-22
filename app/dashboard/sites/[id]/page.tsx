@@ -8,6 +8,7 @@ import {
   FileText
 } from "lucide-react";
 import { ReportButton } from "./ReportButton";
+import { QoraxusChat } from "./QoraxusChat";
 
 export const metadata = { title: "Моніторинг сайту — Qorax" };
 
@@ -40,6 +41,10 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  // Токен сесії для авторизації запитів до worker /api/chat
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token ?? "";
 
   const { data: site } = await supabase
     .from("sites")
@@ -313,6 +318,13 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
         </div>
 
       </main>
+
+      {/* Qoraxus AI-асистент (Growth+) */}
+      <QoraxusChat
+        siteId={site.id}
+        siteName={site.display_name}
+        accessToken={accessToken}
+      />
     </div>
   );
 }

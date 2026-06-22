@@ -14,6 +14,7 @@ import { saveAuditLead, selectRows } from "./lib/supabase";
 import { runUptimeChecks, runSpeedChecks, checkSslExpiry, expireTrials } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
+import { handleChatRequest } from "./lib/chatHandler";
 
 // Список доменов, с которых разрешены запросы к API.
 // Фронтенд живёт на Cloudflare Workers Builds (не Pages — см. миграцию
@@ -90,7 +91,12 @@ const worker = {
       return json({ ok: true, message: "Speed checks started in background" }, 200, origin);
     }
 
-    return json({ error: "Маршрут не знайдено" }, 404, origin);
+    // AI-асистент Qoraxus (Growth+)
+    if (url.pathname === "/api/chat" && request.method === "POST") {
+      return handleChatRequest(request, env, origin);
+    }
+
+        return json({ error: "Маршрут не знайдено" }, 404, origin);
   },
 
   // Cron-розклад заданий мониторингу (див. [triggers] у wrangler.toml):

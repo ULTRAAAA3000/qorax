@@ -22,4 +22,7 @@ export interface Env {
   TELEGRAM_WEBHOOK_SECRET?: string;
   // Токен для захищених admin-ендпоінтів
   ADMIN_TOKEN: string;
+  // Окремий Gemini ключ для інтерактивного чату (Growth-фіча).
+  // Якщо не заданий — fallback на GEMINI_API_KEY.
+  GEMINI_CHAT_API_KEY?: string;
 }
