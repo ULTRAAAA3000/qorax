@@ -149,6 +149,19 @@ const worker = {
       return;
     }
 
+    // 30 4 * * 0 — щонеділі о 4:30 UTC: перевірка битих посилань
+    if (event.cron === "30 4 * * 0") {
+      ctx.waitUntil(
+        runBrokenLinksChecks(
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY,
+          env.RESEND_API_KEY,
+          env.APP_URL
+        ).then((s) => console.log("Broken links run:", JSON.stringify(s)))
+      );
+      return;
+    }
+
     // */5 * * * * — каждые 5 минут: uptime + SSL алерты
     ctx.waitUntil(
       Promise.all([

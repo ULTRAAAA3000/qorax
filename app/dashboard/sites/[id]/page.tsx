@@ -8,6 +8,7 @@ import {
   FileText, Search, Eye
 } from "lucide-react";
 import { ReportButton } from "./ReportButton";
+import { LiveUptimePanel } from "./LiveUptimePanel";
 import { QoraxusChat } from "./QoraxusChat";
 
 export const metadata = { title: "Моніторинг сайту — Qorax" };
@@ -66,6 +67,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     { data: sitemapAudit },
     { data: competitors },
     { data: competitorChanges },
+    { data: brokenLinks },
   ] = await Promise.all([
     supabase.from("uptime_checks")
       .select("status, response_time_ms, checked_at")
@@ -124,6 +126,12 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
       .eq("site_id", id)
       .order("detected_at", { ascending: false })
       .limit(5),
+    supabase.from("broken_links")
+      .select("id, broken_url, http_status_code, source_page_url, first_found_at, status")
+      .eq("site_id", id)
+      .eq("status", "broken")
+      .order("first_found_at", { ascending: false })
+      .limit(20),
   ]);
 
   const isUp = !openIncidents?.length;
@@ -175,74 +183,18 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           </div>
         </div>
 
-        {/* ── Status banner якщо сайт лежить ── */}
-        {!isUp && openIncidents?.[0] && (
-          <div className="rounded-2xl border px-5 py-4 flex items-center gap-3"
-            style={{ borderColor: "#F5675A", background: "rgba(245,103,90,0.08)" }}>
-            <AlertTriangle size={16} style={{ color: "#F5675A" }} className="shrink-0" />
-            <p className="text-sm">
-              <span style={{ color: "#F5675A" }} className="font-medium">Сайт недоступний</span>
-              {" — "} з {fmtDate(openIncidents[0].started_at)}
-            </p>
-          </div>
-        )}
+        {/* ── Live Uptime Panel (auto-refresh 30s) ── */}
+        <LiveUptimePanel
+          siteId={site.id}
+          initialChecks={uptimeChecks ?? []}
+          initialIsUp={isUp}
+          supabaseUrl={process.env.NEXT_PUBLIC_SUPABASE_URL!}
+          supabaseAnonKey={process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!}
+        />
 
-        {/* ── 4 stat cards ── */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <StatCard
-            icon={<Activity size={15} />}
-            label="Uptime 24г"
-            value={uptimePercent(uptimeChecks ?? [])}
-            valueColor={isUp ? "var(--lime)" : "#F5675A"}
-          />
-          <StatCard
-            icon={<Clock size={15} />}
-            label="Відповідь"
-            value={fmtMs(latestCheck?.response_time_ms ?? null)}
-          />
-          <StatCard
-            icon={<Zap size={15} />}
-            label="PageSpeed"
-            value={latestMobileCwv?.performance_score != null ? `${latestMobileCwv.performance_score}/100` : "—"}
-            valueColor={scoreColor(latestMobileCwv?.performance_score ?? null)}
-          />
-          <StatCard
-            icon={<Shield size={15} />}
-            label="SSL"
-            value={ssl?.days_until_expiry != null
-              ? ssl.days_until_expiry === 999 ? "✓ OK"
-              : ssl.days_until_expiry > 0 ? `${ssl.days_until_expiry}д`
-              : "Проблема"
-              : ssl ? "Активний" : "—"}
-            valueColor={
-              ssl?.days_until_expiry != null
-                ? ssl.days_until_expiry === 0 ? "#F5675A"
-                  : ssl.days_until_expiry <= 7 ? "#F5675A"
-                  : ssl.days_until_expiry <= 30 ? "#F5A623"
-                  : "var(--lime)"
-                : "var(--text-tertiary)"
-            }
-          />
-        </div>
-
-        {/* ── Grid: uptime history + speed ── */}
+        {/* ── PageSpeed + Speed trend ── */}
         <div className="grid sm:grid-cols-2 gap-4">
-          {/* Uptime bar chart */}
-          <div className="rounded-2xl border hairline bg-[var(--bg-raised)] p-5">
-            <div className="flex items-center justify-between mb-4">
-              <span className="text-sm font-medium flex items-center gap-2">
-                <Activity size={14} className="text-[var(--text-tertiary)]" /> Uptime (останні 24г)
-              </span>
-              <span className="text-xs font-mono" style={{ color: isUp ? "var(--lime)" : "#F5675A" }}>
-                {isUp ? "● Онлайн" : "● Офлайн"}
-              </span>
-            </div>
-            <UptimeBars checks={uptimeChecks ?? []} />
-            <p className="text-xs text-[var(--text-tertiary)] mt-2">
-              Кожен блок = 5 хвилин · {uptimeChecks?.length ?? 0} перевірок
-            </p>
-          </div>
-
+          {/* Placeholder — speed panel remains static (daily scan) */}
           {/* Speed trend */}
           <div className="rounded-2xl border hairline bg-[var(--bg-raised)] p-5">
             <div className="flex items-center justify-between mb-4">
@@ -258,6 +210,44 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
               Останні {speedChecks?.length ?? 0} замірів
             </p>
           </div>
+        </div>
+
+        {/* ── Broken Links ── */}
+        <div className="rounded-2xl border hairline bg-[var(--bg-raised)] p-5">
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-sm font-medium flex items-center gap-2">
+              <AlertTriangle size={14} className="text-[var(--text-tertiary)]" /> Биті посилання
+            </h2>
+            {brokenLinks && brokenLinks.length > 0 && (
+              <span className="text-xs px-2.5 py-1 rounded-lg font-medium"
+                style={{ background: "rgba(245,103,90,0.12)", color: "#F5675A" }}>
+                {brokenLinks.length} активних
+              </span>
+            )}
+          </div>
+          {brokenLinks && brokenLinks.length > 0 ? (
+            <div className="space-y-2">
+              {brokenLinks.map((link) => (
+                <div key={link.id} className="flex items-start justify-between gap-4 rounded-xl px-3.5 py-2.5"
+                  style={{ background: "var(--bg)", border: "1px solid var(--border-hairline)" }}>
+                  <div className="min-w-0">
+                    <p className="text-xs font-mono truncate" style={{ color: "var(--text-secondary)" }}>
+                      {link.broken_url}
+                    </p>
+                    <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
+                      Знайдено: {fmtDate(link.first_found_at)}
+                    </p>
+                  </div>
+                  <span className="shrink-0 text-xs font-mono px-2 py-0.5 rounded-md"
+                    style={{ background: "rgba(245,103,90,0.12)", color: "#F5675A" }}>
+                    {link.http_status_code || "timeout"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <EmptyData text="Перевірка битих посилань запускається щонеділі. Якщо битих немає — чудово ✓" />
+          )}
         </div>
 
         {/* ── PageSpeed scores ── */}
