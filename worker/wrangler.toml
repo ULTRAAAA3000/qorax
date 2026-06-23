@@ -25,10 +25,12 @@ crons = ["*/5 * * * *", "0 3 * * *", "0 4 1 * *", "0 5 * * *", "30 4 * * 0"]
 
 # Публичные (не секретные) переменные окружения
 [vars]
-ENVIRONMENT = "development"
-SUPABASE_URL = "https://your-project.supabase.co"
+ENVIRONMENT = "production"
 
-# Пример настройки секретов (выполняется в терминале, не здесь):
-# wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-# wrangler secret put GEMINI_API_KEY
-# wrangler secret put GOOGLE_PAGESPEED_API_KEY
+# Секрети задаються через Cloudflare Dashboard → Worker → Settings → Variables and Secrets:
+# SUPABASE_URL             — https://hfyetlipxjqogbpntoif.supabase.co
+# SUPABASE_SERVICE_ROLE_KEY
+# GEMINI_API_KEY
+# GOOGLE_PAGESPEED_API_KEY
+# RESEND_API_KEY
+# TELEGRAM_BOT_TOKEN
