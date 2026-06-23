@@ -74,23 +74,38 @@ export function QoraxusChat({
 
     try {
       const token = await getFreshToken();
-      const resp = await fetch(`${API_BASE}/api/chat`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          site_id: siteId,
-          messages: next,
-        }),
-      });
+      if (!token) {
+        setError("Сесія закінчилась — оновіть сторінку");
+        return;
+      }
 
-      const data = (await resp.json()) as {
-        reply?: string;
-        error?: string;
-        message?: string;
-      };
+      let resp: Response;
+      try {
+        resp = await fetch(`${API_BASE}/api/chat`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            site_id: siteId,
+            messages: next,
+          }),
+        });
+      } catch (fetchErr) {
+        console.error("[QoraxusChat] network error:", fetchErr);
+        setError("Мережева помилка — перевірте з'єднання");
+        return;
+      }
+
+      let data: { reply?: string; error?: string; message?: string };
+      try {
+        data = (await resp.json()) as { reply?: string; error?: string; message?: string };
+      } catch {
+        console.error("[QoraxusChat] non-JSON response, status:", resp.status);
+        setError(`Помилка сервера (${resp.status})`);
+        return;
+      }
 
       if (!resp.ok || data.error) {
         if (data.error === "upgrade_required") {
@@ -106,7 +121,7 @@ export function QoraxusChat({
         { role: "model", content: data.reply ?? "" },
       ]);
     } catch (err) {
-      console.error("[QoraxusChat] fetch error:", err);
+      console.error("[QoraxusChat] unexpected error:", err);
       setError("Не вдалося з'єднатися з асистентом");
     } finally {
       setLoading(false);
