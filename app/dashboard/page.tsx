@@ -63,7 +63,7 @@ export default async function DashboardPage({
       .order("created_at", { ascending: false }),
     supabase
       .from("profiles")
-      .select("full_name")
+      .select("full_name, platform_role")
       .eq("id", user.id)
       .single(),
   ]);
@@ -92,6 +92,12 @@ export default async function DashboardPage({
         <div className="mx-auto max-w-6xl px-6 sm:px-8 h-16 flex items-center justify-between">
           <QoraxLogo size="sm" />
           <div className="flex items-center gap-4">
+            {profile.data?.platform_role === "admin" && (
+              <Link href="/dashboard/admin" className="text-xs font-mono px-2 py-1 rounded-md transition-opacity hover:opacity-80"
+                style={{ background: "rgba(214,255,63,0.1)", border: "1px solid rgba(214,255,63,0.3)", color: "var(--lime)" }}>
+                ADMIN
+              </Link>
+            )}
             <Link href="/dashboard/settings" className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">
               Налаштування
             </Link>

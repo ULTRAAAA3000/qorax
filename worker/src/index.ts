@@ -86,18 +86,79 @@ const worker = {
     }
 
     // Внутренний эндпоинт для ручного запуска speed-check (защищён токеном)
-    if (url.pathname === "/api/admin/run-speed-checks" && request.method === "POST") {
+    // ── Admin endpoints (захищені ADMIN_TOKEN) ──────────────────
+    if (url.pathname.startsWith("/api/admin/") && request.method === "POST") {
       const token = request.headers.get("x-admin-token");
-      if (token !== env.ADMIN_TOKEN) return json({ error: "Unauthorized" }, 401, origin);
-      ctx.waitUntil(
-        runSpeedChecks(
-          env.SUPABASE_URL,
-          env.SUPABASE_SERVICE_ROLE_KEY,
-          env.GOOGLE_PAGESPEED_API_KEY,
-          env.GEMINI_API_KEY
-        ).then((summary) => console.log("Manual speed run:", JSON.stringify(summary)))
-      );
-      return json({ ok: true, message: "Speed checks started in background" }, 200, origin);
+      if (!token || token !== env.ADMIN_TOKEN) {
+        return json({ error: "Unauthorized" }, 401, origin);
+      }
+
+      if (url.pathname === "/api/admin/run-uptime") {
+        ctx.waitUntil(
+          runUptimeChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.RESEND_API_KEY, env.APP_URL, env.TELEGRAM_BOT_TOKEN)
+            .then(s => console.log("Manual uptime:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "Uptime checks started" }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/run-speed") {
+        ctx.waitUntil(
+          runSpeedChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.GOOGLE_PAGESPEED_API_KEY, env.GEMINI_API_KEY)
+            .then(s => console.log("Manual speed:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "Speed checks started" }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/run-seo") {
+        ctx.waitUntil(
+          runSeoChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+            .then(s => console.log("Manual SEO:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "SEO checks started" }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/run-competitors") {
+        ctx.waitUntil(
+          runCompetitorChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.RESEND_API_KEY, env.APP_URL, env.TELEGRAM_BOT_TOKEN)
+            .then(s => console.log("Manual competitors:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "Competitor checks started" }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/run-broken-links") {
+        ctx.waitUntil(
+          runBrokenLinksChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.RESEND_API_KEY, env.APP_URL)
+            .then(s => console.log("Manual broken links:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "Broken links checks started" }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/run-ssl-expiry") {
+        ctx.waitUntil(
+          checkSslExpiry(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.RESEND_API_KEY, env.APP_URL, env.TELEGRAM_BOT_TOKEN)
+            .then(() => console.log("Manual SSL expiry check done"))
+        );
+        return json({ ok: true, message: "SSL expiry check started" }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/expire-trials") {
+        ctx.waitUntil(
+          expireTrials(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+            .then(() => console.log("Manual expire trials done"))
+        );
+        return json({ ok: true, message: "Expire trials started" }, 200, origin);
+      }
+
+      // Стара назва для сумісності
+      if (url.pathname === "/api/admin/run-speed-checks") {
+        ctx.waitUntil(
+          runSpeedChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.GOOGLE_PAGESPEED_API_KEY, env.GEMINI_API_KEY)
+            .then(s => console.log("Manual speed run:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "Speed checks started in background" }, 200, origin);
+      }
+
+      return json({ error: "Unknown admin endpoint" }, 404, origin);
     }
 
     // AI-асистент Qoraxus (Growth+)

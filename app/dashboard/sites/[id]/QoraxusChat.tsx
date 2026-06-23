@@ -17,30 +17,32 @@ const SUGGESTED_QUESTIONS = [
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
 
-// Завжди беремо свіжий токен із Supabase client — серверний токен
-// може бути протухлим до моменту відправки запиту з браузера.
-// accessToken з props використовуємо як fallback якщо клієнт недоступний.
-async function getFreshToken(fallbackToken: string): Promise<string> {
+// Завжди беремо свіжий токен із Supabase client.
+// Ніколи не використовуємо серверний токен з props — він може бути
+// протухлим (Supabase JWT живе 1 годину, а сторінка може бути
+// відкрита довше).
+async function getFreshToken(): Promise<string> {
   try {
     const { createClient } = await import("@/app/lib/supabase/client");
     const supabase = createClient();
+    // getSession повертає токен з localStorage — він найсвіжіший
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) return session.access_token;
+    // Якщо localStorage порожній — робимо network refresh
     const { data: refreshed } = await supabase.auth.refreshSession();
-    return refreshed.session?.access_token ?? fallbackToken;
+    return refreshed.session?.access_token ?? "";
   } catch {
-    return fallbackToken;
+    return "";
   }
 }
 
 export function QoraxusChat({
   siteId,
   siteName,
-  accessToken,
 }: {
   siteId: string;
   siteName: string;
-  accessToken: string;
+  accessToken?: string; // залишаємо для сумісності але не використовуємо
 }) {
   const [open, setOpen] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -71,7 +73,7 @@ export function QoraxusChat({
     setLoading(true);
 
     try {
-      const token = await getFreshToken(accessToken);
+      const token = await getFreshToken();
       const resp = await fetch(`${API_BASE}/api/chat`, {
         method: "POST",
         headers: {
