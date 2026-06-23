@@ -105,7 +105,8 @@ export function QoraxusChat({
         ...prev,
         { role: "model", content: data.reply ?? "" },
       ]);
-    } catch {
+    } catch (err) {
+      console.error("[QoraxusChat] fetch error:", err);
       setError("Не вдалося з'єднатися з асистентом");
     } finally {
       setLoading(false);

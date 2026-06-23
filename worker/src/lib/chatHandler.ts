@@ -86,9 +86,10 @@ interface SslRow {
 export async function handleChatRequest(
   request: Request,
   env: Env,
-  origin: string | null
+  origin: string | null,
+  prebuiltCors?: Record<string, string>
 ): Promise<Response> {
-  const corsHeaders = buildCorsHeaders(origin, env);
+  const corsHeaders = prebuiltCors ?? buildCorsHeaders(origin, env);
 
   let body: ChatRequest;
   try {

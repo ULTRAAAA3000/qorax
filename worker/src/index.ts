@@ -32,7 +32,7 @@ function corsHeaders(origin: string | null): Record<string, string> {
   return {
     "Access-Control-Allow-Origin": allowed,
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization, x-admin-token",
   };
 }
 
@@ -163,7 +163,7 @@ const worker = {
 
     // AI-асистент Qoraxus (Growth+)
     if (url.pathname === "/api/chat" && request.method === "POST") {
-      return handleChatRequest(request, env, origin);
+      return handleChatRequest(request, env, origin, corsHeaders(origin));
     }
 
         return json({ error: "Маршрут не знайдено" }, 404, origin);
