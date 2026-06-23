@@ -60,7 +60,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     { data: openIncidents },
     { data: speedChecks },
     { data: cwvChecks },
-    { data: ssl },
+    { data: sslArr },
     { data: aiInsights },
     { data: reports },
     { data: seoAuditArr },
@@ -92,7 +92,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     supabase.from("ssl_certificates")
       .select("days_until_expiry, last_checked_at")
       .eq("site_id", id)
-      .single(),
+      .limit(1),
     supabase.from("ai_insights")
       .select("severity, problem_summary, plain_explanation, estimated_monthly_loss_usd, recommendation, generated_at")
       .eq("site_id", id)
@@ -134,6 +134,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
   const seoAudit = seoAuditArr?.[0] ?? null;
   const sitemapAudit = sitemapAuditArr?.[0] ?? null;
+  const ssl = sslArr?.[0] ?? null;
 
   const isUp = !openIncidents?.length;
   const latestCheck = uptimeChecks?.[0];
