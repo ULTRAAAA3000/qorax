@@ -91,6 +91,30 @@ export async function handleChatRequest(
 ): Promise<Response> {
   const corsHeaders = prebuiltCors ?? buildCorsHeaders(origin, env);
 
+  // Глобальний try/catch — гарантує що CORS хедери завжди присутні навіть при 500
+  try {
+    return await handleChatInternal(request, env, corsHeaders);
+  } catch (err) {
+    console.error("[chat] unhandled error:", err instanceof Error ? err.message : err);
+    return jsonResponse({ error: "Внутрішня помилка сервера" }, 500, corsHeaders);
+  }
+}
+
+async function handleChatInternal(
+  request: Request,
+  env: Env,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  // Перевіряємо критичні env vars — якщо відсутні, повертаємо зрозумілу помилку
+  if (!env.SUPABASE_URL || env.SUPABASE_URL.includes("your-project")) {
+    console.error("[chat] SUPABASE_URL not configured:", env.SUPABASE_URL);
+    return jsonResponse({ error: "Сервер не налаштований (SUPABASE_URL)" }, 503, corsHeaders);
+  }
+  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.error("[chat] SUPABASE_SERVICE_ROLE_KEY missing");
+    return jsonResponse({ error: "Сервер не налаштований (SERVICE_ROLE_KEY)" }, 503, corsHeaders);
+  }
+
   let body: ChatRequest;
   try {
     body = (await request.json()) as ChatRequest;
