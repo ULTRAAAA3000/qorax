@@ -63,8 +63,8 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     { data: ssl },
     { data: aiInsights },
     { data: reports },
-    { data: seoAudit },
-    { data: sitemapAudit },
+    { data: seoAuditArr },
+    { data: sitemapAuditArr },
     { data: competitors },
     { data: competitorChanges },
     { data: brokenLinks },
@@ -109,14 +109,12 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
       .select("title, title_length, meta_description, meta_description_length, has_h1, h1_count, has_schema_markup, schema_types, issues, checked_at")
       .eq("site_id", id)
       .order("checked_at", { ascending: false })
-      .limit(1)
-      .single(),
+      .limit(1),
     supabase.from("sitemap_audits")
       .select("sitemap_found, sitemap_url, urls_in_sitemap, sitemap_errors, robots_found, robots_blocks_important_pages, robots_issues, checked_at")
       .eq("site_id", id)
       .order("checked_at", { ascending: false })
-      .limit(1)
-      .single(),
+      .limit(1),
     supabase.from("competitor_sites")
       .select("id, url, display_name, last_change_at")
       .eq("site_id", id)
@@ -133,6 +131,9 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
       .order("first_found_at", { ascending: false })
       .limit(20),
   ]);
+
+  const seoAudit = seoAuditArr?.[0] ?? null;
+  const sitemapAudit = sitemapAuditArr?.[0] ?? null;
 
   const isUp = !openIncidents?.length;
   const latestCheck = uptimeChecks?.[0];

@@ -256,7 +256,11 @@ async function handleChatInternal(
     },
   };
 
-  const apiKey = env.GEMINI_CHAT_API_KEY || env.GEMINI_API_KEY; // fallback якщо окремий ключ не заданий
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) {
+    return jsonResponse({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+  }
+  console.log("[chat] using key:", env.GEMINI_CHAT_API_KEY ? "CHAT_KEY" : "MAIN_KEY");
 
   try {
     const controller = new AbortController();
