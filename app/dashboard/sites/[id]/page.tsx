@@ -55,86 +55,93 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   if (!site) notFound();
 
   // ── паралельні запити всіх даних ──
+  // Кожен запит окремо з .maybeSingle() або через Promise що не кидає виключення.
+  // Якщо таблиця не існує або RLS блокує — повертаємо порожній масив.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const safeAll = async (q: PromiseLike<{ data: any[] | null; error: unknown }>) => {
+    try { const r = await q; return r.data ?? []; } catch { return []; }
+  };
+
   const [
-    { data: uptimeChecks },
-    { data: openIncidents },
-    { data: speedChecks },
-    { data: cwvChecks },
-    { data: sslArr },
-    { data: aiInsights },
-    { data: reports },
-    { data: seoAuditArr },
-    { data: sitemapAuditArr },
-    { data: competitors },
-    { data: competitorChanges },
-    { data: brokenLinks },
+    uptimeChecks,
+    openIncidents,
+    speedChecks,
+    cwvChecks,
+    sslArr,
+    aiInsights,
+    reports,
+    seoAuditArr,
+    sitemapAuditArr,
+    competitors,
+    competitorChanges,
+    brokenLinks,
   ] = await Promise.all([
-    supabase.from("uptime_checks")
+    safeAll(supabase.from("uptime_checks")
       .select("status, response_time_ms, checked_at")
       .eq("site_id", id)
       .order("checked_at", { ascending: false })
-      .limit(288), // ~24h при перевірці кожні 5хв
-    supabase.from("uptime_incidents")
+      .limit(288)),
+    safeAll(supabase.from("uptime_incidents")
       .select("id, started_at, resolved_at")
       .eq("site_id", id)
       .is("resolved_at", null)
-      .limit(1),
-    supabase.from("speed_checks")
+      .limit(1)),
+    safeAll(supabase.from("speed_checks")
       .select("load_time_ms, page_size_kb, checked_at")
       .eq("site_id", id)
       .order("checked_at", { ascending: false })
-      .limit(30),
-    supabase.from("core_web_vitals_checks")
+      .limit(30)),
+    safeAll(supabase.from("core_web_vitals_checks")
       .select("strategy, lcp_ms, inp_ms, cls_score, performance_score, checked_at")
       .eq("site_id", id)
       .order("checked_at", { ascending: false })
-      .limit(4),
-    supabase.from("ssl_certificates")
+      .limit(4)),
+    safeAll(supabase.from("ssl_certificates")
       .select("days_until_expiry, last_checked_at")
       .eq("site_id", id)
-      .limit(1),
-    supabase.from("ai_insights")
+      .limit(1)),
+    safeAll(supabase.from("ai_insights")
       .select("severity, problem_summary, plain_explanation, estimated_monthly_loss_usd, recommendation, generated_at")
       .eq("site_id", id)
       .eq("is_resolved", false)
       .order("generated_at", { ascending: false })
-      .limit(5),
-    supabase.from("reports")
+      .limit(5)),
+    safeAll(supabase.from("reports")
       .select("id, report_type, period_start, period_end, pdf_url, status, created_at")
       .eq("site_id", id)
       .eq("status", "ready")
       .order("created_at", { ascending: false })
-      .limit(6),
-    supabase.from("page_seo_audits")
+      .limit(6)),
+    safeAll(supabase.from("page_seo_audits")
       .select("title, title_length, meta_description, meta_description_length, has_h1, h1_count, has_schema_markup, schema_types, issues, checked_at")
       .eq("site_id", id)
       .order("checked_at", { ascending: false })
-      .limit(1),
-    supabase.from("sitemap_audits")
+      .limit(1)),
+    safeAll(supabase.from("sitemap_audits")
       .select("sitemap_found, sitemap_url, urls_in_sitemap, sitemap_errors, robots_found, robots_blocks_important_pages, robots_issues, checked_at")
       .eq("site_id", id)
       .order("checked_at", { ascending: false })
-      .limit(1),
-    supabase.from("competitor_sites")
+      .limit(1)),
+    safeAll(supabase.from("competitor_sites")
       .select("id, url, display_name, last_change_at")
       .eq("site_id", id)
-      .limit(5),
-    supabase.from("competitor_changes")
+      .limit(5)),
+    safeAll(supabase.from("competitor_changes")
       .select("detected_at, change_summary, competitor_id")
       .eq("site_id", id)
       .order("detected_at", { ascending: false })
-      .limit(5),
-    supabase.from("broken_links")
+      .limit(5)),
+    safeAll(supabase.from("broken_links")
       .select("id, broken_url, http_status_code, source_page_url, first_found_at, status")
       .eq("site_id", id)
       .eq("status", "broken")
       .order("first_found_at", { ascending: false })
-      .limit(20),
-  ]);
+      .limit(20)),
+  ])
 
-  const seoAudit = seoAuditArr?.[0] ?? null;
-  const sitemapAudit = sitemapAuditArr?.[0] ?? null;
-  const ssl = sslArr?.[0] ?? null;
+  const seoAudit = seoAuditArr[0] ?? null;
+  const sitemapAudit = sitemapAuditArr[0] ?? null;
+  const ssl = sslArr[0] ?? null;
 
   const isUp = !openIncidents?.length;
   const latestCheck = uptimeChecks?.[0];
