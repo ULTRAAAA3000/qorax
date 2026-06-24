@@ -737,7 +737,7 @@ export async function sendTrialEmails(
     if (shouldRemind) {
       subject =
         daysLeft <= 3
-          ? `⏰ Залишилось ${daysLeft} ${daysLeft === 1 ? "день" : "дні"} тріалу Qorax`
+          ? `⏰ Залишилось ${daysLeft} ${Number(daysLeft) === 1 ? "день" : "дні"} тріалу Qorax`
           : `Ваш тріал Qorax закінчується через ${daysLeft} днів`;
 
       html = buildTrialReminderHtml({ firstName, daysLeft, upgradeUrl });
