@@ -23,6 +23,11 @@ export interface Env {
   // Необов'язковий секрет для верифікації webhook-запитів від Telegram
   // (задається при `wrangler secret put TELEGRAM_WEBHOOK_SECRET` і при setWebhook)
   TELEGRAM_WEBHOOK_SECRET?: string;
+  // LemonSqueezy
+  LS_WEBHOOK_SECRET: string;     // Signing secret з LS Dashboard → Webhooks
+  LS_API_KEY: string;            // API key для server-side операцій (portal URL etc.)
+  LS_STORE_ID: string;           // Store ID з LS Dashboard
+
   // Токен для захищених admin-ендпоінтів
   ADMIN_TOKEN: string;
   // Окремий Gemini ключ для інтерактивного чату (Growth-фіча).
