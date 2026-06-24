@@ -305,9 +305,16 @@ export default async function SiteDetailPage({
                   </div>
                 </div>
               </div>
-              {Array.isArray(seoAudit.issues) && seoAudit.issues.length > 0 ? (
+              {(() => {
+                // issues може бути JSON-рядком або масивом залежно від Supabase
+                let issueList: string[] = [];
+                try {
+                  const raw = seoAudit.issues;
+                  issueList = Array.isArray(raw) ? raw : JSON.parse(typeof raw === "string" ? raw : "[]");
+                } catch { issueList = []; }
+                return issueList.length > 0 ? (
                 <div className="space-y-1.5">
-                  {(seoAudit.issues as string[]).map((issue: string, i: number) => (
+                  {issueList.map((issue: string, i: number) => (
                     <div key={i} className="flex items-start gap-2.5 rounded-xl px-3.5 py-2.5"
                       style={{ background: "rgba(245,103,90,0.06)", border: "1px solid rgba(245,103,90,0.15)" }}>
                       <AlertTriangle size={12} style={{ color: "#F5675A", flexShrink: 0, marginTop: 2 }} />
@@ -321,7 +328,7 @@ export default async function SiteDetailPage({
                   <CheckCircle size={13} style={{ color: "var(--lime)" }} />
                   <p className="text-sm" style={{ color: "var(--text-secondary)" }}>SEO мета-теги в нормі</p>
                 </div>
-              )}
+              ); })()}
               {sitemapAudit && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="rounded-xl px-3.5 py-3" style={{ background: "var(--bg)", border: "1px solid var(--border-hairline)" }}>

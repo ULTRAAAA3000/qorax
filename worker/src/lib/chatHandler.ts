@@ -105,15 +105,12 @@ async function handleChatInternal(
   env: Env,
   corsHeaders: Record<string, string>
 ): Promise<Response> {
-  // Перевіряємо критичні env vars — якщо відсутні, повертаємо зрозумілу помилку
-  if (!env.SUPABASE_URL || env.SUPABASE_URL.includes("your-project")) {
-    console.error("[chat] SUPABASE_URL not configured:", env.SUPABASE_URL);
-    return jsonResponse({ error: "Сервер не налаштований (SUPABASE_URL)" }, 503, corsHeaders);
-  }
-  if (!env.SUPABASE_SERVICE_ROLE_KEY) {
-    console.error("[chat] SUPABASE_SERVICE_ROLE_KEY missing");
-    return jsonResponse({ error: "Сервер не налаштований (SERVICE_ROLE_KEY)" }, 503, corsHeaders);
-  }
+  console.log("[chat] env check:", {
+    supabase_url: env.SUPABASE_URL?.slice(0, 30) ?? "MISSING",
+    service_key: env.SUPABASE_SERVICE_ROLE_KEY ? "SET" : "MISSING",
+    gemini_chat: env.GEMINI_CHAT_API_KEY ? "SET" : "MISSING",
+    gemini_main: env.GEMINI_API_KEY ? "SET" : "MISSING",
+  });
 
   let body: ChatRequest;
   try {
