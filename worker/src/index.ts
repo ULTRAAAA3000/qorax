@@ -18,6 +18,11 @@ import { handleChatRequest } from "./lib/chatHandler";
 import { runSeoChecks } from "./lib/seoChecker";
 import { runCompetitorChecks } from "./lib/competitorChecker";
 import { runBrokenLinksChecks } from "./lib/brokenLinksChecker";
+import {
+  handleStripeCheckout,
+  handleStripePortal,
+  handleStripeWebhookRequest,
+} from "./lib/stripeHandler";
 
 // Список доменов, с которых разрешены запросы к API.
 // Фронтенд живёт на Cloudflare Workers Builds (не Pages — см. миграцию
@@ -71,6 +76,17 @@ const worker = {
 
     if (url.pathname === "/api/report" && request.method === "GET") {
       return handleReportRequest(request, env, origin);
+    }
+
+    // ── Stripe ───────────────────────────────────────────────────
+    if (url.pathname === "/api/stripe/checkout" && request.method === "POST") {
+      return handleStripeCheckout(request, env, origin);
+    }
+    if (url.pathname === "/api/stripe/portal" && request.method === "POST") {
+      return handleStripePortal(request, env, origin);
+    }
+    if (url.pathname === "/api/stripe/webhook" && request.method === "POST") {
+      return handleStripeWebhookRequest(request, env);
     }
 
     // Webhook від Telegram — приймає update коли користувач пише /start <org_id> боту.
