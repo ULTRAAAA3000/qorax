@@ -2,6 +2,7 @@
 
 import { createClient } from "@/app/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { buildWelcomeEmail } from "@/app/lib/onboarding-email";
 
 export async function signUp(formData: FormData) {
   const supabase = await createClient();
@@ -54,6 +55,28 @@ export async function signUp(formData: FormData) {
       )}`
     );
   }
+
+  // Welcome email — fire and forget, не блокуємо редірект
+  const firstName = fullName?.split(" ")[0] || email.split("@")[0];
+  buildWelcomeEmail({
+    firstName,
+    email,
+    dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev"}/dashboard`,
+  }).then(({ subject, html }) =>
+    fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${process.env.RESEND_API_KEY ?? ""}`,
+      },
+      body: JSON.stringify({
+        from: "Qorax <hello@qorax.app>",
+        to: [email],
+        subject,
+        html,
+      }),
+    })
+  ).catch(() => {/* email не критичний */});
 
   redirect("/dashboard?welcome=1");
 }

@@ -11,7 +11,7 @@ import { runBasicCheck } from "./lib/basicCheck";
 import { runPageSpeedChecks } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead, selectRows } from "./lib/supabase";
-import { runUptimeChecks, runSpeedChecks, checkSslExpiry, expireTrials } from "./lib/monitoring";
+import { runUptimeChecks, runSpeedChecks, checkSslExpiry, expireTrials, sendTrialEmails } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
 import { handleChatRequest } from "./lib/chatHandler";
@@ -213,8 +213,16 @@ const worker = {
     // 0 5 * * * — ежедневно в 5:00: перевод истёкших trial → free
     if (event.cron === "0 5 * * *") {
       ctx.waitUntil(
-        expireTrials(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
-          .then((count) => console.log(`Trials expired: ${count}`))
+        Promise.all([
+          expireTrials(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+            .then((count) => console.log(`Trials expired: ${count}`)),
+          sendTrialEmails(
+            env.SUPABASE_URL,
+            env.SUPABASE_SERVICE_ROLE_KEY,
+            env.RESEND_API_KEY,
+            env.APP_URL
+          ).then((r) => console.log(`Trial emails: ${JSON.stringify(r)}`)),
+        ])
       );
       return;
     }

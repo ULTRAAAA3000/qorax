@@ -623,3 +623,218 @@ export async function expireTrials(
   const count = await response.json();
   return typeof count === "number" ? count : 0;
 }
+
+// ─── Trial onboarding emails ──────────────────────────────────
+// Викликається з cron 0 5 * * * разом з expireTrials().
+// Шле нагадування за 7 і 3 дні до кінця тріалу,
+// а також листа про закінчення (після expireTrials переводить на free).
+
+interface TrialOrgRow {
+  organization_id: string;
+  trial_ends_at: string;
+  status: string;
+}
+
+interface OrgMemberRow {
+  user_id: string;
+}
+
+export async function sendTrialEmails(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  resendApiKey: string,
+  appUrl: string
+): Promise<{ reminders: number; expired: number }> {
+  // Знаходимо всі активні тріали
+  const resp = await fetch(
+    `${supabaseUrl}/rest/v1/subscriptions?select=organization_id,trial_ends_at,status&status=in.(trialing,canceled)&plans=plans(code).eq.trial`,
+    {
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        "Content-Type": "application/json",
+      },
+    }
+  );
+
+  // Простіший запит — всі підписки з trial планом
+  const subResp = await fetch(
+    `${supabaseUrl}/rest/v1/subscriptions?select=organization_id,trial_ends_at,status&trial_ends_at=not.is.null`,
+    {
+      headers: {
+        apikey: serviceRoleKey,
+        Authorization: `Bearer ${serviceRoleKey}`,
+        Accept: "application/json",
+      },
+    }
+  );
+
+  void resp; // перший запит не використовуємо
+
+  if (!subResp.ok) {
+    console.error("sendTrialEmails: failed to fetch subscriptions");
+    return { reminders: 0, expired: 0 };
+  }
+
+  const subs = (await subResp.json()) as TrialOrgRow[];
+  const now = Date.now();
+  let reminders = 0;
+  let expired = 0;
+
+  for (const sub of subs) {
+    const endsAt = new Date(sub.trial_ends_at).getTime();
+    const daysLeft = Math.ceil((endsAt - now) / (1000 * 60 * 60 * 24));
+
+    // Нагадування за 7 або 3 дні (тільки для активних тріалів)
+    const shouldRemind =
+      sub.status === "trialing" && (daysLeft === 7 || daysLeft === 3);
+    // Лист про закінчення (тільки що перевели на free — статус canceled сьогодні)
+    const justExpired =
+      sub.status === "canceled" && daysLeft >= -1 && daysLeft <= 0;
+
+    if (!shouldRemind && !justExpired) continue;
+
+    // Отримуємо власника організації
+    const memberResp = await fetch(
+      `${supabaseUrl}/rest/v1/organization_members?select=user_id&organization_id=eq.${encodeURIComponent(sub.organization_id)}&role=eq.owner&limit=1`,
+      {
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+          Accept: "application/json",
+        },
+      }
+    );
+    if (!memberResp.ok) continue;
+    const members = (await memberResp.json()) as OrgMemberRow[];
+    const ownerId = members[0]?.user_id;
+    if (!ownerId) continue;
+
+    // Email власника з Supabase auth
+    const authResp = await fetch(
+      `${supabaseUrl}/auth/v1/admin/users/${ownerId}`,
+      {
+        headers: {
+          apikey: serviceRoleKey,
+          Authorization: `Bearer ${serviceRoleKey}`,
+        },
+      }
+    );
+    if (!authResp.ok) continue;
+    const authUser = (await authResp.json()) as { email?: string; user_metadata?: { full_name?: string } };
+    if (!authUser.email) continue;
+
+    const firstName =
+      authUser.user_metadata?.full_name?.split(" ")[0] ||
+      authUser.email.split("@")[0];
+
+    const dashboardUrl = `${appUrl}/dashboard`;
+    const upgradeUrl = `${appUrl}/dashboard/upgrade`;
+
+    let subject = "";
+    let html = "";
+
+    if (shouldRemind) {
+      subject =
+        daysLeft <= 3
+          ? `⏰ Залишилось ${daysLeft} ${daysLeft === 1 ? "день" : "дні"} тріалу Qorax`
+          : `Ваш тріал Qorax закінчується через ${daysLeft} днів`;
+
+      html = buildTrialReminderHtml({ firstName, daysLeft, upgradeUrl });
+      reminders++;
+    } else if (justExpired) {
+      subject = `Ваш тріал Qorax закінчився — оберіть план`;
+      html = buildTrialExpiredHtml({ firstName, dashboardUrl, upgradeUrl });
+      expired++;
+    }
+
+    await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${resendApiKey}`,
+      },
+      body: JSON.stringify({
+        from: "Qorax <hello@qorax.app>",
+        to: [authUser.email],
+        subject,
+        html,
+      }),
+    }).catch(() => {/* не критично */});
+  }
+
+  return { reminders, expired };
+}
+
+function buildTrialReminderHtml(p: {
+  firstName: string;
+  daysLeft: number;
+  upgradeUrl: string;
+}): string {
+  const urgent = p.daysLeft <= 3;
+  const accent = urgent ? "#F5A623" : "#8CF6FF";
+  const accentBg = urgent ? "rgba(245,166,35,0.08)" : "rgba(140,246,255,0.06)";
+  const accentBorder = urgent ? "rgba(245,166,35,0.3)" : "rgba(140,246,255,0.2)";
+  const daysWord = p.daysLeft === 1 ? "день" : p.daysLeft < 5 ? "дні" : "днів";
+
+  return `<!DOCTYPE html>
+<html lang="uk"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0C111D;font-family:-apple-system,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+    <div style="margin-bottom:32px;"><span style="font-size:18px;font-weight:700;color:#f5f5f7;">Qorax</span></div>
+    <div style="background:${accentBg};border:1px solid ${accentBorder};border-radius:16px;padding:28px;margin-bottom:24px;">
+      <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:${accent};text-transform:uppercase;letter-spacing:0.05em;">${urgent ? "⏰ Скоро закінчується" : "Нагадування"}</p>
+      <p style="margin:0;font-size:20px;font-weight:600;color:#f5f5f7;">${p.firstName}, залишилось ${p.daysLeft} ${daysWord}</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:24px;margin-bottom:24px;">
+      <p style="margin:0 0 12px;font-size:14px;color:#8a9bb0;line-height:1.6;">Після закінчення тріалу — безкоштовний план: uptime раз на 30 хв, без AI та SSL.</p>
+      <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(214,255,63,0.08);border:1px solid rgba(214,255,63,0.2);border-radius:10px;padding:14px 16px;margin-bottom:8px;">
+        <div><p style="margin:0 0 2px;font-size:14px;font-weight:600;color:#f5f5f7;">Starter</p><p style="margin:0;font-size:12px;color:#8a9bb0;">Uptime 5хв · SSL · AI</p></div>
+        <span style="font-size:15px;font-weight:700;color:#D6FF3F;">$49/міс</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;background:rgba(140,246,255,0.06);border:1px solid rgba(140,246,255,0.15);border-radius:10px;padding:14px 16px;">
+        <div><p style="margin:0 0 2px;font-size:14px;font-weight:600;color:#f5f5f7;">Growth</p><p style="margin:0;font-size:12px;color:#8a9bb0;">+ CWV · SEO · Конкуренти · Qoraxus</p></div>
+        <span style="font-size:15px;font-weight:700;color:#8CF6FF;">$99/міс</span>
+      </div>
+    </div>
+    <div style="text-align:center;margin-bottom:32px;">
+      <a href="${p.upgradeUrl}" style="display:inline-block;background:#D6FF3F;color:#0C111D;font-size:14px;font-weight:600;padding:14px 32px;border-radius:12px;text-decoration:none;">Обрати план →</a>
+    </div>
+    <p style="font-size:12px;color:#5a7090;text-align:center;margin:0;">Qorax · Моніторинг сайтів</p>
+  </div>
+</body></html>`;
+}
+
+function buildTrialExpiredHtml(p: {
+  firstName: string;
+  dashboardUrl: string;
+  upgradeUrl: string;
+}): string {
+  const features = ["Перевірка кожні 5 хвилин", "SSL та domain моніторинг", "AI-аналіз з revenue impact", "SEO аудит та Core Web Vitals", "Telegram алерти"];
+  const featuresHtml = features.map(f =>
+    `<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;"><span style="color:#F5675A;">✕</span><span style="font-size:14px;color:#8a9bb0;">${f}</span></div>`
+  ).join("");
+
+  return `<!DOCTYPE html>
+<html lang="uk"><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0C111D;font-family:-apple-system,sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+    <div style="margin-bottom:32px;"><span style="font-size:18px;font-weight:700;color:#f5f5f7;">Qorax</span></div>
+    <div style="background:rgba(245,103,90,0.06);border:1px solid rgba(245,103,90,0.25);border-radius:16px;padding:28px;margin-bottom:24px;">
+      <p style="margin:0 0 8px;font-size:20px;font-weight:600;color:#f5f5f7;">${p.firstName}, ваш тріал закінчився</p>
+      <p style="margin:0;font-size:15px;color:#8a9bb0;line-height:1.6;">Акаунт переведено на безкоштовний план.</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:24px;margin-bottom:24px;">
+      <p style="margin:0 0 12px;font-size:14px;font-weight:600;color:#f5f5f7;">Що вимкнено:</p>
+      ${featuresHtml}
+    </div>
+    <div style="text-align:center;margin-bottom:12px;">
+      <a href="${p.upgradeUrl}" style="display:inline-block;background:#D6FF3F;color:#0C111D;font-size:14px;font-weight:600;padding:14px 32px;border-radius:12px;text-decoration:none;">Відновити доступ →</a>
+    </div>
+    <div style="text-align:center;margin-bottom:32px;">
+      <a href="${p.dashboardUrl}" style="font-size:13px;color:#5a7090;text-decoration:none;">Перейти до дашборду</a>
+    </div>
+    <p style="font-size:12px;color:#5a7090;text-align:center;margin:0;">Питання? Відповідайте на цей лист.<br>Qorax · Моніторинг сайтів</p>
+  </div>
+</body></html>`;
+}
