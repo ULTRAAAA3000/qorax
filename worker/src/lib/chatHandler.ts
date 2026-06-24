@@ -263,7 +263,8 @@ async function handleChatInternal(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
 
-    const geminiResp = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
+    // Retry при 429 (rate limit free tier) — чекаємо 4с і пробуємо ще раз
+    let geminiResp = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       signal: controller.signal,
@@ -271,14 +272,27 @@ async function handleChatInternal(
     });
     clearTimeout(timeout);
 
+    if (geminiResp.status === 429) {
+      console.warn("[chat] Gemini 429 rate limit — retrying in 4s");
+      await new Promise(r => setTimeout(r, 4000));
+      const controller2 = new AbortController();
+      const timeout2 = setTimeout(() => controller2.abort(), GEMINI_TIMEOUT_MS);
+      geminiResp = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller2.signal,
+        body: JSON.stringify(geminiBody),
+      });
+      clearTimeout(timeout2);
+    }
+
     if (!geminiResp.ok) {
       const errText = await geminiResp.text();
-      console.error("Gemini chat error:", geminiResp.status, errText.slice(0, 200));
-      return jsonResponse(
-        { error: "AI тимчасово недоступний, спробуйте через хвилину" },
-        503,
-        corsHeaders
-      );
+      console.error("[chat] Gemini error:", geminiResp.status, errText.slice(0, 300));
+      const msg = geminiResp.status === 429
+        ? "AI перевантажений — зачекайте хвилину і спробуйте ще раз"
+        : "AI тимчасово недоступний, спробуйте через хвилину";
+      return jsonResponse({ error: msg }, 503, corsHeaders);
     }
 
     interface GeminiResponse {
