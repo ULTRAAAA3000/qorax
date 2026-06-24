@@ -178,6 +178,61 @@ const worker = {
       return json({ error: "Unknown admin endpoint" }, 404, origin);
     }
 
+    // LemonSqueezy — Customer Portal URL (для кнопки "Управляти підпискою")
+    // GET /api/ls/portal?org_id=xxx — повертає свіжий portal URL
+    if (url.pathname === "/api/ls/portal" && request.method === "GET") {
+      const orgId = url.searchParams.get("org_id");
+      if (!orgId) return json({ error: "org_id required" }, 400, origin);
+
+      // Авторизація через JWT
+      const authHeader = request.headers.get("Authorization");
+      if (!authHeader) return json({ error: "Unauthorized" }, 401, origin);
+
+      // Беремо portal URL з БД (зберігається при webhook)
+      const subResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/subscriptions?select=ls_subscription_id,ls_customer_portal_url&organization_id=eq.${encodeURIComponent(orgId)}&status=in.(active,trialing)&order=created_at.desc&limit=1`,
+        {
+          headers: {
+            apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+            Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (!subResp.ok) return json({ error: "DB error" }, 500, origin);
+      const subs = (await subResp.json()) as Array<{ ls_subscription_id: string; ls_customer_portal_url: string | null }>;
+      const sub = subs[0];
+      if (!sub) return json({ error: "No active subscription" }, 404, origin);
+
+      // Якщо є збережений URL — повертаємо його
+      if (sub.ls_customer_portal_url) {
+        return json({ url: sub.ls_customer_portal_url }, 200, origin);
+      }
+
+      // Інакше — запитуємо свіжий URL через LS API
+      if (sub.ls_subscription_id && env.LS_API_KEY) {
+        const lsResp = await fetch(
+          `https://api.lemonsqueezy.com/v1/subscriptions/${sub.ls_subscription_id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${env.LS_API_KEY}`,
+              Accept: "application/vnd.api+json",
+            },
+          }
+        );
+        if (lsResp.ok) {
+          const lsData = (await lsResp.json()) as {
+            data?: { attributes?: { urls?: { customer_portal?: string } } };
+          };
+          const portalUrl = lsData.data?.attributes?.urls?.customer_portal;
+          if (portalUrl) return json({ url: portalUrl }, 200, origin);
+        }
+      }
+
+      return json({ error: "Portal URL not available" }, 404, origin);
+    }
+
     // LemonSqueezy webhook
     if (url.pathname === "/api/ls/webhook" && request.method === "POST") {
       return handleLSWebhook(

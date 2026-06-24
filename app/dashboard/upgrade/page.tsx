@@ -2,7 +2,8 @@ import { createClient } from "@/app/lib/supabase/server";
 import { QoraxLogo } from "@/app/components/QoraxLogo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Check, ExternalLink } from "lucide-react";
+import { CustomerPortalButton } from "./CustomerPortalButton";
+import { Check } from "lucide-react";
 
 export const metadata = { title: "Обрати план — Qorax" };
 
@@ -82,6 +83,8 @@ export default async function UpgradePage() {
     .single();
 
   const orgId = membership?.organization_id ?? "";
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token ?? "";
 
   // Поточна підписка
   const subQuery = await supabase
@@ -118,15 +121,8 @@ export default async function UpgradePage() {
           <p className="text-[var(--text-secondary)] text-sm max-w-md mx-auto">
             14 днів тріалу вже включено при реєстрації. Оплата через LemonSqueezy — безпечно, картки будь-якого банку.
           </p>
-          {isActive && portalUrl && (
-            <a
-              href={portalUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 mt-4 text-sm text-[var(--cyan)] hover:opacity-80 transition-opacity"
-            >
-              Управляти підпискою <ExternalLink size={13} />
-            </a>
+          {isActive && (
+            <CustomerPortalButton orgId={orgId} accessToken={accessToken} />
           )}
         </div>
 
