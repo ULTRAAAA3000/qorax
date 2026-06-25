@@ -13,6 +13,20 @@ import { FaqSection } from "./components/FaqSection";
 import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
 import { createClient } from "./lib/supabase/server";
 
+// LemonSqueezy checkout URLs
+const LS_SUBDOMAIN = process.env.LS_STORE_SUBDOMAIN ?? "qoraxus";
+const LS_VARIANTS: Record<string, string> = {
+  Starter: process.env.LS_VARIANT_STARTER ?? "",
+  Growth:  process.env.LS_VARIANT_GROWTH  ?? "",
+  Agency:  process.env.LS_VARIANT_AGENCY  ?? "",
+};
+function lsCheckoutUrl(plan: string): string {
+  const vid = LS_VARIANTS[plan];
+  return vid
+    ? `https://${LS_SUBDOMAIN}.lemonsqueezy.com/checkout/buy/${vid}`
+    : "/dashboard/upgrade";
+}
+
 export default async function Home() {
   // Перевіряємо чи користувач залогінений, щоб показати в шапці
   // "До дашборду" замість "Увійти" — інакше залогінений користувач
@@ -306,6 +320,7 @@ function PlansSection() {
           <Reveal delay={0.06} className="lg:pt-6">
             <PlanCard
               name="Starter"
+              checkoutUrl={lsCheckoutUrl("Starter")}
               price="$49"
               tagline="Один сайт, спокійний сон"
               features={[
@@ -323,6 +338,7 @@ function PlansSection() {
           <Reveal delay={0.1}>
             <PlanCard
               name="Growth"
+              checkoutUrl={lsCheckoutUrl("Growth")}
               price="$99"
               tagline="Коли вже росте трафік"
               features={[
@@ -342,6 +358,7 @@ function PlansSection() {
           <Reveal delay={0.14} className="lg:pt-6">
             <PlanCard
               name="Agency"
+              checkoutUrl={lsCheckoutUrl("Agency")}
               price="$199"
               tagline="До 5 сайтів під одним дахом"
               features={[
@@ -366,12 +383,14 @@ function PlanCard({
   tagline,
   features,
   variant,
+  checkoutUrl,
 }: {
   name: string;
   price: string;
   tagline: string;
   features: string[];
   variant: "default" | "highlighted";
+  checkoutUrl: string;
 }) {
   const highlighted = variant === "highlighted";
   return (
@@ -420,13 +439,16 @@ function PlanCard({
           </li>
         ))}
       </ul>
-      <button
-        className={`mt-8 w-full py-3 rounded-xl text-sm font-medium transition-all ${
+      <a
+        href={checkoutUrl}
+        target={checkoutUrl.startsWith("http") ? "_blank" : undefined}
+        rel={checkoutUrl.startsWith("http") ? "noopener noreferrer" : undefined}
+        className={`mt-8 w-full py-3 rounded-xl text-sm font-medium transition-all text-center block ${
           highlighted ? "glow-button justify-center" : "ghost-button justify-center"
         }`}
       >
-        Почати
-      </button>
+        Почати →
+      </a>
     </div>
   );
 }
