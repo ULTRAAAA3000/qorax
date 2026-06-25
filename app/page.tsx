@@ -33,9 +33,32 @@ export default async function Home() {
   // не має прямого шляху в dashboard з лендингу (тільки middleware-редірект
   // з /login, що виглядає як зайвий хоп).
   const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { data: { user } } = await supabase.auth.getUser();
+
+  // Якщо залогінений — підтягуємо org_id щоб передати в checkout
+  let orgId = "";
+  if (user) {
+    const { data: membership } = await supabase
+      .from("organization_members")
+      .select("organization_id")
+      .eq("user_id", user.id)
+      .single();
+    orgId = membership?.organization_id ?? "";
+  }
+
+  // Формуємо checkout URL з org_id (якщо є) або без (нова реєстрація)
+  function checkoutUrl(plan: string): string {
+    const base = lsCheckoutUrl(plan);
+    if (!base.startsWith("http")) return base;
+    const params = new URLSearchParams();
+    if (user?.email) params.set("checkout[email]", user.email);
+    if (orgId) params.set("checkout[custom][org_id]", orgId);
+    return params.toString() ? `${base}?${params.toString()}` : base;
+  }
+
+  const starterUrl = checkoutUrl("Starter");
+  const growthUrl = checkoutUrl("Growth");
+  const agencyUrl = checkoutUrl("Agency");
 
   return (
     <main className="flex flex-col">
@@ -75,7 +98,7 @@ export default async function Home() {
 
       <FeatureBento />
       <HowItWorksSection />
-      <PlansSection />
+      <PlansSection starterUrl={starterUrl} growthUrl={growthUrl} agencyUrl={agencyUrl} />
       <FaqSection />
       <FinalCta />
       <SiteFooterExpanded />
@@ -293,7 +316,7 @@ function ProductSection({
 // Plans — glassmorphism cards with gradient accents
 // ============================================================
 
-function PlansSection() {
+function PlansSection({ starterUrl, growthUrl, agencyUrl }: { starterUrl: string; growthUrl: string; agencyUrl: string }) {
   return (
     <section id="plans" className="relative">
       <div className="gradient-divider" />
@@ -320,7 +343,7 @@ function PlansSection() {
           <Reveal delay={0.06} className="lg:pt-6">
             <PlanCard
               name="Starter"
-              checkoutUrl={lsCheckoutUrl("Starter")}
+              checkoutUrl={starterUrl}
               price="$49"
               tagline="Один сайт, спокійний сон"
               features={[
@@ -338,7 +361,7 @@ function PlansSection() {
           <Reveal delay={0.1}>
             <PlanCard
               name="Growth"
-              checkoutUrl={lsCheckoutUrl("Growth")}
+              checkoutUrl={growthUrl}
               price="$99"
               tagline="Коли вже росте трафік"
               features={[
@@ -358,7 +381,7 @@ function PlansSection() {
           <Reveal delay={0.14} className="lg:pt-6">
             <PlanCard
               name="Agency"
-              checkoutUrl={lsCheckoutUrl("Agency")}
+              checkoutUrl={agencyUrl}
               price="$199"
               tagline="До 5 сайтів під одним дахом"
               features={[
