@@ -209,17 +209,12 @@ export default async function UpgradePage() {
                     Обрати {plan.name} →
                   </a>
                 ) : (
-                  <a
-                    href="mailto:hello@qorax.app?subject=Підключення плану"
-                    className="text-center text-sm font-medium rounded-xl py-3 transition-opacity hover:opacity-80"
-                    style={
-                      plan.highlight
-                        ? { background: "var(--lime)", color: "#0c111d" }
-                        : { border: "1px solid var(--border-hairline)", color: "var(--text-primary)" }
-                    }
+                  <div
+                    className="text-center text-xs rounded-xl py-3 px-3"
+                    style={{ border: "1px solid rgba(245,103,90,0.3)", color: "#F5675A", background: "rgba(245,103,90,0.05)" }}
                   >
-                    Обрати {plan.name} →
-                  </a>
+                    LS_VARIANT_{plan.code.toUpperCase()} не налаштовано
+                  </div>
                 )}
               </div>
             );

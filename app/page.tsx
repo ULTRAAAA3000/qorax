@@ -24,7 +24,7 @@ function lsCheckoutUrl(plan: string): string {
   const vid = LS_VARIANTS[plan];
   return vid
     ? `https://${LS_SUBDOMAIN}.lemonsqueezy.com/checkout/buy/${vid}`
-    : "/dashboard/upgrade";
+    : `/register?plan=${plan.toLowerCase()}`;
 }
 
 export default async function Home() {
