@@ -41,19 +41,22 @@ export async function signUp(formData: FormData) {
 
   if (error) {
     const back = plan ? `/register?plan=${plan}&error=` : "/register?error=";
-    // Детальний лог для діагностики — error.message може бути порожнім
-    // якщо Supabase повертає помилку без тексту (rate limit, SMTP і т.д.)
     console.error("[signUp] auth error:", {
       message: error.message,
       status: error.status,
       name: error.name,
-      cause: error.cause,
       full: JSON.stringify(error),
     });
-    if (error.message.includes("already registered")) {
+    if (error.message?.includes?.("already registered") || error.message?.includes?.("already been registered")) {
       redirect(`${back}${encodeURIComponent("Цей email вже зареєстровано")}`);
     }
-    const displayMsg = error.message || `Помилка реєстрації (status: ${error.status ?? "unknown"})`;
+    // error.message може бути об'єктом або порожнім — stringify для надійності
+    const rawMsg = typeof error.message === "string" && error.message
+      ? error.message
+      : JSON.stringify(error.message) !== "{}"
+        ? JSON.stringify(error.message)
+        : null;
+    const displayMsg = rawMsg || `Помилка реєстрації (код: ${error.status ?? "unknown"})`;
     redirect(`${back}${encodeURIComponent(displayMsg)}`);
   }
 
@@ -81,26 +84,32 @@ export async function signUp(formData: FormData) {
   }
 
   // Welcome email — fire and forget, не блокуємо редірект
-  const firstName = fullName?.split(" ")[0] || email.split("@")[0];
-  buildWelcomeEmail({
-    firstName,
-    email,
-    dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev"}/dashboard`,
-  }).then(({ subject, html }) =>
-    fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${process.env.RESEND_API_KEY ?? ""}`,
-      },
-      body: JSON.stringify({
-        from: "Qorax <hello@qorax.app>",
-        to: [email],
-        subject,
-        html,
-      }),
-    })
-  ).catch(() => {/* email не критичний */});
+  // Обгортаємо в try-catch щоб будь-яка помилка (включно з buildWelcomeEmail)
+  // не зламала реєстрацію користувача
+  try {
+    const firstName = fullName?.split(" ")[0] || email.split("@")[0];
+    buildWelcomeEmail({
+      firstName,
+      email,
+      dashboardUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev"}/dashboard`,
+    }).then(({ subject, html }) =>
+      fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.RESEND_API_KEY ?? ""}`,
+        },
+        body: JSON.stringify({
+          from: "Qorax <onboarding@resend.dev>",
+          to: [email],
+          subject,
+          html,
+        }),
+      })
+    ).catch((e) => console.error("[signUp] welcome email failed:", e));
+  } catch (e) {
+    console.error("[signUp] buildWelcomeEmail threw:", e);
+  }
 
   // Якщо юзер прийшов з лендингу з конкретним планом — одразу на upgrade
   if (planParam) {
