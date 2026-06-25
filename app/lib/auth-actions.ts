@@ -12,6 +12,8 @@ export async function signUp(formData: FormData) {
   const fullName = formData.get("full_name") as string;
   const plan = formData.get("plan") as string | null;
 
+  console.log("[signUp] email:", email, "password length:", password?.length, "plan:", plan, "all keys:", [...formData.keys()]);
+
   // plan передається з лендингу коли юзер натискає на конкретний тариф
   // після реєстрації редіректимо одразу на checkout цього плану
   const planParam = plan && ["starter", "growth", "agency"].includes(plan)
@@ -19,8 +21,9 @@ export async function signUp(formData: FormData) {
     : "";
 
   if (!email || !password) {
+    const missing = !email ? "email" : "пароль";
     const back = plan ? `/register?plan=${plan}&error=` : "/register?error=";
-    redirect(`${back}${encodeURIComponent("Заповніть усі поля")}`);
+    redirect(`${back}${encodeURIComponent(`Поле ${missing} порожнє`)}`);
   }
 
   if (password.length < 8) {
