@@ -10,13 +10,22 @@ export async function signUp(formData: FormData) {
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
   const fullName = formData.get("full_name") as string;
+  const plan = formData.get("plan") as string | null;
+
+  // plan передається з лендингу коли юзер натискає на конкретний тариф
+  // після реєстрації редіректимо одразу на checkout цього плану
+  const planParam = plan && ["starter", "growth", "agency"].includes(plan)
+    ? `?plan=${plan}`
+    : "";
 
   if (!email || !password) {
-    redirect(`/register?error=${encodeURIComponent("Заповніть усі поля")}`);
+    const back = plan ? `/register?plan=${plan}&error=` : "/register?error=";
+    redirect(`${back}${encodeURIComponent("Заповніть усі поля")}`);
   }
 
   if (password.length < 8) {
-    redirect(`/register?error=${encodeURIComponent("Пароль має бути мінімум 8 символів")}`);
+    const back = plan ? `/register?plan=${plan}&error=` : "/register?error=";
+    redirect(`${back}${encodeURIComponent("Пароль має бути мінімум 8 символів")}`);
   }
 
   const { data, error } = await supabase.auth.signUp({
@@ -28,14 +37,16 @@ export async function signUp(formData: FormData) {
   });
 
   if (error) {
+    const back = plan ? `/register?plan=${plan}&error=` : "/register?error=";
     if (error.message.includes("already registered")) {
-      redirect(`/register?error=${encodeURIComponent("Цей email вже зареєстровано")}`);
+      redirect(`${back}${encodeURIComponent("Цей email вже зареєстровано")}`);
     }
-    redirect(`/register?error=${encodeURIComponent(error.message)}`);
+    redirect(`${back}${encodeURIComponent(error.message)}`);
   }
 
   if (!data.user) {
-    redirect(`/register?error=${encodeURIComponent("Щось пішло не так, спробуйте ще раз")}`);
+    const back = plan ? `/register?plan=${plan}&error=` : "/register?error=";
+    redirect(`${back}${encodeURIComponent("Щось пішло не так, спробуйте ще раз")}`);
   }
 
   // Organization + organization_member створюються автоматично тригером
@@ -77,6 +88,11 @@ export async function signUp(formData: FormData) {
       }),
     })
   ).catch(() => {/* email не критичний */});
+
+  // Якщо юзер прийшов з лендингу з конкретним планом — одразу на upgrade
+  if (planParam) {
+    redirect(`/dashboard/upgrade${planParam}`);
+  }
 
   redirect("/dashboard?welcome=1");
 }

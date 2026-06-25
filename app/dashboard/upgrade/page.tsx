@@ -70,7 +70,12 @@ const PLANS = [
   },
 ];
 
-export default async function UpgradePage() {
+export default async function UpgradePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ plan?: string }>;
+}) {
+  const { plan: recommendedPlan } = await searchParams;
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -116,6 +121,19 @@ export default async function UpgradePage() {
       </header>
 
       <main className="mx-auto max-w-5xl px-6 sm:px-8 py-16">
+        {recommendedPlan && (
+          <div className="mb-8 rounded-2xl border px-5 py-4 flex items-center gap-3"
+            style={{ borderColor: "rgba(214,255,63,0.4)", background: "rgba(214,255,63,0.06)" }}>
+            <span style={{ color: "var(--lime)" }}>✓</span>
+            <p className="text-sm">
+              Ви обрали план{" "}
+              <span className="font-medium" style={{ color: "var(--lime)" }}>
+                {recommendedPlan.charAt(0).toUpperCase() + recommendedPlan.slice(1)}
+              </span>
+              {" "}— натисніть кнопку нижче щоб перейти до оплати.
+            </p>
+          </div>
+        )}
         <div className="text-center mb-12">
           <h1 className="font-display text-3xl font-semibold mb-3">Оберіть план</h1>
           <p className="text-[var(--text-secondary)] text-sm max-w-md mx-auto">
@@ -144,9 +162,13 @@ export default async function UpgradePage() {
                     ? "var(--lime)"
                     : isCurrent
                     ? "rgba(140,246,255,0.3)"
+                    : recommendedPlan === plan.code
+                    ? "rgba(214,255,63,0.5)"
                     : "var(--border-hairline)",
                   background: plan.highlight
                     ? "rgba(214,255,63,0.04)"
+                    : recommendedPlan === plan.code
+                    ? "rgba(214,255,63,0.03)"
                     : "var(--bg-raised)",
                 }}
               >

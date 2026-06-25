@@ -9,9 +9,9 @@ export const metadata = {
 export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; plan?: string }>;
 }) {
-  const { error } = await searchParams;
+  const { error, plan } = await searchParams;
 
   return (
     <div
@@ -33,6 +33,16 @@ export default async function RegisterPage({
             Безкоштовно. Без карти.
           </p>
 
+          {plan && (
+            <div className="rounded-xl px-4 py-3 mb-5 text-sm"
+              style={{ background: "rgba(214,255,63,0.08)", border: "1px solid rgba(214,255,63,0.25)" }}>
+              <span style={{ color: "var(--lime)" }} className="font-medium">
+                План {plan.charAt(0).toUpperCase() + plan.slice(1)}
+              </span>
+              {" "}— після реєстрації одразу перейдете до оплати.
+            </div>
+          )}
+
           {error && (
             <div
               className="rounded-xl px-4 py-3 mb-5 text-sm"
@@ -47,6 +57,7 @@ export default async function RegisterPage({
           )}
 
           <form action={signUp} className="space-y-4">
+            {plan && <input type="hidden" name="plan" value={plan} />}
             <div>
               <label className="block text-xs text-[var(--text-tertiary)] mb-1.5 font-mono tracking-wide">
                 ІМ&apos;Я
