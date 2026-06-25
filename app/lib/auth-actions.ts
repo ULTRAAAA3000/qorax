@@ -41,10 +41,20 @@ export async function signUp(formData: FormData) {
 
   if (error) {
     const back = plan ? `/register?plan=${plan}&error=` : "/register?error=";
+    // Детальний лог для діагностики — error.message може бути порожнім
+    // якщо Supabase повертає помилку без тексту (rate limit, SMTP і т.д.)
+    console.error("[signUp] auth error:", {
+      message: error.message,
+      status: error.status,
+      name: error.name,
+      cause: error.cause,
+      full: JSON.stringify(error),
+    });
     if (error.message.includes("already registered")) {
       redirect(`${back}${encodeURIComponent("Цей email вже зареєстровано")}`);
     }
-    redirect(`${back}${encodeURIComponent(error.message)}`);
+    const displayMsg = error.message || `Помилка реєстрації (status: ${error.status ?? "unknown"})`;
+    redirect(`${back}${encodeURIComponent(displayMsg)}`);
   }
 
   if (!data.user) {
