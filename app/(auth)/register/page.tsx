@@ -12,6 +12,7 @@ export default async function RegisterPage({
   searchParams: Promise<{ error?: string; plan?: string }>;
 }) {
   const { error, plan } = await searchParams;
+  const errorMsg = error && typeof error === "string" && error !== "{}" ? error : null;
 
   return (
     <div
@@ -43,7 +44,7 @@ export default async function RegisterPage({
             </div>
           )}
 
-          {error && (
+          {errorMsg && (
             <div
               className="rounded-xl px-4 py-3 mb-5 text-sm"
               style={{
@@ -52,7 +53,7 @@ export default async function RegisterPage({
                 color: "#F5675A",
               }}
             >
-              {error}
+              {errorMsg}
             </div>
           )}
 
