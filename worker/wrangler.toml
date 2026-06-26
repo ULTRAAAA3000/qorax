@@ -21,6 +21,7 @@ enabled = true
 # Публичные (не секретные) переменные окружения
 [vars]
 ENVIRONMENT = "production"
+SUPABASE_URL = "https://hfyetlipxjqogbpntoif.supabase.co"
 
 # Секрети задаються через Cloudflare Dashboard → Worker → Settings → Variables and Secrets:
 # SUPABASE_URL             — https://hfyetlipxjqogbpntoif.supabase.co
