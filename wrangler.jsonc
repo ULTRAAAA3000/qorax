@@ -15,8 +15,8 @@
   "vars": {
     "NEXT_PUBLIC_API_URL": "https://qorax-api.mrcru96.workers.dev",
     "LS_STORE_SUBDOMAIN": "qoraxus",
-    "LS_VARIANT_STARTER": "1833473",
-    "LS_VARIANT_GROWTH": "1833482",
-    "LS_VARIANT_AGENCY": "1833483"
+    "LS_VARIANT_STARTER": "c32e61ce-d00f-43e8-b2f8-6090ff1b3786",
+    "LS_VARIANT_GROWTH": "62e2571c-e20f-478b-b156-6a16aab95176",
+    "LS_VARIANT_AGENCY": "ce90456c-bd81-4f9e-9fc4-f69b75b913c6"
   }
 }
