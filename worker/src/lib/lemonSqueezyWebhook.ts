@@ -134,36 +134,36 @@ async function handleSubscriptionActive(
   }
 
   // Знаходимо план за variant_id
-  const planResult = await selectRows<{ id: string; code: string }>(
+  // Спочатку дістаємо ВСІ плани щоб виключити проблему з RLS або типами
+  const allPlansResult = await selectRows<{ id: string; code: string; ls_variant_id: string | null }>(
     "plans",
-    `select=id,code&ls_variant_id=eq.${encodeURIComponent(lsVariantId)}`,
+    "select=id,code,ls_variant_id",
     supabaseUrl,
     serviceRoleKey
   );
 
-  console.log("[ls-webhook] plan lookup:", {
+  console.log("[ls-webhook] all plans:", {
+    ok: allPlansResult.ok,
+    count: allPlansResult.data.length,
+    plans: allPlansResult.data.map(p => ({ code: p.code, ls_variant_id: p.ls_variant_id })),
+    error: allPlansResult.error,
     lsVariantId,
-    ok: planResult.ok,
-    count: planResult.data.length,
-    data: planResult.data,
-    error: planResult.error,
     supabaseUrlPrefix: supabaseUrl?.slice(0, 40),
   });
 
-  let planId: string | null = planResult.data[0]?.id ?? null;
+  // Знаходимо план в пам'яті (уникаємо проблеми з типами/RLS у PostgREST фільтрі)
+  const matchedPlan = allPlansResult.data.find(
+    p => p.ls_variant_id !== null && String(p.ls_variant_id).trim() === String(lsVariantId).trim()
+  );
+
+  let planId: string | null = matchedPlan?.id ?? null;
+
+  console.log("[ls-webhook] plan match:", { lsVariantId, matchedCode: matchedPlan?.code ?? null, planId });
 
   // Якщо variant_id не знайдений — логуємо але не падаємо
   if (!planId) {
     console.error("[ls-webhook] Plan not found for variant_id:", lsVariantId);
-    // Фолбек: шукаємо стартер якщо нічого не знайдено
-    const starterResult = await selectRows<{ id: string }>(
-      "plans",
-      "select=id&code=eq.starter",
-      supabaseUrl,
-      serviceRoleKey
-    );
-    planId = starterResult.data[0]?.id ?? null;
-    if (!planId) return;
+    return;
   }
 
   const status = mapStatus(attrs.status);
