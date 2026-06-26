@@ -92,6 +92,7 @@ export async function handleLSWebhook(
 
   const eventName = payload.meta?.event_name;
   console.log("[ls-webhook] event:", eventName);
+  console.log("[ls-webhook] meta:", JSON.stringify(payload.meta));
 
   switch (eventName) {
     case "subscription_created":
