@@ -48,10 +48,12 @@ export default async function Home() {
 
   // Формуємо checkout URL з org_id (якщо є) або без (нова реєстрація)
   function checkoutUrl(plan: string): string {
+    // Якщо юзер не залогінений → завжди на реєстрацію
+    if (!user) return `/register?plan=${plan.toLowerCase()}`;
     const base = lsCheckoutUrl(plan);
     if (!base.startsWith("http")) return base;
     const params = new URLSearchParams();
-    if (user?.email) params.set("checkout[email]", user.email);
+    if (user.email) params.set("checkout[email]", user.email);
     if (orgId) params.set("checkout[custom][org_id]", orgId);
     return params.toString() ? `${base}?${params.toString()}` : base;
   }
