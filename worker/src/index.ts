@@ -251,15 +251,8 @@ const worker = {
         return json({ error: "Маршрут не знайдено" }, 404, origin);
   },
 
-  // Cron-розклад заданий мониторингу (див. [triggers] у wrangler.toml):
-};
-
-export default worker;
-
-// ── Cron handler — винесений окремо для сумісності з Cloudflare Workers ──────
-// Cloudflare вимагає що scheduled() був на верхньому рівні експорту,
-// а не всередині об'єкта worker.
-export async function scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  // ── Cron handler ──────────────────────────────────────────────
+  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
   // 0 3 * * * — щодня о 3:00: швидкість + SEO + конкуренти
   if (event.cron === "0 3 * * *") {
     ctx.waitUntil(
@@ -345,7 +338,11 @@ export async function scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionC
       ),
     ])
   );
-}
+  },
+};
+
+export default worker;
+export const scheduled = worker.scheduled.bind(worker);
 
 interface AuditRequestBody {
   url?: string;
