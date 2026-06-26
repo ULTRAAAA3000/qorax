@@ -252,99 +252,100 @@ const worker = {
   },
 
   // Cron-розклад заданий мониторингу (див. [triggers] у wrangler.toml):
-  //   */5 * * * *  — uptime + базовий SSL (часто, легка перевірка)
-  //   0 3 * * *    — швидкість + Core Web Vitals (раз на день, важка)
-  // Розрізняємо за event.cron, бо обидва тригери ведуть на один scheduled().
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-    // 0 3 * * * — ежедневно в 3:00: скорость + CWV + AI инсайты
-    if (event.cron === "0 3 * * *") {
-      ctx.waitUntil(
-        Promise.all([
-          runSpeedChecks(
-            env.SUPABASE_URL,
-            env.SUPABASE_SERVICE_ROLE_KEY,
-            env.GOOGLE_PAGESPEED_API_KEY,
-            env.GEMINI_API_KEY
-          ).then((summary) => console.log("Speed monitoring run:", JSON.stringify(summary))),
-          runSeoChecks(
-            env.SUPABASE_URL,
-            env.SUPABASE_SERVICE_ROLE_KEY
-          ).then((summary) => console.log("SEO checks run:", JSON.stringify(summary))),
-          runCompetitorChecks(
-            env.SUPABASE_URL,
-            env.SUPABASE_SERVICE_ROLE_KEY,
-            env.RESEND_API_KEY,
-            env.TELEGRAM_BOT_TOKEN,
-            env.APP_URL
-          ).then((summary) => console.log("Competitor checks run:", JSON.stringify(summary))),
-        ])
-      );
-      return;
-    }
+};
 
-    // 0 4 1 * * — в первый день каждого месяца в 4:00: генерация PDF отчётов
-    if (event.cron === "0 4 1 * *") {
-      ctx.waitUntil(
-        generateMonthlyReports(env).then((count) =>
-          console.log(`Monthly reports generated: ${count}`)
-        )
-      );
-      return;
-    }
+export default worker;
 
-    // 0 5 * * * — ежедневно в 5:00: перевод истёкших trial → free
-    if (event.cron === "0 5 * * *") {
-      ctx.waitUntil(
-        Promise.all([
-          expireTrials(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
-            .then((count) => console.log(`Trials expired: ${count}`)),
-          sendTrialEmails(
-            env.SUPABASE_URL,
-            env.SUPABASE_SERVICE_ROLE_KEY,
-            env.RESEND_API_KEY,
-            env.APP_URL
-          ).then((r) => console.log(`Trial emails: ${JSON.stringify(r)}`)),
-        ])
-      );
-      return;
-    }
+// ── Cron handler — винесений окремо для сумісності з Cloudflare Workers ──────
+// Cloudflare вимагає що scheduled() був на верхньому рівні експорту,
+// а не всередині об'єкта worker.
+export async function scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  // 0 3 * * * — щодня о 3:00: швидкість + SEO + конкуренти
+  if (event.cron === "0 3 * * *") {
+    ctx.waitUntil(
+      Promise.all([
+        runSpeedChecks(
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY,
+          env.GOOGLE_PAGESPEED_API_KEY,
+          env.GEMINI_API_KEY
+        ).then((summary) => console.log("Speed monitoring run:", JSON.stringify(summary))),
+        runSeoChecks(
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY
+        ).then((summary) => console.log("SEO checks run:", JSON.stringify(summary))),
+        runCompetitorChecks(
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY,
+          env.RESEND_API_KEY,
+          env.TELEGRAM_BOT_TOKEN,
+          env.APP_URL
+        ).then((summary) => console.log("Competitor checks run:", JSON.stringify(summary))),
+      ])
+    );
+    return;
+  }
 
-    // 30 4 * * 0 — щонеділі о 4:30 UTC: перевірка битих посилань
-    if (event.cron === "30 4 * * 0") {
-      ctx.waitUntil(
-        runBrokenLinksChecks(
+  // 0 4 1 * * — першого числа кожного місяця о 4:00: PDF звіти
+  if (event.cron === "0 4 1 * *") {
+    ctx.waitUntil(
+      generateMonthlyReports(env).then((count) =>
+        console.log(`Monthly reports generated: ${count}`)
+      )
+    );
+    return;
+  }
+
+  // 0 5 * * * — щодня о 5:00: expire trials + email нагадування
+  if (event.cron === "0 5 * * *") {
+    ctx.waitUntil(
+      Promise.all([
+        expireTrials(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+          .then((count) => console.log(`Trials expired: ${count}`)),
+        sendTrialEmails(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
           env.RESEND_API_KEY,
           env.APP_URL
-        ).then((s) => console.log("Broken links run:", JSON.stringify(s)))
-      );
-      return;
-    }
-
-    // */5 * * * * — каждые 5 минут: uptime + SSL алерты
-    ctx.waitUntil(
-      Promise.all([
-        runUptimeChecks(
-          env.SUPABASE_URL,
-          env.SUPABASE_SERVICE_ROLE_KEY,
-          env.RESEND_API_KEY,
-          env.APP_URL,
-          env.TELEGRAM_BOT_TOKEN
-        ).then((summary) => console.log("Uptime monitoring run:", JSON.stringify(summary))),
-        checkSslExpiry(
-          env.SUPABASE_URL,
-          env.SUPABASE_SERVICE_ROLE_KEY,
-          env.RESEND_API_KEY,
-          env.APP_URL,
-          env.TELEGRAM_BOT_TOKEN
-        ),
+        ).then((r) => console.log(`Trial emails: ${JSON.stringify(r)}`)),
       ])
     );
-  },
-};
+    return;
+  }
 
-export default worker;
+  // 30 4 * * 0 — щонеділі о 4:30: перевірка битих посилань
+  if (event.cron === "30 4 * * 0") {
+    ctx.waitUntil(
+      runBrokenLinksChecks(
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY,
+        env.RESEND_API_KEY,
+        env.APP_URL
+      ).then((s) => console.log("Broken links run:", JSON.stringify(s)))
+    );
+    return;
+  }
+
+  // */5 * * * * — кожні 5 хвилин: uptime + SSL
+  ctx.waitUntil(
+    Promise.all([
+      runUptimeChecks(
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY,
+        env.RESEND_API_KEY,
+        env.APP_URL,
+        env.TELEGRAM_BOT_TOKEN
+      ).then((summary) => console.log("Uptime monitoring run:", JSON.stringify(summary))),
+      checkSslExpiry(
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY,
+        env.RESEND_API_KEY,
+        env.APP_URL,
+        env.TELEGRAM_BOT_TOKEN
+      ),
+    ])
+  );
+}
 
 interface AuditRequestBody {
   url?: string;
