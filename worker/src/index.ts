@@ -234,7 +234,6 @@ const worker = {
     }
 
     // LemonSqueezy webhook
-    console.log("[route-debug] pathname:", url.pathname, "method:", request.method);
     if (url.pathname === "/api/ls/webhook" && request.method === "POST") {
       return handleLSWebhook(
         request,
