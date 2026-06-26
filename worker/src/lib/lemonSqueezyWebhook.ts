@@ -141,6 +141,15 @@ async function handleSubscriptionActive(
     serviceRoleKey
   );
 
+  console.log("[ls-webhook] plan lookup:", {
+    lsVariantId,
+    ok: planResult.ok,
+    count: planResult.data.length,
+    data: planResult.data,
+    error: planResult.error,
+    supabaseUrlPrefix: supabaseUrl?.slice(0, 40),
+  });
+
   let planId: string | null = planResult.data[0]?.id ?? null;
 
   // Якщо variant_id не знайдений — логуємо але не падаємо
