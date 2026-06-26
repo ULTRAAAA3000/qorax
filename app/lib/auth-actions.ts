@@ -111,9 +111,11 @@ export async function signUp(formData: FormData) {
     console.error("[signUp] buildWelcomeEmail threw:", e);
   }
 
-  // Якщо юзер прийшов з лендингу з конкретним планом — одразу на upgrade
+  // Якщо юзер прийшов з лендингу з конкретним планом —
+  // показуємо welcome + підказку про план, але не форсуємо редірект на upgrade.
+  // Юзер сам натисне кнопку в дашборді.
   if (planParam) {
-    redirect(`/dashboard/upgrade${planParam}`);
+    redirect(`/dashboard?welcome=1${planParam}`);
   }
 
   redirect("/dashboard?welcome=1");
