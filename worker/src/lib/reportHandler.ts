@@ -53,9 +53,9 @@ export async function handleReportRequest(
 
   const [siteResult, uptimeResult, incidentsResult, speedResult, cwvResult, sslResult, insightsResult] =
     await Promise.all([
-      selectRows<{ display_name: string; url: string }>(
+      selectRows<{ display_name: string; url: string; organization_id: string }>(
         "sites",
-        `select=display_name,url&id=eq.${siteId}`,
+        `select=display_name,url,organization_id&id=eq.${siteId}`,
         env.SUPABASE_URL,
         env.SUPABASE_SERVICE_ROLE_KEY
       ),
@@ -171,6 +171,20 @@ export async function handleReportRequest(
     })),
     totalEstimatedLossUsd: Math.round(totalEstimatedLoss),
   };
+
+  // White-label: якщо org_type = agency → замінюємо брендинг
+  const orgResult = await selectRows<{ org_type: string; name: string }>(
+    "organizations",
+    `select=org_type,name&id=eq.${encodeURIComponent(site.organization_id ?? "")}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const org = orgResult.data?.[0];
+  if (org?.org_type === "agency") {
+    reportData.whiteLabel = {
+      agencyName: org.name,
+    };
+  }
 
   const html = generateReportHtml(reportData);
 

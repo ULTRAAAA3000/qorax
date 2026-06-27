@@ -46,6 +46,12 @@ export interface ReportData {
 
   // Totals
   totalEstimatedLossUsd: number;
+
+  // White-label (Agency plan) — якщо задано, замінює брендинг Qorax
+  whiteLabel?: {
+    agencyName: string;   // Назва агентства
+    agencyUrl?: string;   // Сайт агентства (опційно)
+  };
 }
 
 function scoreColor(score: number | null): string {
@@ -85,7 +91,7 @@ export function generateReportHtml(data: ReportData): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Qorax — ${data.siteName} — ${data.periodLabel}</title>
+<title>${data.whiteLabel ? data.whiteLabel.agencyName : "Qorax"} — ${data.siteName} — ${data.periodLabel}</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
 
@@ -234,7 +240,10 @@ export function generateReportHtml(data: ReportData): string {
   <button class="print-btn" onclick="window.print()">📄 Зберегти як PDF</button>
 
   <div class="report-header">
-    <div class="logo">Qor<span>ax</span></div>
+    <div class="logo">${data.whiteLabel
+      ? `<span style="color:#f5f5f7">${data.whiteLabel.agencyName}</span>`
+      : 'Qor<span>ax</span>'
+    }</div>
     <div class="report-meta">
       <div class="period">${data.periodLabel}</div>
       <div class="generated">Згенеровано ${data.generatedAt}</div>
@@ -305,7 +314,10 @@ export function generateReportHtml(data: ReportData): string {
   </div>
 
   <div class="report-footer">
-    <div class="footer-brand">Моніторинг від <strong>Qorax</strong> · qorax.app</div>
+    <div class="footer-brand">${data.whiteLabel
+      ? `Моніторинг від <strong>${data.whiteLabel.agencyName}</strong>${data.whiteLabel.agencyUrl ? ' · ' + data.whiteLabel.agencyUrl : ''}`
+      : 'Моніторинг від <strong>Qorax</strong> · qorax.app'
+    }</div>
     <div style="font-size:12px;color:#6e6e73;">${data.periodLabel}</div>
   </div>
 </div>

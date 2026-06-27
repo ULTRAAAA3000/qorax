@@ -187,8 +187,22 @@ async function handleSubscriptionActive(
     serviceRoleKey
   );
 
-  console.log("[ls-webhook] subscription upserted:", { orgId, status, lsSubscriptionId });
+  // Sync org_type + site_limit based on plan
+  const planCode = matchedPlan?.code ?? "";
+  const orgType = planCode === "agency" ? "agency" : "client";
+  const siteLimit = planCode === "agency" ? 5 : 1;
+
+  await updateRows(
+    "organizations",
+    `id=eq.${encodeURIComponent(orgId)}`,
+    { org_type: orgType, site_limit: siteLimit },
+    supabaseUrl,
+    serviceRoleKey
+  );
+
+  console.log("[ls-webhook] subscription upserted:", { orgId, status, lsSubscriptionId, orgType, siteLimit });
 }
+
 
 // ─── Subscription cancelled / expired ────────────────────────
 

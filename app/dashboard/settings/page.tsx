@@ -19,7 +19,7 @@ export default async function SettingsPage() {
     .single();
 
   const { data: org } = membership
-    ? await supabase.from("organizations").select("id, name, org_type, site_limit").eq("id", membership.organization_id).single()
+    ? await supabase.from("organizations").select("id, name, org_type, site_limit, url").eq("id", membership.organization_id).single()
     : { data: null };
 
   const { data: subscription } = membership
@@ -119,6 +119,38 @@ export default async function SettingsPage() {
             </div>
           </div>
         </div>
+
+        {/* Agency white-label info */}
+        {org?.org_type === "agency" && (
+          <div className="rounded-2xl p-5"
+            style={{ background: "rgba(140,246,255,0.02)", border: "1px solid rgba(140,246,255,0.1)" }}>
+            <div className="flex items-center gap-2.5 mb-4">
+              <span className="text-xs font-mono" style={{ color: "var(--cyan)" }}>✦</span>
+              <h2 className="text-sm font-semibold">White-label (Agency)</h2>
+            </div>
+            <div className="space-y-0 divide-y" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+              <div className="flex items-center justify-between py-3 first:pt-0">
+                <span className="text-sm text-[var(--text-tertiary)]">Назва агентства</span>
+                <span className="text-sm font-medium">{org.name}</span>
+              </div>
+              <div className="flex items-center justify-between py-3">
+                <span className="text-sm text-[var(--text-tertiary)]">Сайт у футері звітів</span>
+                <span className="text-sm font-mono text-[var(--text-secondary)]">
+                  {org.url ?? <span className="italic text-[var(--text-tertiary)]">не вказано</span>}
+                </span>
+              </div>
+              <div className="py-3 last:pb-0">
+                <p className="text-xs text-[var(--text-tertiary)] leading-relaxed">
+                  PDF звіти клієнтів виходять з назвою <span className="text-[var(--text-primary)]">{org.name}</span> замість Qorax.
+                  Щоб змінити назву або додати URL — напишіть на{" "}
+                  <a href="mailto:support@qorax.app" className="hover:opacity-80 transition-opacity" style={{ color: "var(--cyan)" }}>
+                    support@qorax.app
+                  </a>.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Notifications */}
         <NotificationSettingsForm
