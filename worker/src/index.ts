@@ -25,23 +25,28 @@ import {
   handleStripeWebhookRequest,
 } from "./lib/stripeHandler";
 
-// Список доменов, с которых разрешены запросы к API.
-// Фронтенд живёт на Cloudflare Workers Builds (не Pages — см. миграцию
-// с *.pages.dev), поэтому именно *.workers.dev должен быть в whitelist.
-const ALLOWED_ORIGINS = [
-  "http://localhost:3000",
-  "https://qorax.mrcru96.workers.dev",
-  "https://qorax.pages.dev",
-  "https://www.qorax.app",
-  "https://qorax.app",
-];
+// CORS — дозволяємо всі наші домени через wildcard matching
+function getAllowedOrigin(origin: string | null): string {
+  if (!origin) return "https://qorax.mrcru96.workers.dev";
+  if (
+    origin === "http://localhost:3000" ||
+    origin === "http://localhost:3001" ||
+    origin.endsWith(".workers.dev") ||
+    origin.endsWith(".pages.dev") ||
+    origin === "https://qorax.app" ||
+    origin === "https://www.qorax.app"
+  ) {
+    return origin;
+  }
+  return "https://qorax.mrcru96.workers.dev";
+}
 
 function corsHeaders(origin: string | null): Record<string, string> {
-  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
   return {
-    "Access-Control-Allow-Origin": allowed,
+    "Access-Control-Allow-Origin": getAllowedOrigin(origin),
     "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type, Authorization, x-admin-token",
+    "Access-Control-Max-Age": "86400",
   };
 }
 
