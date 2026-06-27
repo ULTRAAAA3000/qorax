@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { Activity, Clock } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/client";
 
@@ -98,7 +98,6 @@ export function LiveUptimePanel({
           </div>
         </div>
 
-        {/* Line chart */}
         <UptimeLineChart points={points} isUp={isUp} />
 
         <p className="text-xs text-[var(--text-tertiary)] mt-2.5">
@@ -154,9 +153,23 @@ export function LiveUptimePanel({
 
 // ── Line chart component ──────────────────────────────────────
 function UptimeLineChart({ points, isUp }: { points: UptimeCheck[]; isUp: boolean }) {
-  const W = 480;
-  const H = 72;
-  const PAD = { top: 6, bottom: 6, left: 0, right: 0 };
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [tooltip, setTooltip] = useState<{
+    x: number; y: number; ms: number | null; time: string; up: boolean;
+  } | null>(null);
+  const [svgWidth, setSvgWidth] = useState(480);
+
+  useEffect(() => {
+    if (!svgRef.current) return;
+    const obs = new ResizeObserver(entries => {
+      setSvgWidth(entries[0].contentRect.width);
+    });
+    obs.observe(svgRef.current);
+    return () => obs.disconnect();
+  }, []);
+
+  const H = 96;
+  const PAD = { top: 10, bottom: 10, left: 4, right: 4 };
 
   if (points.length < 2) {
     return (
@@ -171,40 +184,45 @@ function UptimeLineChart({ points, isUp }: { points: UptimeCheck[]; isUp: boolea
     );
   }
 
-  // Normalize response times for Y axis
+  const W = svgWidth;
   const upPoints = points.filter(p => p.status === "up" && p.response_time_ms != null);
   const maxMs = upPoints.length > 0
-    ? Math.max(...upPoints.map(p => p.response_time_ms!), 500)
-    : 500;
+    ? Math.max(...upPoints.map(p => p.response_time_ms!), 200)
+    : 200;
+  const minMs = upPoints.length > 0
+    ? Math.min(...upPoints.map(p => p.response_time_ms!))
+    : 0;
+  const range = Math.max(maxMs - minMs, 100);
 
   const chartH = H - PAD.top - PAD.bottom;
   const chartW = W - PAD.left - PAD.right;
 
   const coords = points.map((p, i) => {
     const x = PAD.left + (i / (points.length - 1)) * chartW;
-    const ms = p.response_time_ms ?? maxMs;
-    const y = p.status === "up"
-      ? PAD.top + chartH - (ms / maxMs) * chartH * 0.85 - chartH * 0.1
-      : PAD.top + chartH - 2;
+    let y: number;
+    if (p.status !== "up" || p.response_time_ms == null) {
+      y = PAD.top + chartH - 2;
+    } else {
+      const norm = (p.response_time_ms - minMs) / range;
+      y = PAD.top + chartH * 0.9 - norm * chartH * 0.8;
+    }
     return { x, y, up: p.status === "up", ms: p.response_time_ms, time: p.checked_at };
   });
 
-  // Build smooth path using cubic bezier
+  // Smooth bezier path
   const linePath = coords.reduce((acc, pt, i) => {
-    if (i === 0) return `M ${pt.x} ${pt.y}`;
+    if (i === 0) return `M ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`;
     const prev = coords[i - 1];
     const cpx = (prev.x + pt.x) / 2;
-    return `${acc} C ${cpx} ${prev.y} ${cpx} ${pt.y} ${pt.x} ${pt.y}`;
+    return `${acc} C ${cpx.toFixed(1)} ${prev.y.toFixed(1)} ${cpx.toFixed(1)} ${pt.y.toFixed(1)} ${pt.x.toFixed(1)} ${pt.y.toFixed(1)}`;
   }, "");
 
-  // Area fill path
   const areaPath = `${linePath} L ${coords[coords.length - 1].x} ${H} L ${coords[0].x} ${H} Z`;
 
   const color = isUp ? "#D6FF3F" : "#F5675A";
-  const gradId = `uptime-grad-${isUp ? "up" : "down"}`;
-  const glowId = `uptime-glow`;
+  const colorRgb = isUp ? "214,255,63" : "245,103,90";
 
-  // Offline segments as red overlays
+  // Offline zones
   const offlineRanges: { x1: number; x2: number }[] = [];
   let rangeStart: number | null = null;
   coords.forEach((pt, i) => {
@@ -216,86 +234,168 @@ function UptimeLineChart({ points, isUp }: { points: UptimeCheck[]; isUp: boolea
   });
   if (rangeStart !== null) offlineRanges.push({ x1: rangeStart, x2: coords[coords.length - 1].x });
 
+  const lastPt = coords[coords.length - 1];
+
+  const handleMouseMove = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = svgRef.current!.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    // Find nearest point
+    let best = 0;
+    let bestDist = Infinity;
+    coords.forEach((pt, i) => {
+      const d = Math.abs(pt.x - (mx / rect.width) * W);
+      if (d < bestDist) { bestDist = d; best = i; }
+    });
+    const pt = coords[best];
+    setTooltip({ x: pt.x, y: pt.y, ms: pt.ms, time: pt.time, up: pt.up });
+  };
+
   return (
-    <div style={{ position: "relative" }}>
+    <div style={{ position: "relative", userSelect: "none" }}>
       <svg
+        ref={svgRef}
         viewBox={`0 0 ${W} ${H}`}
-        style={{ width: "100%", height: H, display: "block", overflow: "visible" }}
-        preserveAspectRatio="none"
+        width="100%"
+        height={H}
+        style={{ display: "block", overflow: "visible" }}
+        onMouseMove={handleMouseMove}
+        onMouseLeave={() => setTooltip(null)}
       >
         <defs>
-          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+          <linearGradient id="ug-area" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.22" />
+            <stop offset="70%" stopColor={color} stopOpacity="0.04" />
             <stop offset="100%" stopColor={color} stopOpacity="0" />
           </linearGradient>
-          <filter id={glowId} x="-20%" y="-50%" width="140%" height="200%">
-            <feGaussianBlur stdDeviation="2.5" result="blur" />
+          <filter id="ug-glow" x="-20%" y="-100%" width="140%" height="300%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
+          <filter id="ug-dot-glow" x="-200%" y="-200%" width="500%" height="500%">
+            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+          <clipPath id="ug-clip">
+            <rect x={PAD.left} y={PAD.top} width={chartW} height={chartH} />
+          </clipPath>
         </defs>
+
+        {/* Subtle grid */}
+        {[0.2, 0.5, 0.8].map(f => (
+          <line
+            key={f}
+            x1={PAD.left} y1={PAD.top + chartH * f}
+            x2={W - PAD.right} y2={PAD.top + chartH * f}
+            stroke={`rgba(${colorRgb},0.06)`}
+            strokeWidth="1"
+            strokeDasharray="3 6"
+          />
+        ))}
 
         {/* Offline zones */}
         {offlineRanges.map((r, i) => (
           <rect
             key={i}
-            x={r.x1} y={0}
-            width={Math.max(r.x2 - r.x1, 4)} height={H}
-            fill="rgba(245,103,90,0.08)"
-            rx="2"
-          />
-        ))}
-
-        {/* Grid lines */}
-        {[0.25, 0.5, 0.75].map(y => (
-          <line
-            key={y}
-            x1={0} y1={PAD.top + chartH * (1 - y)}
-            x2={W} y2={PAD.top + chartH * (1 - y)}
-            stroke="rgba(255,255,255,0.05)"
-            strokeWidth="1"
+            x={r.x1} y={PAD.top}
+            width={Math.max(r.x2 - r.x1, 3)} height={chartH}
+            fill="rgba(245,103,90,0.07)"
           />
         ))}
 
         {/* Area fill */}
-        <path d={areaPath} fill={`url(#${gradId})`} />
+        <path d={areaPath} fill="url(#ug-area)" clipPath="url(#ug-clip)" />
+
+        {/* Glow line (thicker, blurred) */}
+        <path
+          d={linePath}
+          fill="none"
+          stroke={color}
+          strokeWidth="4"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          opacity="0.15"
+          clipPath="url(#ug-clip)"
+        />
 
         {/* Main line */}
         <path
           d={linePath}
           fill="none"
           stroke={color}
-          strokeWidth="1.5"
+          strokeWidth="1.75"
           strokeLinecap="round"
           strokeLinejoin="round"
-          filter={`url(#${glowId})`}
-          style={{ opacity: 0.9 }}
+          filter="url(#ug-glow)"
+          clipPath="url(#ug-clip)"
         />
 
-        {/* Latest point dot */}
-        {coords.length > 0 && (
+        {/* Tooltip crosshair */}
+        {tooltip && (
           <>
-            <circle
-              cx={coords[coords.length - 1].x}
-              cy={coords[coords.length - 1].y}
-              r="3"
-              fill={color}
-              filter={`url(#${glowId})`}
+            <line
+              x1={tooltip.x} y1={PAD.top}
+              x2={tooltip.x} y2={H - PAD.bottom}
+              stroke={`rgba(${colorRgb},0.3)`}
+              strokeWidth="1"
+              strokeDasharray="3 4"
             />
             <circle
-              cx={coords[coords.length - 1].x}
-              cy={coords[coords.length - 1].y}
-              r="6"
-              fill="none"
-              stroke={color}
-              strokeWidth="1"
-              opacity="0.3"
+              cx={tooltip.x} cy={tooltip.y} r="3.5"
+              fill={tooltip.up ? color : "#F5675A"}
+              filter="url(#ug-dot-glow)"
             />
           </>
         )}
+
+        {/* Live dot at end */}
+        {!tooltip && (
+          <>
+            <circle cx={lastPt.x} cy={lastPt.y} r="8"
+              fill={`rgba(${colorRgb},0.12)`} />
+            <circle cx={lastPt.x} cy={lastPt.y} r="4"
+              fill={`rgba(${colorRgb},0.25)`} />
+            <circle cx={lastPt.x} cy={lastPt.y} r="2.5"
+              fill={color}
+              filter="url(#ug-dot-glow)" />
+          </>
+        )}
       </svg>
+
+      {/* Tooltip box */}
+      {tooltip && (
+        <div
+          style={{
+            position: "absolute",
+            top: Math.max(0, tooltip.y - 52),
+            left: Math.min(tooltip.x + 10, svgWidth - 110),
+            background: "rgba(15,15,20,0.92)",
+            border: `1px solid rgba(${colorRgb},0.25)`,
+            borderRadius: 8,
+            padding: "6px 10px",
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+            backdropFilter: "blur(8px)",
+          }}
+        >
+          <div style={{ fontSize: 11, color: tooltip.up ? color : "#F5675A", fontWeight: 600 }}>
+            {tooltip.up ? "● Онлайн" : "● Офлайн"}
+            {tooltip.ms != null && (
+              <span style={{ color: "var(--text-secondary)", fontWeight: 400, marginLeft: 6 }}>
+                {tooltip.ms} мс
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: 10, color: "var(--text-tertiary)", marginTop: 2 }}>
+            {fmtTime(tooltip.time)}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
