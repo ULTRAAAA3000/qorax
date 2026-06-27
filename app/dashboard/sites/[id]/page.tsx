@@ -10,6 +10,7 @@ import {
 import { ReportButton } from "./ReportButton";
 import { LiveUptimePanel } from "./LiveUptimePanel";
 import { QoraxusChat } from "./QoraxusChat";
+import { GscPanel } from "./GscPanel";
 
 export const metadata = { title: "Моніторинг сайту — Qorax" };
 
@@ -54,6 +55,30 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     .single();
 
   if (!site) notFound();
+
+  // Check org + plan for GSC gate
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .single();
+
+  const orgId = membership?.organization_id ?? "";
+
+  const { data: subData } = orgId
+    ? await supabase
+        .from("subscriptions")
+        .select("status, plans(code)")
+        .eq("organization_id", orgId)
+        .in("status", ["active", "trialing"])
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null };
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const planCode = (subData?.plans as any)?.code as string | undefined;
+  const canUseGsc = ["growth", "agency", "admin", "trial"].includes(planCode ?? "");
 
   let hostname = site.url;
   try { hostname = new URL(site.url).hostname; } catch { /* keep raw */ }
@@ -297,6 +322,36 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             </div>
           ) : (
             <EmptySlot text="SEO аудит запускається щодня о 3:00" />
+          )}
+        </Section>
+
+        {/* ── Google Search Console ── */}
+        <Section
+          icon={<Search size={14} style={{ color: "var(--cyan)" }} />}
+          title="Google Search Console"
+          accent="cyan"
+        >
+          {canUseGsc ? (
+            <GscPanel
+              siteId={site.id}
+              accessToken={accessToken}
+              workerUrl={process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev"}
+            />
+          ) : (
+            <div className="rounded-xl px-4 py-4 flex items-center justify-between gap-4"
+              style={{ background: "rgba(140,246,255,0.03)", border: "1px solid rgba(140,246,255,0.1)" }}>
+              <div>
+                <p className="text-sm font-medium mb-1">Доступно на Growth і Agency</p>
+                <p className="text-xs text-[var(--text-tertiary)]">
+                  Кліки, покази, CTR та позиції у Google — прямо з офіційного API.
+                </p>
+              </div>
+              <a href="/dashboard/upgrade"
+                className="shrink-0 text-sm font-semibold px-4 py-2 rounded-xl transition-opacity hover:opacity-80"
+                style={{ background: "var(--lime)", color: "#0a0a0a" }}>
+                Upgrade →
+              </a>
+            </div>
           )}
         </Section>
 

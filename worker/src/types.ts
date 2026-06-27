@@ -33,4 +33,8 @@ export interface Env {
   // Окремий Gemini ключ для інтерактивного чату (Growth-фіча).
   // Якщо не заданий — fallback на GEMINI_API_KEY.
   GEMINI_CHAT_API_KEY?: string;
+  // Google OAuth для GSC інтеграції
+  GOOGLE_CLIENT_ID: string;
+  GOOGLE_CLIENT_SECRET: string;
+  GOOGLE_TOKEN_ENCRYPTION_KEY: string; // 32 hex chars (16 bytes)
 }

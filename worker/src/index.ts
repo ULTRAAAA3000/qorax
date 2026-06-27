@@ -16,6 +16,14 @@ import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
 import { handleChatRequest } from "./lib/chatHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
+import {
+  handleGscAuth,
+  handleGscCallback,
+  handleGscStatus,
+  handleGscDisconnect,
+  handleGscSyncRequest,
+  runGscSync,
+} from "./lib/gscHandler";
 import { runSeoChecks } from "./lib/seoChecker";
 import { runCompetitorChecks } from "./lib/competitorChecker";
 import { runBrokenLinksChecks } from "./lib/brokenLinksChecker";
@@ -252,6 +260,24 @@ const worker = {
     }
 
     // AI-асистент Qoraxus (Growth+)
+
+    // ── GSC routes ─────────────────────────────────────────────────
+    if (url.pathname === "/api/gsc/auth" && request.method === "GET") {
+      return handleGscAuth(request, env);
+    }
+    if (url.pathname === "/api/gsc/callback" && request.method === "GET") {
+      return handleGscCallback(request, env);
+    }
+    if (url.pathname === "/api/gsc/status" && request.method === "GET") {
+      return handleGscStatus(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/gsc/disconnect" && request.method === "POST") {
+      return handleGscDisconnect(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/gsc/sync" && request.method === "POST") {
+      return handleGscSyncRequest(request, env, corsHeaders(origin));
+    }
+
     if (url.pathname === "/api/chat" && request.method === "POST") {
       return handleChatRequest(request, env, origin, corsHeaders(origin));
     }
@@ -282,6 +308,7 @@ const worker = {
           env.TELEGRAM_BOT_TOKEN,
           env.APP_URL
         ).then((summary) => console.log("Competitor checks run:", JSON.stringify(summary))),
+        runGscSync(env).then(() => console.log("GSC sync run")),
       ])
     );
     return;
