@@ -31,6 +31,9 @@ import {
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "https://qorax.mrcru96.workers.dev",
+  "https://qorax.pages.dev",
+  "https://www.qorax.app",
+  "https://qorax.app",
 ];
 
 function corsHeaders(origin: string | null): Record<string, string> {
