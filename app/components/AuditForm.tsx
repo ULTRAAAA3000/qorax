@@ -45,8 +45,7 @@ export function AuditForm() {
       if (
         response.ok &&
         !isAuditError(data) &&
-        data.performanceScoreMobile === null &&
-        data.performanceScoreDesktop === null
+        (data.performanceScoreMobile === null || data.performanceScoreDesktop === null)
       ) {
         await new Promise(r => setTimeout(r, 2000));
         ({ response, data } = await fetchAudit());

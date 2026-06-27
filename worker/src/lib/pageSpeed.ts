@@ -76,7 +76,7 @@ async function runSinglePageSpeedCheckWithRetry(
     const result = await runSinglePageSpeedCheck(url, apiKey, strategy);
 
     if (result.available) {
-      // Успех — возвращаем сразу
+      console.log(`PageSpeed ${strategy} success on attempt ${attempt + 1}`);
       return result;
     }
 
