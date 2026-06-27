@@ -29,13 +29,28 @@ export function AuditForm() {
     setResult(null);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/api/audit`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
+      const fetchAudit = async () => {
+        const response = await fetch(`${API_BASE_URL}/api/audit`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ url }),
+        });
+        return { response, data: (await response.json()) as AuditResult };
+      };
 
-      const data = (await response.json()) as AuditResult;
+      let { response, data } = await fetchAudit();
+
+      // Якщо PageSpeed не відповів (null scores) — автоматично ретраємо один раз
+      // Google PageSpeed API часто холодно стартує і падає на першому запиті
+      if (
+        response.ok &&
+        !isAuditError(data) &&
+        data.performanceScoreMobile === null &&
+        data.performanceScoreDesktop === null
+      ) {
+        await new Promise(r => setTimeout(r, 2000));
+        ({ response, data } = await fetchAudit());
+      }
 
       if (!response.ok || isAuditError(data)) {
         setErrorMessage(isAuditError(data) ? data.error : "Щось пішло не так. Спробуйте ще раз.");

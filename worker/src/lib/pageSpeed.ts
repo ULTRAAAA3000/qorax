@@ -32,9 +32,9 @@ export interface PageSpeedDualResult {
 
 const PAGESPEED_ENDPOINT =
   "https://www.googleapis.com/pagespeedonline/v5/runPagespeed";
-const PAGESPEED_TIMEOUT_MS = 30_000; // Lighthouse-сканирование не быстрое
-const RETRY_DELAYS_MS = [2_000, 4_000]; // задержки между попытками
-const MAX_ATTEMPTS = RETRY_DELAYS_MS.length + 1; // 3 попытки всего
+const PAGESPEED_TIMEOUT_MS = 25_000; // Lighthouse не швидкий, але треба вкластись в Worker limit
+const RETRY_DELAYS_MS = [1_500, 3_000]; // швидші повторні спроби
+const MAX_ATTEMPTS = RETRY_DELAYS_MS.length + 1; // 3 спроби всього
 
 /**
  * Запускає mobile і desktop перевірки паралельно (Promise.all) — це два
