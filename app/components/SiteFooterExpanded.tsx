@@ -8,19 +8,35 @@ import { QoraxLogo } from "./QoraxLogo";
 const COLUMNS = [
   {
     title: "Продукт",
-    links: ["Моніторинг", "AI-аналіз", "Тарифи", "Безкоштовний аудит"],
+    links: [
+      { label: "Можливості", href: "/features" },
+      { label: "Тарифи", href: "/#plans" },
+      { label: "Документація", href: "/docs" },
+      { label: "Безкоштовний аудит", href: "/#audit" },
+    ],
   },
   {
     title: "Для кого",
-    links: ["Малий бізнес", "Агентства", "E-commerce", "Фрілансери"],
+    links: [
+      { label: "Малий бізнес", href: "/features" },
+      { label: "Агентства", href: "/features" },
+      { label: "E-commerce", href: "/features" },
+      { label: "Фрілансери", href: "/features" },
+    ],
   },
   {
     title: "Компанія",
-    links: ["Про нас", "Блог", "Контакти"],
+    links: [
+      { label: "Про нас", href: "/about" },
+      { label: "Контакти", href: "/about#contact" },
+    ],
   },
   {
     title: "Правове",
-    links: ["Умови використання", "Політика конфіденційності"],
+    links: [
+      { label: "Умови використання", href: "#" },
+      { label: "Політика конфіденційності", href: "#" },
+    ],
   },
 ];
 
@@ -65,10 +81,13 @@ export function SiteFooterExpanded() {
               </h4>
               <ul className="space-y-2.5">
                 {col.links.map((link) => (
-                  <li key={link}>
-                    <span className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors cursor-pointer">
-                      {link}
-                    </span>
+                  <li key={link.label}>
+                    <a
+                      href={link.href}
+                      className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
+                    >
+                      {link.label}
+                    </a>
                   </li>
                 ))}
               </ul>

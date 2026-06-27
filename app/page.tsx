@@ -1,5 +1,4 @@
 import { Reveal } from "./components/Reveal";
-import { QoraxLogo } from "./components/QoraxLogo";
 import { AuditForm } from "./components/AuditForm";
 import { LiveMonitorPanel } from "./components/LiveMonitorPanel";
 import { AiInsightPreview } from "./components/AiInsightPreview";
@@ -11,6 +10,7 @@ import { FeatureBento } from "./components/FeatureBento";
 import { HowItWorksSection } from "./components/HowItWorksSection";
 import { FaqSection } from "./components/FaqSection";
 import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
+import { MarketingHeader } from "./components/MarketingHeader";
 import { createClient } from "./lib/supabase/server";
 
 // LemonSqueezy checkout URLs
@@ -64,7 +64,7 @@ export default async function Home() {
 
   return (
     <main className="flex flex-col">
-      <SiteHeader isLoggedIn={!!user} />
+      <MarketingHeader isLoggedIn={!!user} />
       <Hero />
       <StatsStrip />
 
@@ -105,65 +105,6 @@ export default async function Home() {
       <FinalCta />
       <SiteFooterExpanded />
     </main>
-  );
-}
-
-// ============================================================
-// Header — glassmorphism navbar with full navigation
-// ============================================================
-
-function SiteHeader({ isLoggedIn }: { isLoggedIn: boolean }) {
-  return (
-    <header
-      className="sticky top-0 z-50"
-      style={{
-        background: "rgba(10, 10, 10, 0.7)",
-        backdropFilter: "blur(20px) saturate(180%)",
-        WebkitBackdropFilter: "blur(20px) saturate(180%)",
-        borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
-      }}
-    >
-      <div className="mx-auto max-w-6xl px-6 sm:px-8 h-16 flex items-center justify-between">
-        <QoraxLogo size="sm" />
-        <nav className="hidden md:flex items-center gap-7 text-sm text-[var(--text-secondary)]">
-          <a href="#features" className="hover:text-[var(--text-primary)] transition-colors">
-            Можливості
-          </a>
-          <a href="#how-it-works" className="hover:text-[var(--text-primary)] transition-colors">
-            Як працює
-          </a>
-          <a href="#plans" className="hover:text-[var(--text-primary)] transition-colors">
-            Тарифи
-          </a>
-          <a href="#faq" className="hover:text-[var(--text-primary)] transition-colors">
-            FAQ
-          </a>
-        </nav>
-        <div className="flex items-center gap-3">
-          {isLoggedIn ? (
-            <a
-              href="/dashboard"
-              className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-3 py-2"
-            >
-              До дашборду
-            </a>
-          ) : (
-            <a
-              href="/login"
-              className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-3 py-2"
-            >
-              Увійти
-            </a>
-          )}
-          <a
-            href="#audit"
-            className="glow-button text-sm !py-2 !px-4"
-          >
-            Безкоштовний аудит
-          </a>
-        </div>
-      </div>
-    </header>
   );
 }
 
