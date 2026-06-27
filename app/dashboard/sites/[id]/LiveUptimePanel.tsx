@@ -19,7 +19,7 @@ interface LiveUptimePanelProps {
 }
 
 const REFRESH_MS = 30_000;
-const BARS = 48;
+const POINTS = 48;
 
 export function LiveUptimePanel({
   siteId,
@@ -34,7 +34,6 @@ export function LiveUptimePanel({
   const refresh = useCallback(async () => {
     setTicking(true);
     try {
-      // Використовуємо Supabase client з сесією — обходить RLS через авторизований токен
       const supabase = createClient();
       const { data, error } = await supabase
         .from("uptime_checks")
@@ -43,7 +42,7 @@ export function LiveUptimePanel({
         .order("checked_at", { ascending: false })
         .limit(288);
 
-      if (error || !data) return; // тримаємо старі дані при помилці
+      if (error || !data) return;
       setChecks(data);
       setIsUp(data[0]?.status === "up");
       setLastRefreshed(new Date());
@@ -59,7 +58,7 @@ export function LiveUptimePanel({
 
   const uptimePct = calcPct(checks);
   const latestMs = checks[0]?.response_time_ms ?? null;
-  const bars = checks.slice(0, BARS).reverse();
+  const points = checks.slice(0, POINTS).reverse();
 
   return (
     <div className="grid sm:grid-cols-2 gap-4">
@@ -74,7 +73,6 @@ export function LiveUptimePanel({
             Uptime (останні 4г)
           </span>
           <div className="flex items-center gap-2.5">
-            {/* live dot */}
             <span
               className="h-1.5 w-1.5 rounded-full"
               style={{
@@ -100,30 +98,9 @@ export function LiveUptimePanel({
           </div>
         </div>
 
-        {/* Bars */}
-        <div className="flex items-end gap-px h-9">
-          {bars.length === 0
-            ? Array.from({ length: BARS }).map((_, i) => (
-                <div
-                  key={i}
-                  className="flex-1 rounded-[2px]"
-                  style={{ height: "30%", background: "var(--bg)", opacity: 0.4 }}
-                />
-              ))
-            : bars.map((c, i) => (
-                <div
-                  key={i}
-                  title={`${fmtTime(c.checked_at)} · ${c.status === "up" ? `${c.response_time_ms}мс` : "Офлайн"}`}
-                  className="flex-1 rounded-[2px] transition-colors"
-                  style={{
-                    height: c.status === "up" ? `${barH(c.response_time_ms)}%` : "100%",
-                    minHeight: "18%",
-                    background: c.status === "up" ? "var(--lime)" : "#F5675A",
-                    opacity: c.status === "up" ? 0.8 : 1,
-                  }}
-                />
-              ))}
-        </div>
+        {/* Line chart */}
+        <UptimeLineChart points={points} isUp={isUp} />
+
         <p className="text-xs text-[var(--text-tertiary)] mt-2.5">
           Кожен блок = 5 хв · {checks.length} перевірок · авто-оновлення 30с
         </p>
@@ -175,17 +152,159 @@ export function LiveUptimePanel({
   );
 }
 
+// ── Line chart component ──────────────────────────────────────
+function UptimeLineChart({ points, isUp }: { points: UptimeCheck[]; isUp: boolean }) {
+  const W = 480;
+  const H = 72;
+  const PAD = { top: 6, bottom: 6, left: 0, right: 0 };
+
+  if (points.length < 2) {
+    return (
+      <div
+        className="rounded-xl flex items-center justify-center"
+        style={{ height: H, background: "rgba(255,255,255,0.03)" }}
+      >
+        <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+          Збираємо дані…
+        </span>
+      </div>
+    );
+  }
+
+  // Normalize response times for Y axis
+  const upPoints = points.filter(p => p.status === "up" && p.response_time_ms != null);
+  const maxMs = upPoints.length > 0
+    ? Math.max(...upPoints.map(p => p.response_time_ms!), 500)
+    : 500;
+
+  const chartH = H - PAD.top - PAD.bottom;
+  const chartW = W - PAD.left - PAD.right;
+
+  const coords = points.map((p, i) => {
+    const x = PAD.left + (i / (points.length - 1)) * chartW;
+    const ms = p.response_time_ms ?? maxMs;
+    const y = p.status === "up"
+      ? PAD.top + chartH - (ms / maxMs) * chartH * 0.85 - chartH * 0.1
+      : PAD.top + chartH - 2;
+    return { x, y, up: p.status === "up", ms: p.response_time_ms, time: p.checked_at };
+  });
+
+  // Build smooth path using cubic bezier
+  const linePath = coords.reduce((acc, pt, i) => {
+    if (i === 0) return `M ${pt.x} ${pt.y}`;
+    const prev = coords[i - 1];
+    const cpx = (prev.x + pt.x) / 2;
+    return `${acc} C ${cpx} ${prev.y} ${cpx} ${pt.y} ${pt.x} ${pt.y}`;
+  }, "");
+
+  // Area fill path
+  const areaPath = `${linePath} L ${coords[coords.length - 1].x} ${H} L ${coords[0].x} ${H} Z`;
+
+  const color = isUp ? "#D6FF3F" : "#F5675A";
+  const gradId = `uptime-grad-${isUp ? "up" : "down"}`;
+  const glowId = `uptime-glow`;
+
+  // Offline segments as red overlays
+  const offlineRanges: { x1: number; x2: number }[] = [];
+  let rangeStart: number | null = null;
+  coords.forEach((pt, i) => {
+    if (!pt.up && rangeStart === null) rangeStart = pt.x;
+    if (pt.up && rangeStart !== null) {
+      offlineRanges.push({ x1: rangeStart, x2: coords[i - 1]?.x ?? pt.x });
+      rangeStart = null;
+    }
+  });
+  if (rangeStart !== null) offlineRanges.push({ x1: rangeStart, x2: coords[coords.length - 1].x });
+
+  return (
+    <div style={{ position: "relative" }}>
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        style={{ width: "100%", height: H, display: "block", overflow: "visible" }}
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={color} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={color} stopOpacity="0" />
+          </linearGradient>
+          <filter id={glowId} x="-20%" y="-50%" width="140%" height="200%">
+            <feGaussianBlur stdDeviation="2.5" result="blur" />
+            <feMerge>
+              <feMergeNode in="blur" />
+              <feMergeNode in="SourceGraphic" />
+            </feMerge>
+          </filter>
+        </defs>
+
+        {/* Offline zones */}
+        {offlineRanges.map((r, i) => (
+          <rect
+            key={i}
+            x={r.x1} y={0}
+            width={Math.max(r.x2 - r.x1, 4)} height={H}
+            fill="rgba(245,103,90,0.08)"
+            rx="2"
+          />
+        ))}
+
+        {/* Grid lines */}
+        {[0.25, 0.5, 0.75].map(y => (
+          <line
+            key={y}
+            x1={0} y1={PAD.top + chartH * (1 - y)}
+            x2={W} y2={PAD.top + chartH * (1 - y)}
+            stroke="rgba(255,255,255,0.05)"
+            strokeWidth="1"
+          />
+        ))}
+
+        {/* Area fill */}
+        <path d={areaPath} fill={`url(#${gradId})`} />
+
+        {/* Main line */}
+        <path
+          d={linePath}
+          fill="none"
+          stroke={color}
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          filter={`url(#${glowId})`}
+          style={{ opacity: 0.9 }}
+        />
+
+        {/* Latest point dot */}
+        {coords.length > 0 && (
+          <>
+            <circle
+              cx={coords[coords.length - 1].x}
+              cy={coords[coords.length - 1].y}
+              r="3"
+              fill={color}
+              filter={`url(#${glowId})`}
+            />
+            <circle
+              cx={coords[coords.length - 1].x}
+              cy={coords[coords.length - 1].y}
+              r="6"
+              fill="none"
+              stroke={color}
+              strokeWidth="1"
+              opacity="0.3"
+            />
+          </>
+        )}
+      </svg>
+    </div>
+  );
+}
+
+// ── Helpers ───────────────────────────────────────────────────
 function calcPct(checks: UptimeCheck[]): string {
   if (!checks.length) return "—";
   const up = checks.filter(c => c.status === "up").length;
   return `${((up / checks.length) * 100).toFixed(1)}%`;
-}
-
-function barH(ms: number | null): number {
-  if (ms == null) return 30;
-  if (ms < 200) return 35;
-  if (ms < 1000) return 35 + ((ms - 200) / 800) * 45;
-  return Math.min(100, 80 + ((ms - 1000) / 2000) * 20);
 }
 
 function ago(date: Date): string {
