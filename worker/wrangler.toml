@@ -16,14 +16,8 @@ enabled = true
 
 # Cron тригери керуються через Cloudflare Dashboard → qorax-api → Settings → Trigger events
 # (вручну додані: */5 * * * *, 0 3 * * *, 0 4 1 * *, 0 5 * * *, 30 4 * * 0)
-[triggers]
-crons = [
-  "*/5 * * * *",
-  "0 3 * * *",
-  "0 4 1 * *",
-  "0 5 * * *",
-  "30 4 * * 0"
-]
+# Тригери (cron) керуються вручну через Cloudflare Dashboard → Workers → qorax-api → Settings → Trigger events
+# НЕ вказуємо [triggers] тут — Cloudflare API не дозволяє їх оновлювати через wrangler в цьому акаунті
 
 # Публичные (не секретные) переменные окружения
 [vars]
