@@ -175,10 +175,12 @@ export function NotificationSettingsForm({
   }
 
   return (
-    <div className="rounded-2xl border hairline bg-[var(--bg-raised)] p-5">
-      <h2 className="text-sm font-medium text-[var(--text-tertiary)] uppercase tracking-wide mb-5 flex items-center gap-2">
-        <Bell size={13} /> Сповіщення
-      </h2>
+    <div className="rounded-2xl p-5"
+      style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <div className="flex items-center gap-2.5 mb-5">
+        <Bell size={14} className="text-[var(--text-tertiary)]" />
+        <h2 className="text-sm font-semibold">Сповіщення</h2>
+      </div>
 
       {/* Email block */}
       <div className="mb-6">

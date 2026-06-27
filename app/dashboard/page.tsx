@@ -3,13 +3,10 @@ import { signOut } from "@/app/lib/auth-actions";
 import { QoraxLogo } from "@/app/components/QoraxLogo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clock, Zap } from "lucide-react";
+import { Clock, Zap, Settings, LogOut, ExternalLink, Plus } from "lucide-react";
 
-export const metadata = {
-  title: "Дашборд — Qorax",
-};
+export const metadata = { title: "Дашборд — Qorax" };
 
-// Повертає кількість днів до закінчення тріалу (0 якщо вже закінчився)
 function trialDaysLeft(trialEndsAt: string | null): number {
   if (!trialEndsAt) return 0;
   const ms = new Date(trialEndsAt).getTime() - Date.now();
@@ -24,31 +21,21 @@ export default async function DashboardPage({
   const supabase = await createClient();
   const params = await searchParams;
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-
+  const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  // Отримуємо organization поточного користувача
   const { data: membership } = await supabase
     .from("organization_members")
     .select("organization_id")
     .eq("user_id", user.id)
     .single();
 
-  // Отримуємо організацію та підписку паралельно
   const [{ data: org }, { data: subscription }, { data: sites }, profile] = await Promise.all([
     membership
-      ? supabase
-          .from("organizations")
-          .select("name, org_type, site_limit")
-          .eq("id", membership.organization_id)
-          .single()
+      ? supabase.from("organizations").select("name, org_type, site_limit").eq("id", membership.organization_id).single()
       : Promise.resolve({ data: null }),
     membership
-      ? supabase
-          .from("subscriptions")
+      ? supabase.from("subscriptions")
           .select("status, trial_ends_at, plans(code, name)")
           .eq("organization_id", membership.organization_id)
           .in("status", ["trialing", "active", "canceled", "past_due"])
@@ -56,24 +43,15 @@ export default async function DashboardPage({
           .limit(1)
           .single()
       : Promise.resolve({ data: null }),
-    supabase
-      .from("sites")
+    supabase.from("sites")
       .select("id, url, display_name, monitoring_enabled, created_at")
       .eq("organization_id", membership?.organization_id ?? "")
       .order("created_at", { ascending: false }),
-    supabase
-      .from("profiles")
-      .select("full_name, platform_role")
-      .eq("id", user.id)
-      .single(),
+    supabase.from("profiles").select("full_name, platform_role").eq("id", user.id).single(),
   ]);
 
-  const firstName =
-    profile.data?.full_name?.split(" ")[0] ||
-    user.email?.split("@")[0] ||
-    "друже";
+  const firstName = profile.data?.full_name?.split(" ")[0] || user.email?.split("@")[0] || "друже";
 
-  // Визначаємо стан плану
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const planCode = (subscription as any)?.plans?.code as string | undefined;
   const subStatus = subscription?.status;
@@ -85,303 +63,296 @@ export default async function DashboardPage({
   const isFree = planCode === "free";
   const isPaid = subStatus === "active" && planCode !== "trial" && planCode !== "free";
 
+  const planLabel = isPaid && planCode
+    ? planCode.charAt(0).toUpperCase() + planCode.slice(1)
+    : isTrial ? "Trial" : "Free";
+
+  const planColor = isPaid ? "var(--lime)" : isTrial ? "var(--cyan)" : "var(--text-tertiary)";
+  const planBg = isPaid ? "rgba(214,255,63,0.08)" : isTrial ? "rgba(140,246,255,0.08)" : "rgba(255,255,255,0.04)";
+
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
-      {/* Header */}
-      <header className="border-b hairline">
-        <div className="mx-auto max-w-6xl px-6 sm:px-8 h-16 flex items-center justify-between">
-          <QoraxLogo size="sm" />
+
+      {/* ── Navbar ── */}
+      <header
+        className="sticky top-0 z-40"
+        style={{
+          background: "rgba(10,10,10,0.8)",
+          backdropFilter: "blur(20px) saturate(160%)",
+          WebkitBackdropFilter: "blur(20px) saturate(160%)",
+          borderBottom: "1px solid rgba(255,255,255,0.06)",
+        }}
+      >
+        <div className="mx-auto max-w-6xl px-6 sm:px-8 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
+            <Link href="/dashboard"><QoraxLogo size="sm" /></Link>
+            <span style={{ color: "rgba(255,255,255,0.12)" }}>/</span>
+            <span
+              className="text-xs font-mono px-2.5 py-1 rounded-md"
+              style={{ background: planBg, color: planColor, border: `1px solid ${planColor}30` }}
+            >
+              {planLabel}
+            </span>
+          </div>
+          <div className="flex items-center gap-1">
             {profile.data?.platform_role === "admin" && (
-              <Link href="/dashboard/admin" className="text-xs font-mono px-2 py-1 rounded-md transition-opacity hover:opacity-80"
-                style={{ background: "rgba(214,255,63,0.1)", border: "1px solid rgba(214,255,63,0.3)", color: "var(--lime)" }}>
+              <Link href="/dashboard/admin"
+                className="text-xs font-mono px-2.5 py-1.5 rounded-lg transition-colors hover:opacity-80"
+                style={{ background: "rgba(214,255,63,0.08)", color: "var(--lime)", border: "1px solid rgba(214,255,63,0.2)" }}>
                 ADMIN
               </Link>
             )}
-            <Link href="/dashboard/settings" className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">
-              Налаштування
+            <Link href="/dashboard/settings"
+              className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5">
+              <Settings size={15} />
             </Link>
-            <span className="text-sm text-[var(--text-tertiary)]">
-              {user.email}
-            </span>
             <form action={signOut}>
-              <button
-                type="submit"
-                className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors"
-              >
-                Вийти
+              <button type="submit"
+                className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5">
+                <LogOut size={15} />
               </button>
             </form>
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 sm:px-8 py-10">
+      <main className="mx-auto max-w-6xl px-6 sm:px-8 py-8 space-y-5">
 
-        {/* ── Welcome banner (після реєстрації) ── */}
+        {/* ── Welcome banner ── */}
         {params.welcome === "1" && !params.plan && (
-          <div
-            className="rounded-2xl border px-6 py-4 mb-6 flex items-center gap-3"
-            style={{ borderColor: "var(--lime)", background: "rgba(214,255,63,0.06)" }}
-          >
-            <span style={{ color: "var(--lime)" }}>✓</span>
+          <div className="rounded-2xl px-5 py-4 flex items-center gap-3"
+            style={{ background: "rgba(214,255,63,0.06)", border: "1px solid rgba(214,255,63,0.2)" }}>
+            <span className="h-5 w-5 rounded-full flex items-center justify-center shrink-0 text-xs font-bold"
+              style={{ background: "var(--lime)", color: "#0a0a0a" }}>✓</span>
             <p className="text-sm">
-              Ласкаво просимо, {firstName}! Ваш 14-денний тріал активовано. Додайте перший сайт, щоб розпочати моніторинг.
+              Ласкаво просимо, <span className="font-medium">{firstName}</span>! 14-денний тріал активовано — додайте перший сайт.
             </p>
           </div>
         )}
 
         {params.welcome === "1" && params.plan && (
-          <div
-            className="rounded-2xl border px-6 py-4 mb-6 flex items-center justify-between gap-4"
-            style={{ borderColor: "var(--lime)", background: "rgba(214,255,63,0.06)" }}
-          >
+          <div className="rounded-2xl px-5 py-4 flex items-center justify-between gap-4"
+            style={{ background: "rgba(214,255,63,0.06)", border: "1px solid rgba(214,255,63,0.2)" }}>
             <div>
-              <p className="text-sm font-medium" style={{ color: "var(--lime)" }}>
-                Ласкаво просимо, {firstName}!
-              </p>
+              <p className="text-sm font-medium" style={{ color: "var(--lime)" }}>Ласкаво просимо, {firstName}!</p>
               <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-                Тріал активовано. Коли будете готові — оберіть план{" "}
-                <span className="font-medium">{params.plan.charAt(0).toUpperCase() + params.plan.slice(1)}</span>.
+                Тріал активовано. Оберіть план <span className="font-medium">{params.plan.charAt(0).toUpperCase() + params.plan.slice(1)}</span> коли будете готові.
               </p>
             </div>
-            <Link
-              href={`/dashboard/upgrade?plan=${params.plan}`}
+            <Link href={`/dashboard/upgrade?plan=${params.plan}`}
               className="shrink-0 text-sm font-medium px-4 py-2 rounded-xl hover:opacity-80 transition-opacity"
-              style={{ background: "var(--lime)", color: "#0c111d" }}
-            >
-              Перейти до оплати →
+              style={{ background: "var(--lime)", color: "#0a0a0a" }}>
+              До оплати →
             </Link>
           </div>
         )}
 
         {params.new === "1" && (
-          <div
-            className="rounded-2xl border px-6 py-4 mb-6 flex items-center gap-3"
-            style={{ borderColor: "var(--cyan)", background: "rgba(140,246,255,0.06)" }}
-          >
-            <span style={{ color: "var(--cyan)" }}>●</span>
-            <p className="text-sm">
-              Сайт додано — моніторинг розпочато. Перші дані з&apos;являться протягом кількох хвилин.
-            </p>
+          <div className="rounded-2xl px-5 py-4 flex items-center gap-3"
+            style={{ background: "rgba(140,246,255,0.05)", border: "1px solid rgba(140,246,255,0.15)" }}>
+            <span className="h-1.5 w-1.5 rounded-full animate-pulse shrink-0" style={{ background: "var(--cyan)" }} />
+            <p className="text-sm">Сайт додано — моніторинг розпочато. Перші дані з&apos;являться за кілька хвилин.</p>
           </div>
         )}
 
-        {/* ── Trial banner (активний тріал) ── */}
+        {/* ── Trial banner ── */}
         {isTrial && !isTrialExpired && (
-          <div
-            className="rounded-2xl border px-6 py-4 mb-6 flex items-center justify-between gap-4"
+          <div className="rounded-2xl px-5 py-4 flex items-center justify-between gap-4"
             style={{
-              borderColor: daysLeft <= 3 ? "rgba(245,166,35,0.5)" : "rgba(140,246,255,0.25)",
-              background: daysLeft <= 3 ? "rgba(245,166,35,0.06)" : "rgba(140,246,255,0.04)",
-            }}
-          >
-            <div className="flex items-center gap-3">
-              <Clock size={15} style={{ color: daysLeft <= 3 ? "#F5A623" : "var(--cyan)", flexShrink: 0 }} />
+              background: daysLeft <= 3 ? "rgba(245,166,35,0.05)" : "rgba(140,246,255,0.04)",
+              border: `1px solid ${daysLeft <= 3 ? "rgba(245,166,35,0.25)" : "rgba(140,246,255,0.15)"}`,
+            }}>
+            <div className="flex items-center gap-2.5">
+              <Clock size={14} style={{ color: daysLeft <= 3 ? "#F5A623" : "var(--cyan)", flexShrink: 0 }} />
               <p className="text-sm">
                 {daysLeft > 0 ? (
-                  <>
-                    <span style={{ color: daysLeft <= 3 ? "#F5A623" : "var(--cyan)" }} className="font-medium">
-                      Тріал: залишилось {daysLeft} {daysLeft === 1 ? "день" : daysLeft < 5 ? "дні" : "днів"}
-                    </span>
-                    {" — "}повний Starter доступ безкоштовно
-                  </>
+                  <><span style={{ color: daysLeft <= 3 ? "#F5A623" : "var(--cyan)" }} className="font-medium">
+                    Тріал: {daysLeft} {daysLeft === 1 ? "день" : daysLeft < 5 ? "дні" : "днів"}
+                  </span>{" "}— повний доступ безкоштовно</>
                 ) : (
                   <span style={{ color: "#F5A623" }} className="font-medium">Тріал закінчується сьогодні</span>
                 )}
               </p>
             </div>
-            <Link
-              href="/dashboard/upgrade"
-              className="shrink-0 text-xs font-medium px-4 py-2 rounded-xl transition-opacity hover:opacity-80"
-              style={{ background: "var(--lime)", color: "#0c111d" }}
-            >
+            <Link href="/dashboard/upgrade"
+              className="shrink-0 text-xs font-semibold px-4 py-2 rounded-xl hover:opacity-80 transition-opacity"
+              style={{ background: "var(--lime)", color: "#0a0a0a" }}>
               Обрати план →
             </Link>
           </div>
         )}
 
-        {/* ── Trial expired banner ── */}
+        {/* ── Expired / Free banner ── */}
         {(isTrialExpired || (isFree && !isPaid)) && (
-          <div
-            className="rounded-2xl border px-6 py-5 mb-6"
-            style={{ borderColor: "rgba(245,103,90,0.4)", background: "rgba(245,103,90,0.05)" }}
-          >
+          <div className="rounded-2xl p-5"
+            style={{ background: "rgba(245,103,90,0.04)", border: "1px solid rgba(245,103,90,0.2)" }}>
             <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-medium mb-1" style={{ color: "#F5675A" }}>
-                  {isTrialExpired ? "Ваш тріал закінчився" : "Ви на безкоштовному плані"}
+                <p className="text-sm font-semibold mb-1" style={{ color: "#F5675A" }}>
+                  {isTrialExpired ? "Тріал завершено" : "Безкоштовний план"}
                 </p>
                 <p className="text-sm text-[var(--text-secondary)]">
                   {isTrialExpired
-                    ? "Моніторинг обмежено до базового uptime (раз на 30 хв). Оберіть план щоб відновити повний доступ — швидкість, SSL, AI-аналіз та алерти."
-                    : "Uptime перевіряється раз на 30 хв. Стартер додає перевірку кожні 5 хв, SSL, швидкість та AI-інсайти."}
+                    ? "Uptime перевіряється раз на 30 хв. Оберіть план щоб відновити повний доступ."
+                    : "Uptime раз на 30 хв. Starter додає 5-хвилинні перевірки, SSL, швидкість та AI."}
                 </p>
               </div>
-              <Link
-                href="/dashboard/upgrade"
-                className="shrink-0 text-sm font-medium px-5 py-2.5 rounded-xl transition-opacity hover:opacity-80"
-                style={{ background: "var(--lime)", color: "#0c111d" }}
-              >
+              <Link href="/dashboard/upgrade"
+                className="shrink-0 text-sm font-semibold px-5 py-2.5 rounded-xl hover:opacity-80 transition-opacity"
+                style={{ background: "var(--lime)", color: "#0a0a0a" }}>
                 Обрати план
               </Link>
             </div>
-            <div className="mt-4 grid grid-cols-3 gap-3">
-              <UpgradeFeature icon="⚡" text="Перевірка кожні 5 хвилин" />
-              <UpgradeFeature icon="🔒" text="SSL та домен моніторинг" />
-              <UpgradeFeature icon="✦" text="AI-аналіз та revenue impact" />
+            <div className="mt-4 flex flex-wrap gap-3">
+              {["⚡ Перевірки кожні 5 хв", "🔒 SSL і домен", "✦ AI Revenue Impact"].map(f => (
+                <span key={f} className="text-xs text-[var(--text-secondary)] flex items-center gap-1.5">{f}</span>
+              ))}
             </div>
           </div>
         )}
 
-        {/* Header row */}
-        <div className="flex items-center justify-between mb-6">
+        {/* ── Page header ── */}
+        <div className="flex items-center justify-between pt-2">
           <div>
-            <h1 className="font-display text-2xl font-semibold">Ваші сайти</h1>
-            <p className="text-sm text-[var(--text-secondary)] mt-0.5">
-              {sites?.length ?? 0} з {org?.site_limit ?? 1} сайтів
-              {isTrial && !isTrialExpired && (
-                <span className="ml-2 text-xs font-mono px-2 py-0.5 rounded-md"
-                  style={{ background: "rgba(140,246,255,0.1)", color: "var(--cyan)" }}>
-                  Trial
-                </span>
-              )}
-              {isFree && !isTrial && !isTrialExpired && (
-                <span className="ml-2 text-xs font-mono px-2 py-0.5 rounded-md"
-                  style={{ background: "rgba(255,255,255,0.06)", color: "var(--text-tertiary)" }}>
-                  Free
-                </span>
-              )}
-              {isPaid && planCode && (
-                <span className="ml-2 text-xs font-mono px-2 py-0.5 rounded-md"
-                  style={{ background: "rgba(214,255,63,0.1)", color: "var(--lime)" }}>
-                  {planCode.charAt(0).toUpperCase() + planCode.slice(1)}
-                </span>
-              )}
+            <h1 className="font-display text-xl font-semibold">Ваші сайти</h1>
+            <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
+              {sites?.length ?? 0} / {org?.site_limit ?? 1} сайтів
             </p>
           </div>
-          <Link
-            href="/dashboard/sites/new"
-            className="text-sm font-medium rounded-xl px-5 py-2.5"
-            style={{ background: "var(--lime)", color: "#0c111d" }}
-          >
-            + Додати сайт
+          <Link href="/dashboard/sites/new"
+            className="inline-flex items-center gap-2 text-sm font-semibold rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity"
+            style={{ background: "var(--lime)", color: "#0a0a0a" }}>
+            <Plus size={14} />
+            Додати сайт
           </Link>
         </div>
 
-        {/* Sites list */}
+        {/* ── Sites list ── */}
         {!sites || sites.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="grid gap-4">
-            {sites.map((site) => (
-              <SiteCard key={site.id} site={site} />
-            ))}
+          <div className="space-y-3">
+            {sites.map((site, i) => <SiteCard key={site.id} site={site} index={i} />)}
           </div>
         )}
 
-        {/* Upgrade CTA at bottom for trial users с несколькими днями */}
+        {/* ── Upgrade nudge for late-trial ── */}
         {isTrial && daysLeft > 0 && daysLeft <= 7 && (
-          <div className="mt-8 rounded-2xl border hairline bg-[var(--bg-raised)] p-6 flex items-center justify-between gap-4">
+          <div className="rounded-2xl p-5 flex items-center justify-between gap-4"
+            style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}>
             <div className="flex items-center gap-3">
-              <Zap size={16} style={{ color: "var(--lime)", flexShrink: 0 }} />
+              <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
+                style={{ background: "rgba(214,255,63,0.08)", border: "1px solid rgba(214,255,63,0.15)" }}>
+                <Zap size={14} style={{ color: "var(--lime)" }} />
+              </div>
               <div>
                 <p className="text-sm font-medium">Продовжте без перерви</p>
-                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">Стартер — $49/міс · відміна в будь-який момент</p>
+                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">Starter — $49/міс · відміна в будь-який момент</p>
               </div>
             </div>
-            <Link
-              href="/dashboard/upgrade"
-              className="shrink-0 text-sm font-medium px-5 py-2.5 rounded-xl transition-opacity hover:opacity-80"
-              style={{ background: "var(--lime)", color: "#0c111d" }}
-            >
+            <Link href="/dashboard/upgrade"
+              className="shrink-0 text-sm font-semibold px-4 py-2 rounded-xl hover:opacity-80 transition-opacity"
+              style={{ background: "var(--lime)", color: "#0a0a0a" }}>
               Перейти на Starter →
             </Link>
           </div>
         )}
+
       </main>
     </div>
   );
 }
 
-function UpgradeFeature({ icon, text }: { icon: string; text: string }) {
+function SiteCard({ site, index }: {
+  site: { id: string; url: string; display_name: string; monitoring_enabled: boolean; created_at: string };
+  index: number;
+}) {
+  let hostname = site.url;
+  try { hostname = new URL(site.url).hostname; } catch { /* keep */ }
+
+  const addedDate = new Date(site.created_at).toLocaleDateString("uk-UA", {
+    day: "numeric", month: "short", year: "numeric",
+  });
+
+  // Subtle stagger color for the status dot glow
+  const glowColor = site.monitoring_enabled
+    ? index % 2 === 0 ? "rgba(214,255,63,0.35)" : "rgba(140,246,255,0.35)"
+    : "transparent";
+
   return (
-    <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-      <span>{icon}</span>
-      <span>{text}</span>
+    <div
+      className="group rounded-2xl p-5 flex items-center justify-between gap-4 transition-all duration-200"
+      style={{
+        background: "rgba(255,255,255,0.025)",
+        border: "1px solid rgba(255,255,255,0.07)",
+      }}
+      onMouseEnter={e => {
+        (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.04)";
+        (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.12)";
+      }}
+      onMouseLeave={e => {
+        (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.025)";
+        (e.currentTarget as HTMLElement).style.borderColor = "rgba(255,255,255,0.07)";
+      }}
+    >
+      <div className="flex items-center gap-4 min-w-0">
+        {/* Status dot */}
+        <div className="relative shrink-0">
+          <div
+            className="h-2.5 w-2.5 rounded-full"
+            style={{
+              background: site.monitoring_enabled ? "var(--lime)" : "var(--text-tertiary)",
+              boxShadow: `0 0 8px ${glowColor}`,
+            }}
+          />
+          {site.monitoring_enabled && (
+            <div className="absolute inset-0 rounded-full animate-ping"
+              style={{ background: "var(--lime)", opacity: 0.2 }} />
+          )}
+        </div>
+
+        <div className="min-w-0">
+          <div className="font-medium text-[var(--text-primary)] truncate">{site.display_name}</div>
+          <div className="text-xs text-[var(--text-tertiary)] font-mono mt-0.5 truncate">{hostname}</div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-3 shrink-0">
+        <span className="text-xs text-[var(--text-tertiary)] hidden sm:block">{addedDate}</span>
+        <a href={site.url} target="_blank" rel="noopener noreferrer"
+          className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5">
+          <ExternalLink size={13} />
+        </a>
+        <Link href={`/dashboard/sites/${site.id}`}
+          className="text-sm font-medium px-4 py-2 rounded-xl transition-all"
+          style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "var(--cyan)" }}
+          onMouseEnter={undefined}>
+          Деталі →
+        </Link>
+      </div>
     </div>
   );
 }
 
 function EmptyState() {
   return (
-    <div className="rounded-2xl border hairline bg-[var(--bg-raised)] p-12 text-center">
-      <div className="font-mono text-4xl mb-4 text-[var(--text-tertiary)]">⊡</div>
-      <h2 className="font-display text-lg font-medium mb-2">Сайтів ще немає</h2>
+    <div className="rounded-2xl p-14 text-center"
+      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+      <div
+        className="h-14 w-14 rounded-2xl flex items-center justify-center mx-auto mb-5"
+        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}>
+        <span className="font-mono text-2xl text-[var(--text-tertiary)]">⊡</span>
+      </div>
+      <h2 className="font-display text-lg font-semibold mb-2">Сайтів ще немає</h2>
       <p className="text-sm text-[var(--text-secondary)] mb-6 max-w-xs mx-auto">
-        Додайте перший сайт щоб Qorax почав стежити за його швидкістю, SSL та SEO.
+        Додайте перший сайт — Qorax почне стежити за швидкістю, SSL та SEO.
       </p>
-      <Link
-        href="/dashboard/sites/new"
-        className="inline-flex text-sm font-medium rounded-xl px-6 py-3"
-        style={{ background: "var(--lime)", color: "#0c111d" }}
-      >
+      <Link href="/dashboard/sites/new"
+        className="inline-flex items-center gap-2 text-sm font-semibold rounded-xl px-6 py-3 hover:opacity-90 transition-opacity"
+        style={{ background: "var(--lime)", color: "#0a0a0a" }}>
+        <Plus size={14} />
         Додати перший сайт
       </Link>
-    </div>
-  );
-}
-
-function SiteCard({
-  site,
-}: {
-  site: {
-    id: string;
-    url: string;
-    display_name: string;
-    monitoring_enabled: boolean;
-    created_at: string;
-  };
-}) {
-  const hostname = new URL(site.url).hostname;
-  const addedDate = new Date(site.created_at).toLocaleDateString("uk-UA", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-
-  return (
-    <div className="rounded-2xl border hairline bg-[var(--bg-raised)] p-6 flex items-center justify-between gap-4">
-      <div className="flex items-center gap-4 min-w-0">
-        <div
-          className="h-2.5 w-2.5 rounded-full shrink-0"
-          style={{
-            background: site.monitoring_enabled
-              ? "var(--lime)"
-              : "var(--text-tertiary)",
-          }}
-        />
-        <div className="min-w-0">
-          <div className="font-medium text-[var(--text-primary)] truncate">
-            {site.display_name}
-          </div>
-          <div className="text-xs text-[var(--text-tertiary)] font-mono mt-0.5">
-            {hostname}
-          </div>
-        </div>
-      </div>
-
-      <div className="flex items-center gap-5 shrink-0">
-        <span className="text-xs text-[var(--text-tertiary)] hidden sm:block">
-          Додано {addedDate}
-        </span>
-        <Link
-          href={`/dashboard/sites/${site.id}`}
-          className="text-sm text-[var(--cyan)] hover:opacity-80 transition-opacity"
-        >
-          Деталі →
-        </Link>
-      </div>
     </div>
   );
 }
