@@ -166,6 +166,36 @@ export async function handleGscCallback(request: Request, env: Env): Promise<Res
   return Response.redirect(`${appBase}/dashboard/sites/${siteId}?gsc_connected=1`, 302);
 }
 
+// ── Route: GET /api/gsc/metrics ──────────────────────────────────────────────
+
+export async function handleGscMetrics(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  const url = new URL(request.url);
+  const siteId = url.searchParams.get("site_id");
+  const token = request.headers.get("Authorization")?.replace("Bearer ", "");
+  if (!siteId || !token) return json([], 200, corsHeaders);
+
+  const userId = await getUserIdFromToken(token, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!userId) return json({ error: "Unauthorized" }, 401, corsHeaders);
+
+  // Перевіряємо доступ до сайту
+  const orgId = await getOrgIdForSite(siteId, userId, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!orgId) return json({ error: "Not found" }, 404, corsHeaders);
+
+  // Читаємо метрики через service role key (обходить RLS)
+  const res = await selectRows<{
+    date: string; clicks: number; impressions: number;
+    ctr: number | null; average_position: number | null;
+    page_url: string | null; query: string | null;
+  }>(
+    "gsc_metrics",
+    `select=date,clicks,impressions,ctr,average_position,page_url,query&site_id=eq.${encodeURIComponent(siteId)}&order=date.desc,clicks.desc`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+
+  return json(res.data ?? [], 200, corsHeaders);
+}
+
 // ── Route: GET /api/gsc/status ───────────────────────────────────────────────
 
 export async function handleGscStatus(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {

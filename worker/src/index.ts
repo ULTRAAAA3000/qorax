@@ -22,6 +22,7 @@ import {
   handleGscStatus,
   handleGscDisconnect,
   handleGscSyncRequest,
+  handleGscMetrics,
   runGscSync,
 } from "./lib/gscHandler";
 import { runSeoChecks } from "./lib/seoChecker";
@@ -288,6 +289,9 @@ const worker = {
     }
     if (url.pathname === "/api/gsc/sync" && request.method === "POST") {
       return handleGscSyncRequest(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/gsc/metrics" && request.method === "GET") {
+      return handleGscMetrics(request, env, corsHeaders(origin));
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {

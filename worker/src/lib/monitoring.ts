@@ -554,11 +554,20 @@ async function checkSingleSiteSpeed(
   pageSpeedApiKey: string,
   geminiApiKey: string
 ): Promise<number> {
+  // Запускаємо basicCheck і PageSpeed паралельно
+  // PageSpeed може впасти (403/timeout) — це не блокує збереження basicCheck і AI
   const [basic, pageSpeed] = await Promise.all([
     runBasicCheck(site.url),
-    runPageSpeedChecks(site.url, pageSpeedApiKey),
+    runPageSpeedChecks(site.url, pageSpeedApiKey).catch(err => {
+      console.warn(`PageSpeed failed for ${site.url}:`, err instanceof Error ? err.message : err);
+      return {
+        mobile: { available: false, performanceScore: null, lcpMs: null, inpMs: null, clsScore: null, errorMessage: String(err) },
+        desktop: { available: false, performanceScore: null, lcpMs: null, inpMs: null, clsScore: null, errorMessage: String(err) },
+      };
+    }),
   ]);
 
+  // Завжди зберігаємо basicCheck (час відповіді) — він працює навіть якщо PageSpeed заблокований
   await insertRow(
     "speed_checks",
     {
@@ -570,12 +579,13 @@ async function checkSingleSiteSpeed(
     serviceRoleKey
   );
 
+  // CWV зберігаємо тільки якщо PageSpeed відповів
   await Promise.all([
     insertCwvRow(site.id, "mobile", pageSpeed.mobile, supabaseUrl, serviceRoleKey),
     insertCwvRow(site.id, "desktop", pageSpeed.desktop, supabaseUrl, serviceRoleKey),
   ]);
 
-  // Генеруємо AI-інсайти та зберігаємо в ai_insights
+  // AI інсайти генеруємо завжди — навіть без PageSpeed даних basicCheck дає достатньо інфо
   const insightsCount = await generateSiteInsights(
     site,
     basic,

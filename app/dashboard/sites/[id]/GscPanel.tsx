@@ -58,19 +58,17 @@ export function GscPanel({ siteId, accessToken, workerUrl }: Props) {
 
   const fetchMetrics = useCallback(async () => {
     try {
-      const { createClient } = await import("@/app/lib/supabase/client");
-      const supabase = createClient();
-      const { data } = await supabase
-        .from("gsc_metrics")
-        .select("date, clicks, impressions, ctr, average_position, page_url, query")
-        .eq("site_id", siteId)
-        .order("date", { ascending: false })
-        .order("clicks", { ascending: false });
-      setMetrics(data ?? []);
-    } catch {
+      const res = await fetch(`${workerUrl}/api/gsc/metrics?site_id=${siteId}`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) { setMetrics([]); return; }
+      const data = await res.json() as GscMetric[];
+      setMetrics(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("GSC metrics exception:", e);
       setMetrics([]);
     }
-  }, [siteId]);
+  }, [siteId, accessToken, workerUrl]);
 
   useEffect(() => {
     (async () => {
