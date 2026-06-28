@@ -134,7 +134,19 @@ const worker = {
         return json({ ok: true, message: "Uptime checks started" }, 200, origin);
       }
 
-      if (url.pathname === "/api/admin/run-speed") {
+      if (url.pathname === "/api/admin/env-check") {
+        return json({
+          SUPABASE_URL: !!env.SUPABASE_URL,
+          SUPABASE_SERVICE_ROLE_KEY: !!env.SUPABASE_SERVICE_ROLE_KEY,
+          GOOGLE_PAGESPEED_API_KEY: !!env.GOOGLE_PAGESPEED_API_KEY,
+          GEMINI_API_KEY: !!env.GEMINI_API_KEY,
+          RESEND_API_KEY: !!env.RESEND_API_KEY,
+          GOOGLE_CLIENT_ID: !!env.GOOGLE_CLIENT_ID,
+          GOOGLE_TOKEN_ENCRYPTION_KEY: !!env.GOOGLE_TOKEN_ENCRYPTION_KEY,
+        }, 200, origin);
+      }
+
+            if (url.pathname === "/api/admin/run-speed") {
         ctx.waitUntil(
           runSpeedChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.GOOGLE_PAGESPEED_API_KEY, env.GEMINI_API_KEY)
             .then(s => console.log("Manual speed:", JSON.stringify(s)))
