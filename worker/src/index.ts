@@ -209,7 +209,6 @@ const worker = {
           }
         } catch { /* ignore */ }
       }
-      }>;
 
       const plansMap = Object.fromEntries((Array.isArray(plans) ? plans : []).map(p => [p.id, p]));
       const orgsWithPlans = (Array.isArray(orgs) ? orgs : []).map(org => ({
