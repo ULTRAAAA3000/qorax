@@ -207,6 +207,45 @@ const worker = {
       return json({ error: "Unknown admin endpoint" }, 404, origin);
     }
 
+    // POST /api/admin/change-plan — зміна плану для організації (захищено session JWT)
+    if (url.pathname === "/api/admin/change-plan" && request.method === "POST") {
+      // Перевіряємо що юзер — адмін через Supabase JWT
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+      const userData = await userRes.json() as { id?: string };
+      if (!userData.id) return json({ error: "Unauthorized" }, 401, origin);
+
+      // Перевіряємо platform_role = admin
+      const profileRes = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${userData.id}&select=platform_role`,
+        { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }
+      );
+      const profiles = await profileRes.json() as Array<{ platform_role: string }>;
+      if (profiles[0]?.platform_role !== "admin") return json({ error: "Forbidden" }, 403, origin);
+
+      const body = await request.json() as { org_id: string; plan_id: string };
+      if (!body.org_id || !body.plan_id) return json({ error: "org_id and plan_id required" }, 400, origin);
+
+      // Оновлюємо або створюємо підписку
+      const upsertRes = await fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?org_id=eq.${body.org_id}`, {
+        method: "PATCH",
+        headers: {
+          apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+          Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+          "Content-Type": "application/json",
+          Prefer: "return=minimal",
+        },
+        body: JSON.stringify({ plan_id: body.plan_id, status: "active", updated_at: new Date().toISOString() }),
+      });
+      if (!upsertRes.ok) return json({ error: "DB update failed" }, 500, origin);
+
+      return json({ ok: true }, 200, origin);
+    }
+
     // LemonSqueezy — Customer Portal URL (для кнопки "Управляти підпискою")
     // GET /api/ls/portal?org_id=xxx — повертає свіжий portal URL
     if (url.pathname === "/api/ls/portal" && request.method === "GET") {

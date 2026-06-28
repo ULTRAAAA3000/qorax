@@ -35,24 +35,36 @@ export default async function AdminPage() {
     supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active"),
   ]);
 
-  // Список користувачів з планами
-  const { data: orgs } = await supabase
+  // Список користувачів з планами — безпечний запит
+  const { data: orgs, error: orgsError } = await supabase
     .from("organizations")
     .select(`
       id,
       name,
       created_at,
       organization_members(user_id, role),
-      subscriptions(status, trial_ends_at, plans(code, name), created_at)
+      subscriptions(id, status, trial_ends_at, plan_id, created_at)
     `)
     .order("created_at", { ascending: false })
     .limit(50);
 
-  // Список всіх планів для dropdown
+  if (orgsError) console.error("Admin orgs query error:", orgsError);
+
+  // Плани окремим запитом
   const { data: plans } = await supabase
     .from("plans")
     .select("id, code, name")
     .order("price_usd");
+
+  // Збагачуємо орги даними плану
+  const plansMap = Object.fromEntries((plans ?? []).map(p => [p.id, p]));
+  const orgsWithPlans = (orgs ?? []).map(org => ({
+    ...org,
+    subscriptions: (org.subscriptions ?? []).map((sub: { id: string; status: string; trial_ends_at: string | null; plan_id: string | null; created_at: string }) => ({
+      ...sub,
+      plans: sub.plan_id ? plansMap[sub.plan_id] ?? null : null,
+    })),
+  }));
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
@@ -98,7 +110,7 @@ export default async function AdminPage() {
         </div>
 
         {/* Список користувачів */}
-        <UsersTable orgs={orgs ?? []} plans={plans ?? []} />
+        <UsersTable orgs={orgsWithPlans} plans={plans ?? []} />
 
         {/* Ручний запуск cron */}
         <AdminPanel />

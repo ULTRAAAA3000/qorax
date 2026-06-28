@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ChevronDown, Loader2, CheckCircle, Users } from "lucide-react";
+import { createClient } from "@/app/lib/supabase/client";
 
 interface Plan {
   id: string;
@@ -41,6 +42,15 @@ export function UsersTable({ orgs, plans }: { orgs: Org[]; plans: Plan[] }) {
   const [loadingOrg, setLoadingOrg] = useState<string | null>(null);
   const [successOrg, setSuccessOrg] = useState<string | null>(null);
   const [errorMsg, setErrorMsg] = useState<Record<string, string>>({});
+  const [accessToken, setAccessToken] = useState<string>("");
+
+  useEffect(() => {
+    createClient().auth.getSession().then(({ data }) => {
+      setAccessToken(data.session?.access_token ?? "");
+    });
+  }, []);
+
+  const workerUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
 
   async function changePlan(orgId: string) {
     const planId = selectedPlan[orgId];
@@ -50,9 +60,12 @@ export function UsersTable({ orgs, plans }: { orgs: Org[]; plans: Plan[] }) {
     setErrorMsg(prev => ({ ...prev, [orgId]: "" }));
 
     try {
-      const resp = await fetch("/api/admin/change-plan", {
+      const resp = await fetch(`${workerUrl}/api/admin/change-plan`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
         body: JSON.stringify({ org_id: orgId, plan_id: planId }),
       });
       const data = await resp.json() as { ok?: boolean; error?: string };
@@ -61,7 +74,6 @@ export function UsersTable({ orgs, plans }: { orgs: Org[]; plans: Plan[] }) {
         setSuccessOrg(orgId);
         setChangingOrg(null);
         setTimeout(() => setSuccessOrg(null), 3000);
-        // Reload page to show updated data
         setTimeout(() => window.location.reload(), 500);
       } else {
         setErrorMsg(prev => ({ ...prev, [orgId]: data.error ?? "Помилка" }));

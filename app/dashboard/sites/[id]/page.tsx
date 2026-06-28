@@ -264,7 +264,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                   <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
                     Google Lighthouse не може завантажити сайт — сервер блокує зовнішні запити (Cloudflare, WAF або геоблок).
                     Для отримання даних CWV потрібно дозволити доступ для{" "}
-                    <a href="https://developers.google.com/speed/docs/insights/v5/faq" target="_blank" rel="noopener noreferrer"
+                    <a href="https://developers.google.com/speed/docs/insights/v5/about" target="_blank" rel="noopener noreferrer"
                       className="underline hover:opacity-80" style={{ color: "var(--cyan)" }}>
                       Lighthouse IP
                     </a>.
