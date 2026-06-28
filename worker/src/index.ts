@@ -121,6 +121,44 @@ const worker = {
 
     // Внутренний эндпоинт для ручного запуска speed-check (защищён токеном)
     // ── Admin endpoints (захищені ADMIN_TOKEN) ──────────────────
+    // GET /api/admin/stats — статистика для адмін панелі (захищено JWT + platform_role=admin)
+    if (url.pathname === "/api/admin/stats" && request.method === "GET") {
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+      const userData = await userRes.json() as { id?: string };
+      if (!userData.id) return json({ error: "Unauthorized" }, 401, origin);
+
+      const profileRes = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${userData.id}&select=platform_role`,
+        { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }
+      );
+      const profiles = await profileRes.json() as Array<{ platform_role: string }>;
+      if (profiles[0]?.platform_role !== "admin") return json({ error: "Forbidden" }, 403, origin);
+
+      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, Prefer: "count=exact" };
+      const [usersRes, sitesRes, trialsRes, paidRes, checksRes] = await Promise.all([
+        fetch(`${env.SUPABASE_URL}/rest/v1/profiles?select=id`, { method: "HEAD", headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/sites?select=id`, { method: "HEAD", headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?status=eq.trialing&select=id`, { method: "HEAD", headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?status=eq.active&select=id`, { method: "HEAD", headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_checks?select=id`, { method: "HEAD", headers: h }),
+      ]);
+
+      const getCount = (res: Response) => parseInt(res.headers.get("content-range")?.split("/")[1] ?? "0");
+
+      return json({
+        users: getCount(usersRes),
+        sites: getCount(sitesRes),
+        trials: getCount(trialsRes),
+        paid: getCount(paidRes),
+        checks: getCount(checksRes),
+      }, 200, origin);
+    }
+
     // GET /api/admin/clients — список клієнтів (захищено JWT + platform_role=admin)
     if (url.pathname === "/api/admin/clients" && request.method === "GET") {
       const authHeader = request.headers.get("Authorization");
