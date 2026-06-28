@@ -532,8 +532,11 @@ const worker = {
 };
 
 export default worker;
-export const scheduled = worker.scheduled.bind(worker);
+export { scheduled };
 
+function scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  return worker.scheduled(event, env, ctx);
+}
 interface AuditRequestBody {
   url?: string;
   email?: string;
