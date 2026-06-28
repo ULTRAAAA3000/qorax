@@ -1,41 +1,19 @@
-// ============================================================
-// pdfReport.ts — генерация HTML-отчёта который конвертируется
-// в PDF на стороне клиента (window.print() / browser print).
-//
-// Архитектура MVP: Worker генерирует красивый HTML-отчёт,
-// возвращает его как строку. Фронтенд открывает в новой вкладке
-// и показывает кнопку "Зберегти як PDF" (window.print() с
-// @media print CSS). Это работает без платного Puppeteer/Chrome.
-//
-// В будущем (Phase 2): заменить на wkhtmltopdf или Puppeteer
-// в отдельном Cloudflare Browser Rendering Worker ($5/мес)
-// и отдавать готовый PDF бинарник с Content-Type: application/pdf.
-// ============================================================
+// pdfReport.ts — HTML звіт що відкривається в браузері і зберігається як PDF через window.print()
 
 export interface ReportData {
   siteName: string;
   siteUrl: string;
-  periodLabel: string; // "Травень 2025"
+  periodLabel: string;
   generatedAt: string;
-
-  // Uptime
   uptimePercent: number;
   totalDowntimeMinutes: number;
   incidentsCount: number;
-
-  // Speed
   avgResponseTimeMs: number | null;
   latestPageSpeedMobile: number | null;
   latestPageSpeedDesktop: number | null;
-
-  // CWV
   latestLcpMs: number | null;
   latestClsScore: number | null;
-
-  // SSL
   sslDaysLeft: number | null;
-
-  // AI insights
   insights: Array<{
     severity: string;
     problemSummary: string;
@@ -43,283 +21,175 @@ export interface ReportData {
     estimatedMonthlyLossUsd: number | null;
     recommendation: string;
   }>;
-
-  // Totals
   totalEstimatedLossUsd: number;
-
-  // White-label (Agency plan) — якщо задано, замінює брендинг Qorax
-  whiteLabel?: {
-    agencyName: string;   // Назва агентства
-    agencyUrl?: string;   // Сайт агентства (опційно)
-  };
+  whiteLabel?: { agencyName: string; agencyUrl?: string };
 }
 
-function scoreColor(score: number | null): string {
-  if (score === null) return "#6e6e73";
-  if (score >= 90) return "#d6ff3f";
-  if (score >= 50) return "#F5A623";
-  return "#F5675A";
+function scoreColor(s: number | null) {
+  if (s === null) return "#999";
+  if (s >= 90) return "#22c55e";
+  if (s >= 50) return "#f59e0b";
+  return "#ef4444";
 }
-
-function severityLabel(s: string): string {
+function uptimeColor(u: number) {
+  if (u >= 99.9) return "#22c55e";
+  if (u >= 99) return "#84cc16";
+  if (u >= 95) return "#f59e0b";
+  return "#ef4444";
+}
+function sslColor(d: number | null) {
+  if (d === null) return "#999";
+  if (d <= 7) return "#ef4444";
+  if (d <= 30) return "#f59e0b";
+  return "#22c55e";
+}
+function sevColor(s: string) {
+  if (s === "critical") return "#ef4444";
+  if (s === "warning") return "#f59e0b";
+  return "#3b82f6";
+}
+function sevLabel(s: string) {
   if (s === "critical") return "Критично";
   if (s === "warning") return "Увага";
   return "Інфо";
 }
-
-function severityColor(s: string): string {
-  if (s === "critical") return "#F5675A";
-  if (s === "warning") return "#F5A623";
-  return "#8CF6FF";
+function fmtMs(ms: number | null) {
+  if (ms === null) return "—";
+  return ms >= 1000 ? `${(ms / 1000).toFixed(1)}с` : `${ms}мс`;
 }
 
 export function generateReportHtml(data: ReportData): string {
-  const insightsHtml = data.insights.map(ins => `
-    <div class="insight-card insight-${ins.severity}">
-      <div class="insight-header">
-        <span class="severity-badge" style="color:${severityColor(ins.severity)}">${severityLabel(ins.severity)}</span>
-        ${ins.estimatedMonthlyLossUsd ? `<span class="loss-badge">~$${ins.estimatedMonthlyLossUsd}/міс</span>` : ""}
-      </div>
-      <p class="insight-title">${ins.problemSummary}</p>
-      <p class="insight-desc">${ins.plainExplanation}</p>
-      <p class="insight-rec">→ ${ins.recommendation}</p>
-    </div>
-  `).join("");
+  const brand = data.whiteLabel ? data.whiteLabel.agencyName : "Qorax";
+  const brandUrl = data.whiteLabel?.agencyUrl ?? "qorax.app";
+
+  const insightsHtml = data.insights.length === 0
+    ? `<p style="color:#888;font-size:13px;">Критичних проблем не виявлено</p>`
+    : data.insights.map(ins => `
+      <div style="border:1px solid ${sevColor(ins.severity)}33;border-left:3px solid ${sevColor(ins.severity)};border-radius:8px;padding:16px 18px;margin-bottom:10px;background:${sevColor(ins.severity)}08;">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px;">
+          <span style="font-size:10px;font-weight:700;letter-spacing:.08em;color:${sevColor(ins.severity)};text-transform:uppercase;">${sevLabel(ins.severity)}</span>
+          ${ins.estimatedMonthlyLossUsd ? `<span style="font-size:11px;font-family:'Courier New',monospace;color:#ef4444;background:#ef444415;padding:2px 8px;border-radius:4px;">~$${ins.estimatedMonthlyLossUsd}/міс</span>` : ""}
+        </div>
+        <p style="font-size:14px;font-weight:600;color:#1a1a1a;margin-bottom:5px;">${ins.problemSummary}</p>
+        <p style="font-size:13px;color:#555;line-height:1.55;margin-bottom:8px;">${ins.plainExplanation}</p>
+        <p style="font-size:12px;color:#777;border-top:1px solid #eee;padding-top:8px;">→ ${ins.recommendation}</p>
+      </div>`).join("");
+
+  const statsHtml = [
+    { label: "Uptime", value: `${data.uptimePercent.toFixed(2)}%`, color: uptimeColor(data.uptimePercent) },
+    { label: "Час відповіді", value: fmtMs(data.avgResponseTimeMs), color: data.avgResponseTimeMs && data.avgResponseTimeMs <= 1500 ? "#22c55e" : data.avgResponseTimeMs && data.avgResponseTimeMs <= 3000 ? "#f59e0b" : "#ef4444" },
+    { label: "PageSpeed", value: data.latestPageSpeedMobile !== null ? String(data.latestPageSpeedMobile) : "—", color: scoreColor(data.latestPageSpeedMobile) },
+    { label: "SSL (днів)", value: data.sslDaysLeft !== null ? String(data.sslDaysLeft) : "—", color: sslColor(data.sslDaysLeft) },
+  ].map(s => `
+    <div style="flex:1;min-width:0;border:1px solid #e5e7eb;border-radius:10px;padding:18px 16px;">
+      <div style="font-size:10px;font-weight:600;letter-spacing:.07em;color:#9ca3af;text-transform:uppercase;margin-bottom:10px;">${s.label}</div>
+      <div style="font-size:26px;font-weight:700;color:${s.color};font-family:'Courier New',monospace;letter-spacing:-.01em;">${s.value}</div>
+    </div>`).join("");
+
+  const detailRows = [
+    ["Інциденти за місяць", String(data.incidentsCount)],
+    ["Загальний downtime", `${data.totalDowntimeMinutes} хв`],
+    ...(data.latestLcpMs !== null ? [["LCP (мобільний)", `${(data.latestLcpMs / 1000).toFixed(1)}с`]] : []),
+    ...(data.latestClsScore !== null ? [["CLS (мобільний)", data.latestClsScore.toFixed(3)]] : []),
+    ...(data.latestPageSpeedDesktop !== null ? [["PageSpeed Desktop", String(data.latestPageSpeedDesktop)]] : []),
+  ].map(([k, v], i, arr) => `
+    <tr>
+      <td style="padding:11px 0;font-size:13px;color:#6b7280;border-bottom:${i < arr.length - 1 ? "1px solid #f3f4f6" : "none"};">${k}</td>
+      <td style="padding:11px 0;font-size:13px;font-weight:600;text-align:right;font-family:'Courier New',monospace;border-bottom:${i < arr.length - 1 ? "1px solid #f3f4f6" : "none"};">${v}</td>
+    </tr>`).join("");
 
   return `<!DOCTYPE html>
 <html lang="uk">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>${data.whiteLabel ? data.whiteLabel.agencyName : "Qorax"} — ${data.siteName} — ${data.periodLabel}</title>
+<title>${brand} — ${data.siteName} — ${data.periodLabel}</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap');
-
   * { box-sizing: border-box; margin: 0; padding: 0; }
-
-  body {
-    background: #0a0a0a;
-    color: #f5f5f7;
-    font-family: 'Space Grotesk', -apple-system, sans-serif;
-    -webkit-font-smoothing: antialiased;
-    padding: 0;
-  }
-
-  .page {
-    max-width: 800px;
-    margin: 0 auto;
-    padding: 48px 40px;
-  }
-
-  /* Header */
-  .report-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: flex-start;
-    margin-bottom: 48px;
-    padding-bottom: 24px;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-  }
-  .logo { font-size: 20px; font-weight: 700; letter-spacing: -0.02em; }
-  .logo span { color: #8CF6FF; }
-  .report-meta { text-align: right; }
-  .report-meta .period { font-size: 18px; font-weight: 600; margin-bottom: 4px; }
-  .report-meta .generated { font-size: 12px; color: #6e6e73; font-family: 'IBM Plex Mono', monospace; }
-
-  /* Site info */
-  .site-info { margin-bottom: 40px; }
-  .site-info h1 { font-size: 28px; font-weight: 700; letter-spacing: -0.02em; margin-bottom: 4px; }
-  .site-url { font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #6e6e73; }
-
-  /* Stats grid */
-  .stats-grid {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 12px;
-    margin-bottom: 40px;
-  }
-  .stat-card {
-    background: rgba(255,255,255,0.04);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px;
-    padding: 16px;
-  }
-  .stat-label { font-size: 11px; color: #6e6e73; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-  .stat-value { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; font-family: 'IBM Plex Mono', monospace; }
-
-  /* Section */
-  .section { margin-bottom: 36px; }
-  .section-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #6e6e73;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    margin-bottom: 16px;
-  }
-
-  /* Loss total */
-  .loss-total {
-    background: rgba(245,103,90,0.08);
-    border: 1px solid rgba(245,103,90,0.25);
-    border-radius: 16px;
-    padding: 20px 24px;
-    margin-bottom: 40px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-  }
-  .loss-total-label { font-size: 14px; color: #a1a1a6; }
-  .loss-total-value { font-size: 28px; font-weight: 700; color: #F5675A; font-family: 'IBM Plex Mono', monospace; }
-
-  /* Insights */
-  .insight-card {
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px;
-    padding: 16px;
-    margin-bottom: 10px;
-  }
-  .insight-critical { border-color: rgba(245,103,90,0.35); background: rgba(245,103,90,0.05); }
-  .insight-warning { border-color: rgba(245,166,35,0.3); background: rgba(245,166,35,0.04); }
-  .insight-header { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
-  .severity-badge { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.05em; }
-  .loss-badge {
-    font-size: 11px;
-    background: rgba(245,103,90,0.15);
-    color: #F5675A;
-    padding: 2px 8px;
-    border-radius: 6px;
-    font-family: 'IBM Plex Mono', monospace;
-  }
-  .insight-title { font-size: 14px; font-weight: 600; margin-bottom: 4px; }
-  .insight-desc { font-size: 13px; color: #a1a1a6; margin-bottom: 6px; line-height: 1.5; }
-  .insight-rec { font-size: 12px; color: #6e6e73; }
-
-  /* Footer */
-  .report-footer {
-    margin-top: 48px;
-    padding-top: 20px;
-    border-top: 1px solid rgba(255,255,255,0.08);
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-  }
-  .footer-brand { font-size: 13px; color: #6e6e73; }
-  .footer-brand strong { color: #f5f5f7; }
-
-  /* Print */
-  .print-btn {
-    display: inline-block;
-    background: #d6ff3f;
-    color: #0a0a0a;
-    font-size: 14px;
-    font-weight: 600;
-    padding: 12px 28px;
-    border-radius: 12px;
-    border: none;
-    cursor: pointer;
-    margin-bottom: 32px;
-    font-family: 'Space Grotesk', sans-serif;
-  }
-
+  body { font-family: 'Inter', -apple-system, sans-serif; background: #f9fafb; color: #111827; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 780px; margin: 0 auto; padding: 40px 32px; }
+  .print-bar { background: #111827; padding: 14px 32px; display: flex; align-items: center; justify-content: space-between; position: sticky; top: 0; z-index: 10; }
+  .print-bar-text { color: #9ca3af; font-size: 13px; }
+  .print-btn { background: #d6ff3f; color: #111827; font-size: 13px; font-weight: 700; padding: 9px 22px; border-radius: 8px; border: none; cursor: pointer; font-family: inherit; letter-spacing: -.01em; }
+  .print-btn:hover { background: #c8f032; }
+  /* Card */
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; padding: 28px 28px; margin-bottom: 20px; }
+  /* Divider */
+  .divider { height: 1px; background: #f3f4f6; margin: 20px 0; }
   @media print {
-    body { background: #fff; color: #000; }
-    .print-btn { display: none; }
-    .stat-card { background: #f5f5f5; border-color: #ddd; }
-    .insight-card { border-color: #ddd; background: #fafafa; }
-    .insight-critical { background: #fff5f5; border-color: #ffccc7; }
-    .insight-warning { background: #fffbe6; border-color: #ffe58f; }
-    .loss-total { background: #fff5f5; border-color: #ffccc7; }
-    .logo, .report-meta .period, .site-info h1 { color: #000; }
-    .site-url, .stat-label, .insight-desc, .insight-rec { color: #555; }
+    body { background: #fff; }
+    .print-bar { display: none; }
+    .wrap { padding: 28px 24px; }
+    .card { border-color: #e5e7eb; box-shadow: none; }
   }
 </style>
 </head>
 <body>
-<div class="page">
-  <button class="print-btn" onclick="window.print()">📄 Зберегти як PDF</button>
 
-  <div class="report-header">
-    <div class="logo">${data.whiteLabel
-      ? `<span style="color:#f5f5f7">${data.whiteLabel.agencyName}</span>`
-      : 'Qor<span>ax</span>'
-    }</div>
-    <div class="report-meta">
-      <div class="period">${data.periodLabel}</div>
-      <div class="generated">Згенеровано ${data.generatedAt}</div>
+<div class="print-bar">
+  <span class="print-bar-text">${brand} · ${data.siteName} · ${data.periodLabel}</span>
+  <button class="print-btn" onclick="window.print()">Зберегти PDF</button>
+</div>
+
+<div class="wrap">
+
+  <!-- Header -->
+  <div class="card" style="background:linear-gradient(135deg,#111827 0%,#1f2937 100%);border-color:#374151;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:16px;">
+      <div>
+        <div style="font-size:11px;font-weight:600;letter-spacing:.1em;color:#6b7280;text-transform:uppercase;margin-bottom:8px;">${brand}</div>
+        <h1 style="font-size:30px;font-weight:700;color:#f9fafb;letter-spacing:-.02em;margin-bottom:4px;">${data.siteName}</h1>
+        <div style="font-size:13px;color:#6b7280;font-family:'Courier New',monospace;">${data.siteUrl}</div>
+      </div>
+      <div style="text-align:right;">
+        <div style="font-size:20px;font-weight:700;color:#f9fafb;letter-spacing:-.01em;margin-bottom:4px;">${data.periodLabel}</div>
+        <div style="font-size:11px;color:#6b7280;">Згенеровано ${data.generatedAt}</div>
+      </div>
     </div>
   </div>
 
-  <div class="site-info">
-    <h1>${data.siteName}</h1>
-    <div class="site-url">${data.siteUrl}</div>
-  </div>
-
-  <div class="stats-grid">
-    <div class="stat-card">
-      <div class="stat-label">Uptime</div>
-      <div class="stat-value" style="color:${data.uptimePercent >= 99 ? "#d6ff3f" : data.uptimePercent >= 95 ? "#F5A623" : "#F5675A"}">${data.uptimePercent.toFixed(1)}%</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">PageSpeed</div>
-      <div class="stat-value" style="color:${scoreColor(data.latestPageSpeedMobile)}">${data.latestPageSpeedMobile ?? "—"}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">Час відповіді</div>
-      <div class="stat-value">${data.avgResponseTimeMs ? (data.avgResponseTimeMs >= 1000 ? `${(data.avgResponseTimeMs / 1000).toFixed(1)}с` : `${data.avgResponseTimeMs}мс`) : "—"}</div>
-    </div>
-    <div class="stat-card">
-      <div class="stat-label">SSL (днів)</div>
-      <div class="stat-value" style="color:${data.sslDaysLeft != null ? data.sslDaysLeft <= 7 ? "#F5675A" : data.sslDaysLeft <= 30 ? "#F5A623" : "#d6ff3f" : "#6e6e73"}">${data.sslDaysLeft ?? "—"}</div>
-    </div>
+  <!-- Stats -->
+  <div style="display:flex;gap:12px;margin-bottom:20px;flex-wrap:wrap;">
+    ${statsHtml}
   </div>
 
   ${data.totalEstimatedLossUsd > 0 ? `
-  <div class="loss-total">
+  <!-- Loss alert -->
+  <div style="border:1px solid #fca5a5;border-left:4px solid #ef4444;border-radius:10px;padding:18px 20px;margin-bottom:20px;background:#fef2f2;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
     <div>
-      <div class="loss-total-label">Оціночні втрати від поточних проблем</div>
-      <div style="font-size:12px;color:#6e6e73;margin-top:4px;">На основі аналізу швидкості, SEO та конверсій</div>
+      <div style="font-size:13px;font-weight:600;color:#dc2626;margin-bottom:3px;">Оціночні втрати від виявлених проблем</div>
+      <div style="font-size:12px;color:#991b1b;">Базується на аналізі швидкості, SEO та конверсій</div>
     </div>
-    <div class="loss-total-value">~$${data.totalEstimatedLossUsd}/міс</div>
+    <div style="font-size:28px;font-weight:700;color:#dc2626;font-family:'Courier New',monospace;">~$${data.totalEstimatedLossUsd}<span style="font-size:14px;">/міс</span></div>
   </div>` : ""}
 
-  ${data.insights.length > 0 ? `
-  <div class="section">
-    <div class="section-title">Знайдені проблеми</div>
+  <!-- AI Insights -->
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+      <span style="font-size:13px;font-weight:700;letter-spacing:.04em;color:#374151;text-transform:uppercase;">AI Revenue Impact</span>
+    </div>
     ${insightsHtml}
-  </div>` : ""}
+  </div>
 
-  <div class="section">
-    <div class="section-title">Деталі моніторингу</div>
-    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
-        <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
-          <td style="padding:10px 0;color:#6e6e73;">Інциденти за місяць</td>
-          <td style="padding:10px 0;text-align:right;font-family:'IBM Plex Mono',monospace;">${data.incidentsCount}</td>
-        </tr>
-        <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
-          <td style="padding:10px 0;color:#6e6e73;">Загальний downtime</td>
-          <td style="padding:10px 0;text-align:right;font-family:'IBM Plex Mono',monospace;">${data.totalDowntimeMinutes} хв</td>
-        </tr>
-        ${data.latestLcpMs ? `<tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
-          <td style="padding:10px 0;color:#6e6e73;">LCP (мобільний)</td>
-          <td style="padding:10px 0;text-align:right;font-family:'IBM Plex Mono',monospace;">${(data.latestLcpMs / 1000).toFixed(1)}с</td>
-        </tr>` : ""}
-        ${data.latestClsScore != null ? `<tr>
-          <td style="padding:10px 0;color:#6e6e73;">CLS (мобільний)</td>
-          <td style="padding:10px 0;text-align:right;font-family:'IBM Plex Mono',monospace;">${data.latestClsScore.toFixed(3)}</td>
-        </tr>` : ""}
-      </table>
+  <!-- Monitoring details -->
+  <div class="card">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:18px;">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#10b981" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+      <span style="font-size:13px;font-weight:700;letter-spacing:.04em;color:#374151;text-transform:uppercase;">Деталі моніторингу</span>
     </div>
+    <table style="width:100%;border-collapse:collapse;">
+      ${detailRows}
+    </table>
   </div>
 
-  <div class="report-footer">
-    <div class="footer-brand">${data.whiteLabel
-      ? `Моніторинг від <strong>${data.whiteLabel.agencyName}</strong>${data.whiteLabel.agencyUrl ? ' · ' + data.whiteLabel.agencyUrl : ''}`
-      : 'Моніторинг від <strong>Qorax</strong> · qorax.app'
-    }</div>
-    <div style="font-size:12px;color:#6e6e73;">${data.periodLabel}</div>
+  <!-- Footer -->
+  <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 0;flex-wrap:wrap;gap:8px;">
+    <div style="font-size:12px;color:#9ca3af;">Моніторинг від <strong style="color:#6b7280;">${brand}</strong>${data.whiteLabel?.agencyUrl ? ` · ${brandUrl}` : " · qorax.app"}</div>
+    <div style="font-size:12px;color:#9ca3af;font-family:'Courier New',monospace;">${data.periodLabel}</div>
   </div>
+
 </div>
 </body>
 </html>`;

@@ -239,8 +239,31 @@ interface SitemapData {
 }
 
 async function fetchSitemap(baseUrl: string): Promise<SitemapData> {
-  // Спочатку перевіряємо sitemap через robots.txt
-  // Потім стандартний шлях /sitemap.xml
+  // Спочатку пробуємо знайти sitemap URL з robots.txt
+  try {
+    const robotsResp = await fetchWithTimeout(`${baseUrl}/robots.txt`);
+    if (robotsResp.ok) {
+      const robotsText = await robotsResp.text();
+      const sitemapMatch = robotsText.match(/^Sitemap:\s*(.+)$/mi);
+      if (sitemapMatch) {
+        const sitemapUrl = sitemapMatch[1].trim();
+        try {
+          const resp = await fetchWithTimeout(sitemapUrl);
+          if (resp.ok) {
+            const xml = await resp.text();
+            if (xml.includes("<urlset") || xml.includes("<sitemapindex")) {
+              const urlMatches = xml.match(/<loc>/g) ?? [];
+              return { found: true, url: sitemapUrl, urlCount: urlMatches.length };
+            }
+          }
+        } catch { /* продовжуємо */ }
+        // robots.txt має Sitemap: директиву — вважаємо знайденою навіть якщо не завантажилась
+        return { found: true, url: sitemapUrl, urlCount: null };
+      }
+    }
+  } catch { /* robots.txt недоступний */ }
+
+  // Стандартні шляхи
   const candidates = [
     `${baseUrl}/sitemap.xml`,
     `${baseUrl}/sitemap_index.xml`,
@@ -251,18 +274,10 @@ async function fetchSitemap(baseUrl: string): Promise<SitemapData> {
     try {
       const resp = await fetchWithTimeout(candidate);
       if (!resp.ok) continue;
-
       const xml = await resp.text();
       if (!xml.includes("<urlset") && !xml.includes("<sitemapindex")) continue;
-
-      // Рахуємо <url> або <sitemap> елементи
       const urlMatches = xml.match(/<loc>/g) ?? [];
-
-      return {
-        found: true,
-        url: candidate,
-        urlCount: urlMatches.length,
-      };
+      return { found: true, url: candidate, urlCount: urlMatches.length };
     } catch { continue; }
   }
 
