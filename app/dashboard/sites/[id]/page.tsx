@@ -255,7 +255,29 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
               {desktopCwv && <CwvBlock label="🖥 Десктоп" data={desktopCwv} />}
             </div>
           ) : (
-            <EmptySlot text="Дані з'являться після першого щоденного скану (о 3:00)" />
+            <div className="space-y-3">
+              <div className="rounded-xl px-4 py-4 flex items-start gap-3"
+                style={{ background: "rgba(245,166,35,0.04)", border: "1px solid rgba(245,166,35,0.15)" }}>
+                <AlertTriangle size={14} style={{ color: "#F5A623", flexShrink: 0, marginTop: 1 }} />
+                <div>
+                  <p className="text-sm font-medium mb-1" style={{ color: "#F5A623" }}>PageSpeed недоступний</p>
+                  <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
+                    Google Lighthouse не може завантажити сайт — сервер блокує зовнішні запити (Cloudflare, WAF або геоблок).
+                    Для отримання даних CWV потрібно дозволити доступ для{" "}
+                    <a href="https://developers.google.com/speed/docs/insights/v5/faq" target="_blank" rel="noopener noreferrer"
+                      className="underline hover:opacity-80" style={{ color: "var(--cyan)" }}>
+                      Lighthouse IP
+                    </a>.
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-xl px-4 py-3 flex items-center gap-2.5"
+                style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
+                <Clock size={13} className="text-[var(--text-tertiary)] shrink-0" />
+                <p className="text-sm text-[var(--text-tertiary)]">Час відповіді доступний у графіку вище</p>
+              </div>
+            </div>
+          )}
           )}
         </Section>
 
