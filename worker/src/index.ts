@@ -121,6 +121,50 @@ const worker = {
 
     // Внутренний эндпоинт для ручного запуска speed-check (защищён токеном)
     // ── Admin endpoints (захищені ADMIN_TOKEN) ──────────────────
+    // GET /api/admin/clients — список клієнтів (захищено JWT + platform_role=admin)
+    if (url.pathname === "/api/admin/clients" && request.method === "GET") {
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+      const userData = await userRes.json() as { id?: string };
+      if (!userData.id) return json({ error: "Unauthorized" }, 401, origin);
+
+      const profileRes = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${userData.id}&select=platform_role`,
+        { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }
+      );
+      const profiles = await profileRes.json() as Array<{ platform_role: string }>;
+      if (profiles[0]?.platform_role !== "admin") return json({ error: "Forbidden" }, 403, origin);
+
+      const [plansRes, orgsRes] = await Promise.all([
+        fetch(`${env.SUPABASE_URL}/rest/v1/plans?select=id,code,name&order=price_usd`,
+          { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/organizations?select=id,name,created_at,organization_members(user_id,role,profiles(email)),subscriptions(id,status,trial_ends_at,plan_id,created_at)&order=created_at.desc&limit=100`,
+          { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }),
+      ]);
+
+      const plans = await plansRes.json() as Array<{ id: string; code: string; name: string }>;
+      const orgs = await orgsRes.json() as Array<{
+        id: string; name: string; created_at: string;
+        organization_members: Array<{ user_id: string; role: string; profiles?: { email?: string } | null }>;
+        subscriptions: Array<{ id: string; status: string; trial_ends_at: string | null; plan_id: string | null; created_at: string }>;
+      }>;
+
+      const plansMap = Object.fromEntries((Array.isArray(plans) ? plans : []).map(p => [p.id, p]));
+      const orgsWithPlans = (Array.isArray(orgs) ? orgs : []).map(org => ({
+        ...org,
+        subscriptions: (org.subscriptions ?? []).map(sub => ({
+          ...sub,
+          plans: sub.plan_id ? (plansMap[sub.plan_id] ?? null) : null,
+        })),
+      }));
+
+      return json({ orgs: orgsWithPlans, plans }, 200, origin);
+    }
+
     if (url.pathname.startsWith("/api/admin/") && request.method === "POST") {
       const token = request.headers.get("x-admin-token");
       if (!token || token !== env.ADMIN_TOKEN) {

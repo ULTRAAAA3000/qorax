@@ -9,10 +9,12 @@ import { UsersTable } from "./UsersTable";
 export const metadata = { title: "Адмін панель — Qorax" };
 
 export default async function AdminPage() {
-  // Авторизаційний клієнт (з сесією) — для перевірки ролі
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
+
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token ?? "";
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -22,75 +24,23 @@ export default async function AdminPage() {
 
   if (profile?.platform_role !== "admin") redirect("/dashboard");
 
-  // Service-клієнт (обходить RLS) — для адмін-запитів
+  // Намагаємось через service role (якщо секрет заданий у Worker)
   const sb = createServiceClient();
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function safeCount(query: any): Promise<number> {
-    try {
-      const { count } = await query;
-      return count ?? 0;
-    } catch {
-      return 0;
-    }
+    try { const { count } = await query; return count ?? 0; } catch { return 0; }
   }
 
-  const [sitesCount, usersCount, activeTrials, paidSubs] = await Promise.all([
+  const [sitesCount, usersCount, activeTrials, paidSubs, checksCount] = await Promise.all([
     safeCount(sb.from("sites").select("*", { count: "exact", head: true })),
     safeCount(sb.from("profiles").select("*", { count: "exact", head: true })),
     safeCount(sb.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "trialing")),
     safeCount(sb.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active")),
+    safeCount(sb.from("uptime_checks").select("*", { count: "exact", head: true })),
   ]);
 
-  let checksCount = 0;
-  try {
-    const { count } = await sb.from("uptime_checks").select("*", { count: "exact", head: true });
-    checksCount = count ?? 0;
-  } catch {
-    checksCount = 0;
-  }
-
-  // Організації з підписками та учасниками
-  let orgsWithPlans: {
-    id: string; name: string; created_at: string;
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    organization_members: any[]; subscriptions: any[];
-  }[] = [];
-  let plans: { id: string; code: string; name: string }[] = [];
-
-  try {
-    const { data: orgs, error: orgsError } = await sb
-      .from("organizations")
-      .select(`
-        id,
-        name,
-        created_at,
-        organization_members(user_id, role),
-        subscriptions(id, status, trial_ends_at, plan_id, created_at)
-      `)
-      .order("created_at", { ascending: false })
-      .limit(50);
-
-    if (orgsError) console.error("Admin orgs query error:", orgsError);
-
-    const { data: plansData } = await sb
-      .from("plans")
-      .select("id, code, name")
-      .order("price_usd");
-
-    plans = plansData ?? [];
-    const plansMap = Object.fromEntries(plans.map(p => [p.id, p]));
-
-    orgsWithPlans = (orgs ?? []).map(org => ({
-      ...org,
-      subscriptions: (org.subscriptions ?? []).map((sub: { id: string; status: string; trial_ends_at: string | null; plan_id: string | null; created_at: string }) => ({
-        ...sub,
-        plans: sub.plan_id ? plansMap[sub.plan_id] ?? null : null,
-      })),
-    }));
-  } catch (e) {
-    console.error("Admin page orgs/plans query failed:", e);
-  }
+  const workerUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
@@ -134,7 +84,9 @@ export default async function AdminPage() {
           ))}
         </div>
 
-        <UsersTable orgs={orgsWithPlans} plans={plans} />
+        {/* Клієнти — завантажуються client-side через API worker (service role там вже є) */}
+        <UsersTable accessToken={accessToken} workerUrl={workerUrl} />
+
         <AdminPanel />
       </main>
     </div>
