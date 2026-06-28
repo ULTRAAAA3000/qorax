@@ -20,7 +20,7 @@ interface SiteRow {
 }
 
 const GEMINI_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 const GEMINI_TIMEOUT_MS = 20_000;
 
 interface AiFinding {
