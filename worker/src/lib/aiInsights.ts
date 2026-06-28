@@ -99,7 +99,7 @@ async function fetchAiFindings(
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
         generationConfig: {
-          temperature: 0.3,
+          temperature: 0.6,
           responseMimeType: "application/json",
         },
       }),
@@ -128,41 +128,97 @@ function buildInsightsPrompt(
   basic: BasicCheckResult,
   pageSpeed: PageSpeedResult
 ): string {
-  return `Ти — технічний аудитор сайтів. Аналізуй дані нижче про сайт ${hostname} та поверни ЛИШЕ валідний JSON (без markdown) у форматі:
+  // Готуємо людський контекст по кожному метрику — щоб AI не перераховував числа а одразу їх інтерпретував
+  const rtMs = basic.responseTimeMs;
+  const rtCtx = rtMs === null ? "не виміряно" :
+    rtMs > 3000 ? `${(rtMs / 1000).toFixed(1)} с — це дуже повільно` :
+    rtMs > 1500 ? `${(rtMs / 1000).toFixed(1)} с — трохи вище норми` :
+    `${rtMs} мс — норма`;
+
+  const psScore = pageSpeed.performanceScore;
+  const psCtx = psScore === null ? "не вдалось отримати" :
+    psScore < 50 ? `${psScore}/100 — погано` :
+    psScore < 75 ? `${psScore}/100 — є куди рости` :
+    psScore < 90 ? `${psScore}/100 — непогано` :
+    `${psScore}/100 — відмінно`;
+
+  const lcpMs = pageSpeed.lcpMs ? Math.round(pageSpeed.lcpMs) : null;
+  const lcpCtx = lcpMs === null ? "невідомо" :
+    lcpMs > 4000 ? `${(lcpMs / 1000).toFixed(1)} с — провал (норма < 2.5 с)` :
+    lcpMs > 2500 ? `${(lcpMs / 1000).toFixed(1)} с — потребує покращення` :
+    `${(lcpMs / 1000).toFixed(1)} с — норма`;
+
+  const cls = pageSpeed.clsScore;
+  const clsCtx = cls === null ? "невідомо" :
+    cls > 0.25 ? `${cls} — сильні стрибки верстки (норма < 0.1)` :
+    cls > 0.1 ? `${cls} — незначні стрибки` :
+    `${cls} — стабільно`;
+
+  const inp = pageSpeed.inpMs;
+  const inpCtx = inp === null ? "невідомо" :
+    inp > 500 ? `${inp} мс — повільний відгук (норма < 200 мс)` :
+    inp > 200 ? `${inp} мс — можна краще` :
+    `${inp} мс — добре`;
+
+  const titleCtx = !basic.title ? "відсутній" :
+    basic.titleLength < 30 ? `"${basic.title}" — занадто короткий (${basic.titleLength} симв., треба 30-60)` :
+    basic.titleLength > 60 ? `занадто довгий (${basic.titleLength} симв., Google обрізає після 60)` :
+    `в порядку (${basic.titleLength} симв.)`;
+
+  const descCtx = !basic.metaDescription ? "відсутній" :
+    basic.metaDescriptionLength < 70 ? `короткий (${basic.metaDescriptionLength} симв., треба 70-160)` :
+    basic.metaDescriptionLength > 160 ? `задовгий (${basic.metaDescriptionLength} симв., Google обрізає)` :
+    `в порядку (${basic.metaDescriptionLength} симв.)`;
+
+  const h1Ctx = basic.h1Count === 0 ? "жодного H1 — пошуковики не розуміють тему сторінки" :
+    basic.h1Count > 1 ? `${basic.h1Count} H1 — забагато, має бути рівно один` :
+    "один H1 — норма";
+
+  return `Ти — веб-аналітик, який щойно перевірив сайт ${hostname} і зараз розповідає власнику бізнесу що знайшов. Говори як живий спеціаліст, не як автоматичний звіт.
+
+Стиль:
+- Прив'язуй кожне пояснення до конкретних чисел з вимірювань — не "сайт повільний", а "сервер відповідав 3.2 секунди, це вдвічі довше ніж норма"
+- Уникай кліше і загальних фраз — кожен findings має бути про цей конкретний сайт
+- Якщо щось добре — так і скажи, не шукай проблем де їх нема
+- Тон: прямий, дружній, без зайвих страшилок
+- estimatedMonthlyLossUsd: тільки якщо є реальна проблема і ти можеш обґрунтувати суму; інакше null
+
+Поверни ЛИШЕ валідний JSON (без markdown):
 {
   "findings": [
     {
       "severity": "critical" | "warning" | "info",
-      "problemSummary": "коротко що знайдено, українською",
-      "plainExplanation": "пояснення простою мовою без техн. жаргону, 1-2 речення, українською",
+      "problemSummary": "коротко суть — конкретна, не шаблонна (українська)",
+      "plainExplanation": "2-3 речення живою мовою з прив'язкою до реальних чисел цього сайту",
       "estimatedMonthlyLossUsd": число або null,
-      "recommendation": "що конкретно зробити, 1 речення, українською",
+      "recommendation": "конкретний наступний крок, одне речення (українська)",
       "sourceTable": "speed_checks" | "ssl_certificates" | "uptime_checks" | "core_web_vitals_checks"
     }
   ]
 }
 
-Дані сайту:
-- Час відповіді: ${basic.responseTimeMs ?? "невідомо"} мс
+Результати вимірювань ${hostname} (щойно):
+- Час відповіді сервера: ${rtCtx}
 - HTTP статус: ${basic.httpStatus ?? "немає відповіді"}
-- SSL: ${basic.sslValid ? "діє" : "відсутній або невалідний"}
-- Title: "${basic.title ?? "відсутній"}" (${basic.titleLength} символів)
-- Meta description: "${basic.metaDescription ?? "відсутній"}" (${basic.metaDescriptionLength} символів)
-- Viewport meta: ${basic.hasViewportMeta ? "є" : "відсутній"}
-- H1 заголовків: ${basic.h1Count}
-- Розмір сторінки: ${basic.pageSizeKb ?? "невідомо"} КБ
-- PageSpeed mobile score: ${pageSpeed.performanceScore ?? "недоступний"}/100
-- LCP: ${pageSpeed.lcpMs ? Math.round(pageSpeed.lcpMs) : "невідомо"} мс
-- CLS: ${pageSpeed.clsScore ?? "невідомо"}
+- SSL: ${basic.sslValid ? "активний" : "ВІДСУТНІЙ або невалідний — Chrome/Firefox показують блокуючий екран"}
+- Title: ${titleCtx}
+- Meta description: ${descCtx}
+- Мобільна адаптація (viewport meta): ${basic.hasViewportMeta ? "є" : "відсутня — сайт зламаний на телефонах"}
+- H1: ${h1Ctx}
+- Розмір HTML: ${basic.pageSizeKb ? `${basic.pageSizeKb} КБ` : "невідомо"}
+- PageSpeed mobile: ${psCtx}
+- LCP: ${lcpCtx}
+- CLS: ${clsCtx}
+- INP: ${inpCtx}
 
-Правила Revenue Impact ($):
-- Час відповіді > 3с → ~$150-300/міс (дослідження Google: +1с = -7% конверсій)
-- PageSpeed < 50 → ~$200-400/міс
-- SSL відсутній → ~$500+/міс (браузери блокують сайт)
-- Відсутній meta description → ~$50-100/міс (зниження CTR в пошуку)
-- Якщо даних замало — null
+Орієнтири для estimatedMonthlyLossUsd (тільки де є реальна підстава):
+- Сервер > 3 с: кожна +1 с = -7% конверсій (Google/Deloitte). Для малого бізнесу ~50 лідів/міс → $150-250
+- PageSpeed mobile < 50: 80% трафіку на телефонах, повільний досвід → $200-350
+- SSL відсутній: браузер блокує перехід → $400-600
+- Відсутній meta description: CTR нижче на 10-15% → $50-120
+- Дрібні SEO проблеми (H1, title) → null або $30-80 якщо є трафік
 
-Дай максимум 4 findings, лише реальні проблеми з наданих даних.`;
+Дай 2-4 findings. Якщо сайт технічно здоровий — один info з підтвердженням.`;
 }
 
 function fallbackFindings(
@@ -174,32 +230,33 @@ function fallbackFindings(
   if (!basic.sslValid) {
     findings.push({
       severity: "critical",
-      problemSummary: "Відсутній або невалідний SSL-сертифікат",
-      plainExplanation: "Браузери показують відвідувачам попередження про небезпеку і більшість одразу закривають сайт.",
+      problemSummary: "SSL-сертифікат відсутній або недійсний",
+      plainExplanation: `Chrome і Firefox показують червоний екран "Небезпечний сайт" перед входом на ${basic.httpStatus ? "сторінку з кодом " + basic.httpStatus : "ваш сайт"}. Більшість відвідувачів одразу закривають вкладку — не тому що бояться, а тому що браузер буквально блокує перехід.`,
       estimatedMonthlyLossUsd: 500,
-      recommendation: "Встановіть безкоштовний SSL-сертифікат через Let's Encrypt або ваш хостинг.",
+      recommendation: "Активуйте SSL через панель хостингу (зазвичай безкоштовно через Let's Encrypt) або зверніться до підтримки хостингу.",
       sourceTable: "ssl_certificates",
     });
   }
 
   if (basic.responseTimeMs && basic.responseTimeMs > 3000) {
+    const secs = (basic.responseTimeMs / 1000).toFixed(1);
     findings.push({
       severity: "warning",
-      problemSummary: `Повільна відповідь сервера — ${basic.responseTimeMs} мс`,
-      plainExplanation: "Сайт повільно відповідає на запити. Google враховує швидкість при ранжуванні, а відвідувачі закривають повільні сайти.",
-      estimatedMonthlyLossUsd: 200,
-      recommendation: "Перевірте хостинг-план або підключіть CDN для прискорення.",
+      problemSummary: `Сервер відповідає за ${secs} с — вдвічі довше норми`,
+      plainExplanation: `При кожному відкритті сторінки відвідувач чекає ${secs} секунди до першого байту відповіді. За дослідженнями Google, кожна додаткова секунда знижує конверсію на 7%. Для сайту з хоча б 50 зверненнями на місяць це відчутно.`,
+      estimatedMonthlyLossUsd: Math.round((basic.responseTimeMs - 1000) / 1000 * 100),
+      recommendation: "Перевірте план хостингу — shared-хостинг часто дає такі результати. VPS або CDN (Cloudflare free tier) вирішують проблему.",
       sourceTable: "speed_checks",
     });
   }
 
-  if (pageSpeed.available && (pageSpeed.performanceScore ?? 100) < 50) {
+  if (pageSpeed.available && pageSpeed.performanceScore !== null && pageSpeed.performanceScore < 50) {
     findings.push({
       severity: "warning",
-      problemSummary: `Низький PageSpeed score — ${pageSpeed.performanceScore}/100`,
-      plainExplanation: "Сайт повільно завантажується на мобільних пристроях. 53% користувачів покидають сайт якщо він вантажиться більше 3 секунд.",
+      problemSummary: `PageSpeed mobile: ${pageSpeed.performanceScore}/100 — нижче критичної позначки`,
+      plainExplanation: `${pageSpeed.performanceScore} балів означає що на більшості телефонів сайт завантажується повільно або з помилками. Враховуючи що 60-80% вашої аудиторії зараз на мобільних — це безпосередньо впливає на відмови.${pageSpeed.lcpMs ? ` Основний контент з'являється через ${(pageSpeed.lcpMs / 1000).toFixed(1)} с (норма — до 2.5 с).` : ""}`,
       estimatedMonthlyLossUsd: 250,
-      recommendation: "Стисніть зображення, підключіть lazy loading та оптимізуйте CSS/JS.",
+      recommendation: "Запустіть Google PageSpeed Insights щоб побачити топ-3 причини — зазвичай це важкі зображення або невикористаний JS.",
       sourceTable: "core_web_vitals_checks",
     });
   }
@@ -207,10 +264,10 @@ function fallbackFindings(
   if (!basic.metaDescription) {
     findings.push({
       severity: "info",
-      problemSummary: "Відсутній meta description",
-      plainExplanation: "Google показує випадковий текст у пошуковій видачі замість продуманого опису — менше кліків.",
+      problemSummary: "Meta description відсутній — Google показує випадковий текст",
+      plainExplanation: "Коли немає meta description, пошуковик сам вирізає шматок тексту зі сторінки — часто незрозумілий або технічний. Це знижує CTR в пошуку на 10-15%, бо люди не розуміють про що сайт перш ніж клікнути.",
       estimatedMonthlyLossUsd: 75,
-      recommendation: "Додайте унікальний meta description 120–160 символів на кожну важливу сторінку.",
+      recommendation: "Напишіть опис 120-160 символів — одне речення про що сайт і що отримає відвідувач.",
       sourceTable: "speed_checks",
     });
   }
