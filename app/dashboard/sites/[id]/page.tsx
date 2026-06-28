@@ -11,6 +11,7 @@ import { ReportButton } from "./ReportButton";
 import { LiveUptimePanel } from "./LiveUptimePanel";
 import { QoraxusChat } from "./QoraxusChat";
 import { GscPanel } from "./GscPanel";
+import { RefreshSpeedButton } from "./RefreshSpeedButton";
 
 export const metadata = { title: "Моніторинг сайту — Qorax" };
 
@@ -222,6 +223,13 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           title="Час відповіді"
           badge={latestSpeed ? fmtMs(latestSpeed.load_time_ms) : undefined}
           badgeColor="mono"
+          action={
+            <RefreshSpeedButton
+              siteId={site.id}
+              accessToken={accessToken}
+              workerUrl={process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev"}
+            />
+          }
         >
           <SpeedChart checks={speedChecks} />
           {speedChecks.length > 0 && (
@@ -232,7 +240,15 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
         </Section>
 
         {/* ── Core Web Vitals ── */}
-        <Section icon={<Zap size={14} />} title="PageSpeed Insights">
+        <Section icon={<Zap size={14} />} title="PageSpeed Insights" action={
+          !mobileCwv && !desktopCwv ? (
+            <RefreshSpeedButton
+              siteId={site.id}
+              accessToken={accessToken}
+              workerUrl={process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev"}
+            />
+          ) : undefined
+        }>
           {mobileCwv || desktopCwv ? (
             <div className="grid sm:grid-cols-2 gap-5">
               {mobileCwv && <CwvBlock label="📱 Мобільний" data={mobileCwv} />}

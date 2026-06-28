@@ -11,7 +11,7 @@ import { runBasicCheck } from "./lib/basicCheck";
 import { runPageSpeedChecks } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead, selectRows } from "./lib/supabase";
-import { runUptimeChecks, runSpeedChecks, checkSslExpiry, expireTrials, sendTrialEmails } from "./lib/monitoring";
+import { runUptimeChecks, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
 import { handleChatRequest } from "./lib/chatHandler";
@@ -292,6 +292,30 @@ const worker = {
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
       return handleChatRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту
+    const speedMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/run-speed$/);
+    if (speedMatch && request.method === "POST") {
+      const siteId = speedMatch[1];
+      // Авторизація через JWT
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      ctx.waitUntil(
+        runSpeedCheckForSite(
+          siteId,
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY,
+          env.GOOGLE_PAGESPEED_API_KEY,
+          env.GEMINI_API_KEY
+        ).then(r => console.log(`Manual speed for site ${siteId}:`, r))
+      );
+      return json({ ok: true, message: "Speed check started" }, 200, origin);
     }
 
         return json({ error: "Маршрут не знайдено" }, 404, origin);

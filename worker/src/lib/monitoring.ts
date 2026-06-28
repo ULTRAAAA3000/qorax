@@ -526,6 +526,27 @@ export async function runSpeedChecks(
   return summary;
 }
 
+export async function runSpeedCheckForSite(
+  siteId: string,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  pageSpeedApiKey: string,
+  geminiApiKey: string
+): Promise<{ ok: boolean; error?: string }> {
+  const siteResult = await selectRows<SiteRow>(
+    "sites",
+    `select=id,url,display_name,monitoring_enabled&id=eq.${encodeURIComponent(siteId)}`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (!siteResult.ok || siteResult.data.length === 0) {
+    return { ok: false, error: "Сайт не знайдено" };
+  }
+  const site = siteResult.data[0];
+  await checkSingleSiteSpeed(site, supabaseUrl, serviceRoleKey, pageSpeedApiKey, geminiApiKey);
+  return { ok: true };
+}
+
 async function checkSingleSiteSpeed(
   site: SiteRow,
   supabaseUrl: string,
