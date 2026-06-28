@@ -1,5 +1,5 @@
 import { Reveal } from "@/app/components/Reveal";
-import { SiteNav } from "@/app/components/SiteNav";
+import { MarketingHeader } from "@/app/components/MarketingHeader";
 import { SiteFooterExpanded } from "@/app/components/SiteFooterExpanded";
 import { createClient } from "@/app/lib/supabase/server";
 
@@ -86,7 +86,7 @@ export default async function PricingPage() {
 
   return (
     <main className="flex flex-col min-h-screen">
-      <SiteNav />
+      <MarketingHeader isLoggedIn={!!user} activePath="/pricing" />
 
       {/* Hero */}
       <section className="relative overflow-hidden">
