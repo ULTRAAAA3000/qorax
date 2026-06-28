@@ -180,22 +180,44 @@ const worker = {
       const [plansRes, orgsRes] = await Promise.all([
         fetch(`${env.SUPABASE_URL}/rest/v1/plans?select=id,code,name&order=price_usd`,
           { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/organizations?select=id,name,created_at,organization_members(user_id,role,profiles(email)),subscriptions(id,status,trial_ends_at,plan_id,created_at)&order=created_at.desc&limit=100`,
+        fetch(`${env.SUPABASE_URL}/rest/v1/organizations?select=id,name,created_at,organization_members(user_id,role),subscriptions(id,status,trial_ends_at,plan_id,created_at)&order=created_at.desc&limit=100`,
           { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }),
       ]);
 
       const plans = await plansRes.json() as Array<{ id: string; code: string; name: string }>;
       const orgsRaw = await orgsRes.text();
-      console.log("[admin/clients] orgsRes status:", orgsRes.status, "body:", orgsRaw.slice(0, 500));
+      console.log("[admin/clients] orgsRes status:", orgsRes.status, "body:", orgsRaw.slice(0, 200));
       const orgs = JSON.parse(orgsRaw) as Array<{
         id: string; name: string; created_at: string;
-        organization_members: Array<{ user_id: string; role: string; profiles?: { email?: string } | null }>;
+        organization_members: Array<{ user_id: string; role: string }>;
         subscriptions: Array<{ id: string; status: string; trial_ends_at: string | null; plan_id: string | null; created_at: string }>;
+      }>;
+
+      // Отримуємо emails через Auth Admin API
+      const userIds = [...new Set((Array.isArray(orgs) ? orgs : [])
+        .flatMap(o => o.organization_members?.map(m => m.user_id) ?? []))];
+
+      const emailMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        try {
+          const authRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, {
+            headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+          });
+          if (authRes.ok) {
+            const authData = await authRes.json() as { users: Array<{ id: string; email: string }> };
+            for (const u of authData.users ?? []) emailMap[u.id] = u.email;
+          }
+        } catch { /* ignore */ }
+      }
       }>;
 
       const plansMap = Object.fromEntries((Array.isArray(plans) ? plans : []).map(p => [p.id, p]));
       const orgsWithPlans = (Array.isArray(orgs) ? orgs : []).map(org => ({
         ...org,
+        organization_members: (org.organization_members ?? []).map(m => ({
+          ...m,
+          profiles: { email: emailMap[m.user_id] ?? null },
+        })),
         subscriptions: (org.subscriptions ?? []).map(sub => ({
           ...sub,
           plans: sub.plan_id ? (plansMap[sub.plan_id] ?? null) : null,
