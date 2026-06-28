@@ -213,7 +213,7 @@ export default async function DashboardPage({
               </Link>
             </div>
             <div className="mt-4 flex flex-wrap gap-3">
-              {["⚡ Перевірки кожні 5 хв", "🔒 SSL і домен", "✦ AI Revenue Impact"].map(f => (
+              {["Перевірки кожні 5 хв", "SSL і домен", "AI Revenue Impact"].map(f => (
                 <span key={f} className="text-xs text-[var(--text-secondary)] flex items-center gap-1.5">{f}</span>
               ))}
             </div>

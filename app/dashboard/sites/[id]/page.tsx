@@ -197,7 +197,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             />
             <StatPill
               label="SSL"
-              value={sslOk ? "OK" : ssl ? "⚠" : "—"}
+              value={sslOk ? "OK" : ssl ? "Увага" : "—"}
               color={sslOk ? "lime" : "red"}
             />
             {criticalInsights > 0 && (
@@ -251,8 +251,8 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
         }>
           {mobileCwv || desktopCwv ? (
             <div className="grid sm:grid-cols-2 gap-5">
-              {mobileCwv && <CwvBlock label="📱 Мобільний" data={mobileCwv} />}
-              {desktopCwv && <CwvBlock label="🖥 Десктоп" data={desktopCwv} />}
+              {mobileCwv && <CwvBlock label="Мобільний" data={mobileCwv} />}
+              {desktopCwv && <CwvBlock label="Десктоп" data={desktopCwv} />}
             </div>
           ) : (
             <div className="space-y-3">
@@ -312,7 +312,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                 <SeoCheckCell label="Schema"
                   ok={seoAudit.has_schema_markup}
                   warn={false}
-                  value={seoAudit.has_schema_markup ? "✓ OK" : "Немає"}
+                  value={seoAudit.has_schema_markup ? "OK" : "Немає"}
                 />
               </div>
 
@@ -416,7 +416,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
               ))}
             </div>
           ) : (
-            <EmptySlot text="Перевірка щонеділі. Якщо битих посилань немає — чудово ✓" />
+            <EmptySlot text="Перевірка щонеділі. Якщо битих посилань немає — чудово" />
           )}
         </Section>
 

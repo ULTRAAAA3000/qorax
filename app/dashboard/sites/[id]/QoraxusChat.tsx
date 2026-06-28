@@ -205,7 +205,7 @@ export function QoraxusChat({
                   style={{ background: "var(--bg)", border: "1px solid var(--border-hairline)" }}
                 >
                   <p className="font-medium mb-1" style={{ color: "var(--lime)" }}>
-                    Привіт! Я Qoraxus 👋
+                    Привіт! Я Qoraxus
                   </p>
                   <p style={{ color: "var(--text-secondary)" }}>
                     Запитай мене про стан сайту, проблеми або що зробити щоб більше заробляти.
