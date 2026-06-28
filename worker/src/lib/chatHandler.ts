@@ -17,7 +17,7 @@ import { selectRows } from "./supabase";
 import type { Env } from "../types";
 
 const GEMINI_ENDPOINT =
-  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent";
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-001:generateContent";
 const GEMINI_TIMEOUT_MS = 20_000;
 const MAX_HISTORY_MESSAGES = 10; // останні N повідомлень щоб не перевищити контекст
 
