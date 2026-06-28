@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Play, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
@@ -74,6 +74,12 @@ export function AdminPanel() {
   const [tokenSaved, setTokenSaved] = useState(false);
   const [jobStatuses, setJobStatuses] = useState<Record<string, JobStatus>>({});
   const [jobMessages, setJobMessages] = useState<Record<string, string>>({});
+
+  // Завантажуємо токен з localStorage при монтуванні
+  useEffect(() => {
+    const saved = localStorage.getItem("qorax_admin_token");
+    if (saved) setAdminToken(saved);
+  }, []);
 
   function saveToken() {
     localStorage.setItem("qorax_admin_token", adminToken);

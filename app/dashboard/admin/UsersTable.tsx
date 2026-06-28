@@ -98,10 +98,12 @@ export function UsersTable({ orgs, plans }: { orgs: Org[]; plans: Plan[] }) {
         )}
         {orgs.map((org) => {
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const sub = org.subscriptions?.[0] as any;
+          const subs = (org.subscriptions ?? []) as any[];
+          // Беремо активну підписку, або першу якщо немає активної
+          const sub = subs.find((s: any) => s.status === "active" || s.status === "trialing") ?? subs[0] ?? null;
           // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          const planCode = (sub?.plans as any)?.code as string ?? "—";
-          const planName = (sub?.plans as { name?: string })?.name ?? "—";
+          const planCode = (sub?.plans as any)?.code as string ?? "free";
+          const planName = (sub?.plans as { name?: string })?.name ?? "Free";
           const subStatus = sub?.status as string ?? "—";
           const daysLeft = trialDaysLeft(sub?.trial_ends_at);
           const memberCount = org.organization_members?.length ?? 0;

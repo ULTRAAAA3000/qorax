@@ -43,7 +43,7 @@ export default async function AdminPage() {
       name,
       created_at,
       organization_members(user_id, role),
-      subscriptions(status, trial_ends_at, plans(code, name))
+      subscriptions(status, trial_ends_at, plans(code, name), created_at)
     `)
     .order("created_at", { ascending: false })
     .limit(50);
