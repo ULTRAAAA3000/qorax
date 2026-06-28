@@ -299,76 +299,71 @@ const worker = {
 
   // ── Cron handler ──────────────────────────────────────────────
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
-  // 0 3 * * * — щодня о 3:00: швидкість + SEO + конкуренти
-  if (event.cron === "0 3 * * *") {
-    ctx.waitUntil(
-      Promise.all([
+    // 0 3 * * * — щодня о 3:00: швидкість + SEO + конкуренти
+    if (event.cron === "0 3 * * *") {
+      const [speedSummary, seoSummary, competitorSummary] = await Promise.all([
         runSpeedChecks(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
           env.GOOGLE_PAGESPEED_API_KEY,
           env.GEMINI_API_KEY
-        ).then((summary) => console.log("Speed monitoring run:", JSON.stringify(summary))),
+        ),
         runSeoChecks(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY
-        ).then((summary) => console.log("SEO checks run:", JSON.stringify(summary))),
+        ),
         runCompetitorChecks(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
           env.RESEND_API_KEY,
           env.TELEGRAM_BOT_TOKEN,
           env.APP_URL
-        ).then((summary) => console.log("Competitor checks run:", JSON.stringify(summary))),
-        runGscSync(env).then(() => console.log("GSC sync run")),
-      ])
-    );
-    return;
-  }
+        ),
+        runGscSync(env),
+      ]);
+      console.log("Speed:", JSON.stringify(speedSummary));
+      console.log("SEO:", JSON.stringify(seoSummary));
+      console.log("Competitors:", JSON.stringify(competitorSummary));
+      return;
+    }
 
-  // 0 4 1 * * — першого числа кожного місяця о 4:00: PDF звіти
-  if (event.cron === "0 4 1 * *") {
-    ctx.waitUntil(
-      generateMonthlyReports(env).then((count) =>
-        console.log(`Monthly reports generated: ${count}`)
-      )
-    );
-    return;
-  }
+    // 0 4 1 * * — першого числа кожного місяця о 4:00: PDF звіти
+    if (event.cron === "0 4 1 * *") {
+      const count = await generateMonthlyReports(env);
+      console.log(`Monthly reports generated: ${count}`);
+      return;
+    }
 
-  // 0 5 * * * — щодня о 5:00: expire trials + email нагадування
-  if (event.cron === "0 5 * * *") {
-    ctx.waitUntil(
-      Promise.all([
-        expireTrials(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
-          .then((count) => console.log(`Trials expired: ${count}`)),
+    // 0 5 * * * — щодня о 5:00: expire trials + email нагадування
+    if (event.cron === "0 5 * * *") {
+      const [expiredCount, emailResult] = await Promise.all([
+        expireTrials(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
         sendTrialEmails(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
           env.RESEND_API_KEY,
           env.APP_URL
-        ).then((r) => console.log(`Trial emails: ${JSON.stringify(r)}`)),
-      ])
-    );
-    return;
-  }
+        ),
+      ]);
+      console.log(`Trials expired: ${expiredCount}`);
+      console.log(`Trial emails: ${JSON.stringify(emailResult)}`);
+      return;
+    }
 
-  // 30 4 * * 0 — щонеділі о 4:30: перевірка битих посилань
-  if (event.cron === "30 4 * * 0") {
-    ctx.waitUntil(
-      runBrokenLinksChecks(
+    // 30 4 * * 0 — щонеділі о 4:30: перевірка битих посилань
+    if (event.cron === "30 4 * * 0") {
+      const s = await runBrokenLinksChecks(
         env.SUPABASE_URL,
         env.SUPABASE_SERVICE_ROLE_KEY,
         env.RESEND_API_KEY,
         env.APP_URL
-      ).then((s) => console.log("Broken links run:", JSON.stringify(s)))
-    );
-    return;
-  }
+      );
+      console.log("Broken links run:", JSON.stringify(s));
+      return;
+    }
 
-  // */5 * * * * — кожні 5 хвилин: uptime + SSL
-  ctx.waitUntil(
-    Promise.all([
+    // */5 * * * * — кожні 5 хвилин: uptime + SSL
+    await Promise.all([
       runUptimeChecks(
         env.SUPABASE_URL,
         env.SUPABASE_SERVICE_ROLE_KEY,
@@ -383,8 +378,7 @@ const worker = {
         env.APP_URL,
         env.TELEGRAM_BOT_TOKEN
       ),
-    ])
-  );
+    ]);
   },
 };
 
