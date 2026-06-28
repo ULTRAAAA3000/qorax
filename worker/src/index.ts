@@ -141,11 +141,11 @@ const worker = {
 
       const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, Prefer: "count=exact" };
       const [usersRes, sitesRes, trialsRes, paidRes, checksRes] = await Promise.all([
-        fetch(`${env.SUPABASE_URL}/rest/v1/profiles?select=id`, { method: "HEAD", headers: h }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/sites?select=id`, { method: "HEAD", headers: h }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?status=eq.trialing&select=id`, { method: "HEAD", headers: h }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?status=eq.active&select=id`, { method: "HEAD", headers: h }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_checks?select=id`, { method: "HEAD", headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/profiles?select=id`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/sites?select=id`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?status=eq.trialing&select=id`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?status=eq.active&select=id`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_checks?select=id`, { headers: h }),
       ]);
 
       const getCount = (res: Response) => parseInt(res.headers.get("content-range")?.split("/")[1] ?? "0");
@@ -185,7 +185,9 @@ const worker = {
       ]);
 
       const plans = await plansRes.json() as Array<{ id: string; code: string; name: string }>;
-      const orgs = await orgsRes.json() as Array<{
+      const orgsRaw = await orgsRes.text();
+      console.log("[admin/clients] orgsRes status:", orgsRes.status, "body:", orgsRaw.slice(0, 500));
+      const orgs = JSON.parse(orgsRaw) as Array<{
         id: string; name: string; created_at: string;
         organization_members: Array<{ user_id: string; role: string; profiles?: { email?: string } | null }>;
         subscriptions: Array<{ id: string; status: string; trial_ends_at: string | null; plan_id: string | null; created_at: string }>;
