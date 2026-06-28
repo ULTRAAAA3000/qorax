@@ -1,144 +1,186 @@
 "use client";
 
-import { useRef, useState, useCallback, useMemo, Suspense } from "react";
-import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { MeshTransmissionMaterial, useFBO } from "@react-three/drei";
-import * as THREE from "three";
+import { useEffect, useRef, useCallback } from "react";
 
 /**
- * HeroGlassCube — Raycast-style glass "bars": a row of vertical glass
- * cylinders that refract and chromatically shift the colorful background
- * (HeroAtmosphere) behind them as the cursor moves.
- *
- * PERFORMANCE NOTE: MeshTransmissionMaterial does its own render-to-texture
- * pass per instance unless given a shared `buffer`. With 16 cylinders each
- * doing an independent full-resolution transmission pass, every frame was
- * costing 16x the GPU work of a single material — this is what caused the
- * hero section to freeze/lag. Fix: render one shared low-res FBO once per
- * frame and pass it to every cylinder via the `buffer` prop, plus drop
- * resolution/samples to something a real-time scene can sustain.
- *
- * Skipped entirely on touch devices and prefers-reduced-motion — a WebGL
- * refraction effect serves no purpose without a cursor and has a real
- * performance/battery cost we shouldn't impose on a stated preference.
+ * HeroSignalEffect — замінює Three.js GlassCube.
+ * Canvas-ефект у стилі live-моніторингу: горизонтальні сигнальні лінії
+ * що "пінгують" вузли зліва направо. Кольори — lime (#D6FF3F) та cyan (#8CF6FF).
+ * Cursor-reactive: лінії трохи відхиляються від курсора.
+ * Без WebGL, без важких бібліотек — чистий Canvas2D.
  */
 
-const CYLINDER_COUNT = 16;
-const CYLINDER_RADIUS = 0.5;
-const CYLINDER_HEIGHT = 15;
-const FBO_RESOLUTION = 256;
+interface Line {
+  y: number;           // базова позиція по Y (0..1 відносно висоти)
+  speed: number;       // швидкість пульсу
+  progress: number;    // поточний прогрес пульсу (0..1)
+  color: "lime" | "cyan";
+  opacity: number;
+  nodes: number[];     // X-позиції вузлів (0..1)
+  dotProgress: number; // анімація dot на вузлі
+  activeDot: number;   // індекс активного вузла
+  delay: number;       // затримка старту
+}
 
-function GlassBars({ pointer }: { pointer: React.RefObject<{ x: number; y: number }> }) {
-  const groupRef = useRef<THREE.Group>(null);
-  const currentRotation = useRef({ x: 0, y: 0 });
-  const currentOffset = useRef({ x: 0, y: 0 });
+const LIME = "#D6FF3F";
+const CYAN = "#8CF6FF";
+const LINE_COUNT = 9;
 
-  const { gl, scene, camera } = useThree();
-  const fbo = useFBO(FBO_RESOLUTION, FBO_RESOLUTION);
-
-  // Evenly spaced vertical cylinders along X, mirroring Raycast's row of bars.
-  const positions = useMemo(() => {
-    const spacing = 1.35;
-    const totalWidth = (CYLINDER_COUNT - 1) * spacing;
-    return Array.from({ length: CYLINDER_COUNT }, (_, i) => i * spacing - totalWidth / 2);
-  }, []);
-
-  useFrame(() => {
-    if (!groupRef.current) return;
-
-    // Gentle rotation + translation toward the cursor — mirrors Raycast's
-    // cubeInteraction (rotationInfluence 0.3, translationInfluence 0.2).
-    const targetRotX = pointer.current.y * 0.12;
-    const targetRotY = pointer.current.x * 0.18;
-    currentRotation.current.x += (targetRotX - currentRotation.current.x) * 0.04;
-    currentRotation.current.y += (targetRotY - currentRotation.current.y) * 0.04;
-    groupRef.current.rotation.x = currentRotation.current.x;
-    groupRef.current.rotation.y = currentRotation.current.y + 0.73; // glassRotation base offset
-
-    const targetOffsetX = pointer.current.x * 0.6;
-    const targetOffsetY = pointer.current.y * 0.3;
-    currentOffset.current.x += (targetOffsetX - currentOffset.current.x) * 0.04;
-    currentOffset.current.y += (targetOffsetY - currentOffset.current.y) * 0.04;
-    groupRef.current.position.x = currentOffset.current.x;
-    groupRef.current.position.y = currentOffset.current.y;
-
-    // One shared render-to-texture pass per frame, reused by all 16
-    // cylinders below — this is the part that was previously happening
-    // 16 times per frame and freezing the page.
-    groupRef.current.visible = false;
-    gl.setRenderTarget(fbo);
-    gl.render(scene, camera);
-    gl.setRenderTarget(null);
-    groupRef.current.visible = true;
+function createLines(width: number, height: number): Line[] {
+  return Array.from({ length: LINE_COUNT }, (_, i) => {
+    const color = i % 3 === 1 ? "cyan" : "lime";
+    const nodeCount = 3 + Math.floor(Math.random() * 3);
+    return {
+      y: 0.08 + (i / (LINE_COUNT - 1)) * 0.84,
+      speed: 0.0004 + Math.random() * 0.0003,
+      progress: Math.random(),
+      color,
+      opacity: 0.12 + Math.random() * 0.18,
+      nodes: Array.from({ length: nodeCount }, (_, j) => 0.1 + (j / (nodeCount - 1)) * 0.8),
+      dotProgress: 0,
+      activeDot: 0,
+      delay: Math.random() * 2000,
+    };
   });
-
-  return (
-    <group ref={groupRef} position={[0, 0, -9]}>
-      {positions.map((x, i) => (
-        <mesh key={i} position={[x, 0, 0]}>
-          <cylinderGeometry
-            args={[CYLINDER_RADIUS, CYLINDER_RADIUS, CYLINDER_HEIGHT, 8, 1, true]}
-          />
-          <MeshTransmissionMaterial
-            buffer={fbo.texture}
-            thickness={1}
-            roughness={0.35}
-            transmission={1}
-            ior={1.5}
-            chromaticAberration={2}
-            anisotropy={1}
-            distortion={0}
-            temporalDistortion={0}
-            samples={1}
-            resolution={FBO_RESOLUTION}
-            background={new THREE.Color("#0c111d")}
-          />
-        </mesh>
-      ))}
-    </group>
-  );
 }
 
 export function HeroGlassCube() {
-  const pointer = useRef({ x: 0, y: 0 });
-  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const linesRef = useRef<Line[]>([]);
+  const mouseRef = useRef({ x: 0.5, y: 0.5 });
+  const rafRef = useRef<number>(0);
+  const startedRef = useRef(false);
 
-  // Decide once on mount whether the effect should run at all.
-  if (enabled === null && typeof window !== "undefined") {
-    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const isTouchDevice = window.matchMedia("(pointer: coarse)").matches;
-    setEnabled(!prefersReducedMotion && !isTouchDevice);
-  }
+  const draw = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-  const handlePointerMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    pointer.current = {
-      x: ((e.clientX - rect.left) / rect.width) * 2 - 1,
-      y: ((e.clientY - rect.top) / rect.height) * 2 - 1,
-    };
+    const W = canvas.width;
+    const H = canvas.height;
+    ctx.clearRect(0, 0, W, H);
+
+    const mx = mouseRef.current.x;
+    const my = mouseRef.current.y;
+
+    linesRef.current.forEach(line => {
+      // Cursor influence — лінія трохи відхиляється від курсора
+      const dy = line.y - my;
+      const yOffset = dy * 0.03 * H;
+      const baseY = line.y * H + yOffset;
+
+      const color = line.color === "lime" ? LIME : CYAN;
+
+      // Базова горизонтальна лінія
+      ctx.beginPath();
+      ctx.moveTo(0, baseY);
+      ctx.lineTo(W, baseY);
+      ctx.strokeStyle = color;
+      ctx.globalAlpha = line.opacity * 0.4;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      // Пульс — яскрава точка що рухається по лінії
+      const pulseX = line.progress * W;
+      const trailLen = W * 0.18;
+      const grad = ctx.createLinearGradient(pulseX - trailLen, 0, pulseX + 20, 0);
+      grad.addColorStop(0, "transparent");
+      grad.addColorStop(0.6, color + "22");
+      grad.addColorStop(1, color);
+      ctx.beginPath();
+      ctx.moveTo(Math.max(0, pulseX - trailLen), baseY);
+      ctx.lineTo(pulseX, baseY);
+      ctx.strokeStyle = grad;
+      ctx.globalAlpha = line.opacity * 1.8;
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+
+      // Вузли (кола)
+      line.nodes.forEach((nx, idx) => {
+        const nodeX = nx * W;
+        const dist = Math.abs(pulseX - nodeX);
+
+        // Glow коли пульс проходить через вузол
+        const glow = Math.max(0, 1 - dist / (W * 0.06));
+        const r = glow > 0.01 ? 3 + glow * 4 : 2.5;
+
+        ctx.beginPath();
+        ctx.arc(nodeX, baseY, r, 0, Math.PI * 2);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = line.opacity * (0.5 + glow * 0.8);
+        ctx.fill();
+
+        // Ripple ефект при попаданні пульсу
+        if (glow > 0.3) {
+          ctx.beginPath();
+          ctx.arc(nodeX, baseY, r + glow * 12, 0, Math.PI * 2);
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = glow * 0.15;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+        }
+      });
+
+      // Прогрес
+      line.progress += line.speed;
+      if (line.progress > 1.05) line.progress = -0.05;
+    });
+
+    ctx.globalAlpha = 1;
+    rafRef.current = requestAnimationFrame(draw);
   }, []);
 
-  if (!enabled) return null;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (prefersReducedMotion) return;
+
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect();
+      canvas.width = rect.width * Math.min(window.devicePixelRatio, 2);
+      canvas.height = rect.height * Math.min(window.devicePixelRatio, 2);
+      if (!startedRef.current) {
+        linesRef.current = createLines(canvas.width, canvas.height);
+        startedRef.current = true;
+      }
+    };
+
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(canvas);
+
+    const section = canvas.parentElement?.parentElement;
+    const onMove = (e: PointerEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseRef.current = {
+        x: (e.clientX - rect.left) / rect.width,
+        y: (e.clientY - rect.top) / rect.height,
+      };
+    };
+    section?.addEventListener("pointermove", onMove);
+
+    rafRef.current = requestAnimationFrame(draw);
+
+    return () => {
+      cancelAnimationFrame(rafRef.current);
+      ro.disconnect();
+      section?.removeEventListener("pointermove", onMove);
+    };
+  }, [draw]);
 
   return (
     <div
       aria-hidden="true"
-      onPointerMove={handlePointerMove}
       className="absolute inset-0 overflow-hidden"
       style={{ pointerEvents: "none", zIndex: 0 }}
     >
-      <Canvas
-        camera={{ position: [0, 0, 16.54], fov: 35, near: 0.1, far: 100 }}
-        dpr={[1, 1.5]}
-        gl={{ alpha: true, antialias: true }}
-        style={{ pointerEvents: "auto", width: "100%", height: "100%", display: "block" }}
-        resize={{ scroll: false, debounce: 0 }}
-        onPointerMove={handlePointerMove}
-      >
-        <Suspense fallback={null}>
-          <GlassBars pointer={pointer} />
-        </Suspense>
-      </Canvas>
+      <canvas
+        ref={canvasRef}
+        style={{ width: "100%", height: "100%", display: "block", opacity: 0.85 }}
+      />
     </div>
   );
 }
