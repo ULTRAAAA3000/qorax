@@ -20,51 +20,76 @@ export default async function AdminPage() {
 
   if (profile?.platform_role !== "admin") redirect("/dashboard");
 
-  // Статистика
-  const [
-    { count: sitesCount },
-    { count: usersCount },
-    { count: checksCount },
-    { count: activeTrials },
-    { count: paidSubs },
-  ] = await Promise.all([
-    supabase.from("sites").select("*", { count: "exact", head: true }),
-    supabase.from("profiles").select("*", { count: "exact", head: true }),
-    supabase.from("uptime_checks").select("*", { count: "exact", head: true }),
-    supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "trialing"),
-    supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active"),
+  // Статистика — кожен запит ізольований, щоб один timeout не валив всю сторінку
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function safeCount(query: any): Promise<number> {
+    try {
+      const { count } = await query;
+      return count ?? 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  const [sitesCount, usersCount, activeTrials, paidSubs] = await Promise.all([
+    safeCount(supabase.from("sites").select("*", { count: "exact", head: true })),
+    safeCount(supabase.from("profiles").select("*", { count: "exact", head: true })),
+    safeCount(supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "trialing")),
+    safeCount(supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active")),
   ]);
 
-  // Список користувачів з планами — безпечний запит
-  const { data: orgs, error: orgsError } = await supabase
-    .from("organizations")
-    .select(`
-      id,
-      name,
-      created_at,
-      organization_members(user_id, role),
-      subscriptions(id, status, trial_ends_at, plan_id, created_at)
-    `)
-    .order("created_at", { ascending: false })
-    .limit(50);
+  // uptime_checks може бути великою — рахуємо окремо з fallback
+  let checksCount = 0;
+  try {
+    const { count } = await supabase
+      .from("uptime_checks")
+      .select("*", { count: "exact", head: true });
+    checksCount = count ?? 0;
+  } catch {
+    checksCount = 0;
+  }
 
-  if (orgsError) console.error("Admin orgs query error:", orgsError);
+  // Список організацій з планами
+  let orgsWithPlans: {
+    id: string; name: string; created_at: string;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    organization_members: any[]; subscriptions: any[];
+  }[] = [];
+  let plans: { id: string; code: string; name: string }[] = [];
 
-  // Плани окремим запитом
-  const { data: plans } = await supabase
-    .from("plans")
-    .select("id, code, name")
-    .order("price_usd");
+  try {
+    const { data: orgs, error: orgsError } = await supabase
+      .from("organizations")
+      .select(`
+        id,
+        name,
+        created_at,
+        organization_members(user_id, role),
+        subscriptions(id, status, trial_ends_at, plan_id, created_at)
+      `)
+      .order("created_at", { ascending: false })
+      .limit(50);
 
-  // Збагачуємо орги даними плану
-  const plansMap = Object.fromEntries((plans ?? []).map(p => [p.id, p]));
-  const orgsWithPlans = (orgs ?? []).map(org => ({
-    ...org,
-    subscriptions: (org.subscriptions ?? []).map((sub: { id: string; status: string; trial_ends_at: string | null; plan_id: string | null; created_at: string }) => ({
-      ...sub,
-      plans: sub.plan_id ? plansMap[sub.plan_id] ?? null : null,
-    })),
-  }));
+    if (orgsError) console.error("Admin orgs query error:", orgsError);
+
+    const { data: plansData } = await supabase
+      .from("plans")
+      .select("id, code, name")
+      .order("price_usd");
+
+    plans = plansData ?? [];
+    const plansMap = Object.fromEntries(plans.map(p => [p.id, p]));
+
+    orgsWithPlans = (orgs ?? []).map(org => ({
+      ...org,
+      subscriptions: (org.subscriptions ?? []).map((sub: { id: string; status: string; trial_ends_at: string | null; plan_id: string | null; created_at: string }) => ({
+        ...sub,
+        plans: sub.plan_id ? plansMap[sub.plan_id] ?? null : null,
+      })),
+    }));
+  } catch (e) {
+    console.error("Admin page orgs/plans query failed:", e);
+  }
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
@@ -93,11 +118,11 @@ export default async function AdminPage() {
         {/* Статистика */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
-            { label: "Користувачів", value: usersCount ?? 0, accent: false },
-            { label: "Сайтів", value: sitesCount ?? 0, accent: false },
-            { label: "Тріалів", value: activeTrials ?? 0, accent: false },
-            { label: "Платних", value: paidSubs ?? 0, accent: true },
-            { label: "Uptime-перевірок", value: (checksCount ?? 0).toLocaleString(), accent: false },
+            { label: "Користувачів", value: usersCount, accent: false },
+            { label: "Сайтів", value: sitesCount, accent: false },
+            { label: "Тріалів", value: activeTrials, accent: false },
+            { label: "Платних", value: paidSubs, accent: true },
+            { label: "Uptime-перевірок", value: checksCount.toLocaleString(), accent: false },
           ].map(s => (
             <div key={s.label} className="rounded-2xl border hairline bg-[var(--bg-raised)] p-4">
               <p className="text-xs text-[var(--text-tertiary)] mb-1">{s.label}</p>
@@ -109,8 +134,8 @@ export default async function AdminPage() {
           ))}
         </div>
 
-        {/* Список користувачів */}
-        <UsersTable orgs={orgsWithPlans} plans={plans ?? []} />
+        {/* Список організацій */}
+        <UsersTable orgs={orgsWithPlans} plans={plans} />
 
         {/* Ручний запуск cron */}
         <AdminPanel />
