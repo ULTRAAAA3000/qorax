@@ -213,11 +213,11 @@ const worker = {
       const plansMap = Object.fromEntries((Array.isArray(plans) ? plans : []).map(p => [p.id, p]));
       const orgsWithPlans = (Array.isArray(orgs) ? orgs : []).map(org => ({
         ...org,
-        organization_members: (org.organization_members ?? []).map(m => ({
+        organization_members: (Array.isArray(org.organization_members) ? org.organization_members : []).map(m => ({
           ...m,
           profiles: { email: emailMap[m.user_id] ?? null },
         })),
-        subscriptions: (org.subscriptions ?? []).map(sub => ({
+        subscriptions: (Array.isArray(org.subscriptions) ? org.subscriptions : []).map(sub => ({
           ...sub,
           plans: sub.plan_id ? (plansMap[sub.plan_id] ?? null) : null,
         })),
