@@ -263,7 +263,7 @@ async function handleChatInternal(
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
 
-    // Retry при 429 (rate limit free tier) — чекаємо 4с і пробуємо ще раз
+    // Retry при 429 (rate limit) або 503 (overload) — чекаємо і пробуємо ще раз
     let geminiResp = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -272,9 +272,10 @@ async function handleChatInternal(
     });
     clearTimeout(timeout);
 
-    if (geminiResp.status === 429) {
-      console.warn("[chat] Gemini 429 rate limit — retrying in 4s");
-      await new Promise(r => setTimeout(r, 4000));
+    if (geminiResp.status === 429 || geminiResp.status === 503) {
+      const delay = geminiResp.status === 503 ? 6000 : 4000;
+      console.warn(`[chat] Gemini ${geminiResp.status} — retrying in ${delay}ms`);
+      await new Promise(r => setTimeout(r, delay));
       const controller2 = new AbortController();
       const timeout2 = setTimeout(() => controller2.abort(), GEMINI_TIMEOUT_MS);
       geminiResp = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
