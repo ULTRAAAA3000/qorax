@@ -216,30 +216,44 @@ export function GscPanel({ siteId, accessToken, workerUrl }: Props) {
       </div>
 
       {/* Clicks chart */}
-      {dailyRows.length > 0 && (
-        <div className="rounded-xl p-4"
-          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-          <p className="text-xs text-[var(--text-tertiary)] mb-3 flex items-center gap-1.5">
-            <MousePointer size={11} /> Кліки за 28 днів
-          </p>
-          <div className="flex items-end gap-0.5 h-16">
-            {dailyRows.map((r, i) => (
-              <div key={i} className="flex-1 rounded-sm min-w-[3px] transition-opacity hover:opacity-100"
-                style={{
-                  height: `${Math.max((r.clicks / maxClicks) * 100, 4)}%`,
-                  background: "var(--lime)",
-                  opacity: 0.5 + (i / dailyRows.length) * 0.5,
-                }}
-                title={`${r.date}: ${r.clicks} кліків`}
-              />
-            ))}
+      {dailyRows.length > 0 && (() => {
+        const vals = dailyRows.map(r => r.clicks);
+        const maxV = Math.max(...vals, 1);
+        const minV = Math.min(...vals);
+        const range = maxV - minV || 1;
+        const W = 600; const H = 72;
+        const pad = { t: 6, b: 6 };
+        const pts = vals.map((v, i) => ({
+          x: (i / Math.max(vals.length - 1, 1)) * W,
+          y: pad.t + (1 - (v - minV) / range) * (H - pad.t - pad.b),
+          v,
+        }));
+        const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+        const areaD = pathD + ` L${pts[pts.length - 1].x},${H} L0,${H} Z`;
+        return (
+          <div className="rounded-xl p-4"
+            style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+            <p className="text-xs text-[var(--text-tertiary)] mb-3 flex items-center gap-1.5">
+              <MousePointer size={11} /> Кліки за 28 днів
+            </p>
+            <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 72, overflow: "visible" }}>
+              <defs>
+                <linearGradient id="gscGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#D6FF3F" stopOpacity="0.15" />
+                  <stop offset="100%" stopColor="#D6FF3F" stopOpacity="0" />
+                </linearGradient>
+              </defs>
+              <path d={areaD} fill="url(#gscGrad)" />
+              <path d={pathD} fill="none" stroke="#D6FF3F" strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+              <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="3" fill="#D6FF3F" />
+            </svg>
+            <div className="flex justify-between mt-1.5">
+              <span className="text-[10px] text-[var(--text-tertiary)]">{dailyRows[0]?.date}</span>
+              <span className="text-[10px] text-[var(--text-tertiary)]">{dailyRows[dailyRows.length - 1]?.date}</span>
+            </div>
           </div>
-          <div className="flex justify-between mt-1.5">
-            <span className="text-[10px] text-[var(--text-tertiary)]">{dailyRows[0]?.date}</span>
-            <span className="text-[10px] text-[var(--text-tertiary)]">{dailyRows[dailyRows.length - 1]?.date}</span>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Top pages + Top queries side by side */}
       <div className="grid sm:grid-cols-2 gap-3">

@@ -278,7 +278,6 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
               </div>
             </div>
           )}
-          )}
         </Section>
 
         {/* ── AI Insights ── */}
@@ -562,21 +561,62 @@ function StatPill({ label, value, color }: { label: string; value: string; color
 
 // ─── Chart ─────────────────────────────────────────────────────
 
-function SpeedChart({ checks }: { checks: { load_time_ms: number }[] }) {
+function SpeedChart({ checks }: { checks: { load_time_ms: number; checked_at?: string }[] }) {
   if (!checks.length) return <EmptySlot text="Дані з'являться після першого сканування" />;
   const vals = [...checks].reverse().map((c) => c.load_time_ms);
+
+  // Потрібно мінімум 2 точки для лінії
+  if (vals.length === 1) {
+    const v = vals[0];
+    const color = v > 3000 ? "#F5675A" : v > 1500 ? "#F5A623" : "var(--lime)";
+    return (
+      <div className="flex flex-col items-center justify-center h-20 gap-1">
+        <span className="text-2xl font-mono font-bold" style={{ color }}>{v}мс</span>
+        <span className="text-xs text-[var(--text-tertiary)]">один замір — графік з'явиться після наступного скану</span>
+      </div>
+    );
+  }
+
+  const W = 600; const H = 80;
+  const pad = { t: 8, b: 8, l: 0, r: 0 };
   const max = Math.max(...vals, 1);
+  const min = Math.min(...vals);
+  const range = max - min || 1;
+
+  const pts = vals.map((v, i) => ({
+    x: pad.l + (i / (vals.length - 1)) * (W - pad.l - pad.r),
+    y: pad.t + (1 - (v - min) / range) * (H - pad.t - pad.b),
+    v,
+  }));
+
+  const pathD = pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(" ");
+  const areaD = pathD + ` L${pts[pts.length - 1].x},${H} L${pts[0].x},${H} Z`;
+
+  const avgMs = Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+  const lineColor = avgMs > 3000 ? "#F5675A" : avgMs > 1500 ? "#F5A623" : "#D6FF3F";
+
   return (
-    <div className="flex items-end gap-0.5 h-16 mt-1">
-      {vals.slice(-60).map((v, i) => (
-        <div key={i} className="flex-1 rounded-sm transition-opacity hover:opacity-80 min-w-[3px]"
-          style={{
-            height: `${Math.max((v / max) * 100, 4)}%`,
-            background: v > 3000 ? "#F5675A" : v > 1500 ? "#F5A623" : "var(--lime)",
-            opacity: 0.7 + (i / vals.length) * 0.3,
-          }}
-          title={`${v}мс`} />
-      ))}
+    <div className="space-y-2">
+      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ height: 80, overflow: "visible" }}>
+        <defs>
+          <linearGradient id="speedGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={lineColor} stopOpacity="0.18" />
+            <stop offset="100%" stopColor={lineColor} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* Area fill */}
+        <path d={areaD} fill="url(#speedGrad)" />
+        {/* Line */}
+        <path d={pathD} fill="none" stroke={lineColor} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+        {/* Dots on hover — показуємо тільки останню точку */}
+        <circle cx={pts[pts.length - 1].x} cy={pts[pts.length - 1].y} r="3" fill={lineColor} />
+      </svg>
+      {/* Min / Avg / Max */}
+      <div className="flex justify-between text-[10px] font-mono text-[var(--text-tertiary)]">
+        <span>мін {min}мс</span>
+        <span>avg {avgMs}мс</span>
+        <span>макс {max}мс</span>
+      </div>
     </div>
   );
 }
