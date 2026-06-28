@@ -74,10 +74,10 @@ export async function runSeoChecks(
 
     const planCode = (subResult.data[0]?.plans as PlanRow | null)?.code ?? "free";
     const isGrowthPlus = ["growth", "agency", "admin", "trial"].includes(planCode);
-    if (!isGrowthPlus) continue;
-
+    // Sitemap/robots перевіряємо для ВСІХ планів,
+    // повний SEO мета-аудит — тільки для Growth+
     try {
-      const summary = await checkSite(site, supabaseUrl, serviceRoleKey);
+      const summary = await checkSite(site, supabaseUrl, serviceRoleKey, isGrowthPlus);
       if (summary.error) errors++;
       else checked++;
     } catch (err) {
@@ -94,13 +94,14 @@ export async function runSeoChecks(
 async function checkSite(
   site: SiteRow,
   supabaseUrl: string,
-  serviceRoleKey: string
+  serviceRoleKey: string,
+  isGrowthPlus = true
 ): Promise<SeoCheckSummary> {
   const baseUrl = normalizeBaseUrl(site.url);
 
-  // Всі три перевірки паралельно
+  // Sitemap/robots — для всіх. Meta — тільки Growth+
   const [metaResult, sitemapResult, robotsResult] = await Promise.allSettled([
-    fetchMeta(baseUrl),
+    isGrowthPlus ? fetchMeta(baseUrl) : Promise.resolve(null),
     fetchSitemap(baseUrl),
     fetchRobots(baseUrl),
   ]);
@@ -109,41 +110,43 @@ async function checkSite(
   const sitemapData = sitemapResult.status === "fulfilled" ? sitemapResult.value : null;
   const robotsData = robotsResult.status === "fulfilled" ? robotsResult.value : null;
 
-  // ── page_seo_audits ──
+  // ── page_seo_audits — тільки для Growth+ ──
   const seoIssues: string[] = [];
-  if (metaData) {
-    if (!metaData.title) seoIssues.push("Відсутній <title>");
-    else if (metaData.titleLength < 30) seoIssues.push(`Title занадто короткий (${metaData.titleLength} символів, мін. 30)`);
-    else if (metaData.titleLength > 60) seoIssues.push(`Title занадто довгий (${metaData.titleLength} символів, макс. 60)`);
+  if (isGrowthPlus) {
+    if (metaData) {
+      if (!metaData.title) seoIssues.push("Відсутній <title>");
+      else if (metaData.titleLength < 30) seoIssues.push(`Title занадто короткий (${metaData.titleLength} символів, мін. 30)`);
+      else if (metaData.titleLength > 60) seoIssues.push(`Title занадто довгий (${metaData.titleLength} символів, макс. 60)`);
 
-    if (!metaData.metaDescription) seoIssues.push("Відсутній meta description");
-    else if (metaData.metaDescriptionLength < 70) seoIssues.push(`Meta description занадто короткий (${metaData.metaDescriptionLength} симв.)`);
-    else if (metaData.metaDescriptionLength > 160) seoIssues.push(`Meta description занадто довгий (${metaData.metaDescriptionLength} симв., макс. 160)`);
+      if (!metaData.metaDescription) seoIssues.push("Відсутній meta description");
+      else if (metaData.metaDescriptionLength < 70) seoIssues.push(`Meta description занадто короткий (${metaData.metaDescriptionLength} симв.)`);
+      else if (metaData.metaDescriptionLength > 160) seoIssues.push(`Meta description занадто довгий (${metaData.metaDescriptionLength} симв., макс. 160)`);
 
-    if (!metaData.hasH1) seoIssues.push("Відсутній тег <h1>");
-    else if (metaData.h1Count > 1) seoIssues.push(`Декілька тегів <h1> (знайдено: ${metaData.h1Count})`);
-  } else {
-    seoIssues.push("Не вдалося отримати HTML сторінки");
+      if (!metaData.hasH1) seoIssues.push("Відсутній тег <h1>");
+      else if (metaData.h1Count > 1) seoIssues.push(`Декілька тегів <h1> (знайдено: ${metaData.h1Count})`);
+    } else {
+      seoIssues.push("Не вдалося отримати HTML сторінки");
+    }
+
+    await insertRow(
+      "page_seo_audits",
+      {
+        site_id: site.id,
+        page_url: baseUrl,
+        title: metaData?.title ?? null,
+        title_length: metaData?.titleLength ?? null,
+        meta_description: metaData?.metaDescription ?? null,
+        meta_description_length: metaData?.metaDescriptionLength ?? null,
+        has_h1: metaData?.hasH1 ?? null,
+        h1_count: metaData?.h1Count ?? null,
+        has_schema_markup: metaData?.hasSchema ?? null,
+        schema_types: JSON.stringify(metaData?.schemaTypes ?? []),
+        issues: JSON.stringify(seoIssues),
+      },
+      supabaseUrl,
+      serviceRoleKey
+    );
   }
-
-  await insertRow(
-    "page_seo_audits",
-    {
-      site_id: site.id,
-      page_url: baseUrl,
-      title: metaData?.title ?? null,
-      title_length: metaData?.titleLength ?? null,
-      meta_description: metaData?.metaDescription ?? null,
-      meta_description_length: metaData?.metaDescriptionLength ?? null,
-      has_h1: metaData?.hasH1 ?? null,
-      h1_count: metaData?.h1Count ?? null,
-      has_schema_markup: metaData?.hasSchema ?? null,
-      schema_types: JSON.stringify(metaData?.schemaTypes ?? []),
-      issues: JSON.stringify(seoIssues),
-    },
-    supabaseUrl,
-    serviceRoleKey
-  );
 
   // ── sitemap_audits ──
   const sitemapIssues: string[] = [];

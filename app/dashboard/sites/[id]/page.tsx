@@ -241,13 +241,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
         {/* ── Core Web Vitals ── */}
         <Section icon={<Zap size={14} />} title="PageSpeed Insights" action={
-          !mobileCwv && !desktopCwv ? (
-            <RefreshSpeedButton
-              siteId={site.id}
-              accessToken={accessToken}
-              workerUrl={process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev"}
-            />
-          ) : undefined
+          <RefreshSpeedButton
+            siteId={site.id}
+            accessToken={accessToken}
+            workerUrl={process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev"}
+          />
         }>
           {mobileCwv || desktopCwv ? (
             <div className="grid sm:grid-cols-2 gap-5">
@@ -260,10 +258,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                 style={{ background: "rgba(245,166,35,0.04)", border: "1px solid rgba(245,166,35,0.15)" }}>
                 <AlertTriangle size={14} style={{ color: "#F5A623", flexShrink: 0, marginTop: 1 }} />
                 <div>
-                  <p className="text-sm font-medium mb-1" style={{ color: "#F5A623" }}>PageSpeed недоступний</p>
+                  <p className="text-sm font-medium mb-1" style={{ color: "#F5A623" }}>Дані PageSpeed відсутні</p>
                   <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                    Google Lighthouse не може завантажити сайт — сервер блокує зовнішні запити (Cloudflare, WAF або геоблок).
-                    Для отримання даних CWV потрібно дозволити доступ для{" "}
+                    Натисни <strong>Оновити</strong> щоб запустити перевірку зараз. Або дочекайся щоденного скану о 3:00.
+                    Якщо після оновлення дані не з&apos;явились — Google Lighthouse не може дістатись сайту
+                    (Cloudflare, WAF або геоблок). Дозволь доступ для{" "}
                     <a href="https://developers.google.com/speed/docs/insights/v5/about" target="_blank" rel="noopener noreferrer"
                       className="underline hover:opacity-80" style={{ color: "var(--cyan)" }}>
                       Lighthouse IP

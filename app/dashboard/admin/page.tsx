@@ -1,4 +1,5 @@
 import { createClient } from "@/app/lib/supabase/server";
+import { createServiceClient } from "@/app/lib/supabase/service";
 import { QoraxLogo } from "@/app/components/QoraxLogo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
@@ -8,6 +9,7 @@ import { UsersTable } from "./UsersTable";
 export const metadata = { title: "Адмін панель — Qorax" };
 
 export default async function AdminPage() {
+  // Авторизаційний клієнт (з сесією) — для перевірки ролі
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -20,7 +22,9 @@ export default async function AdminPage() {
 
   if (profile?.platform_role !== "admin") redirect("/dashboard");
 
-  // Статистика — кожен запит ізольований, щоб один timeout не валив всю сторінку
+  // Service-клієнт (обходить RLS) — для адмін-запитів
+  const sb = createServiceClient();
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   async function safeCount(query: any): Promise<number> {
     try {
@@ -32,24 +36,21 @@ export default async function AdminPage() {
   }
 
   const [sitesCount, usersCount, activeTrials, paidSubs] = await Promise.all([
-    safeCount(supabase.from("sites").select("*", { count: "exact", head: true })),
-    safeCount(supabase.from("profiles").select("*", { count: "exact", head: true })),
-    safeCount(supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "trialing")),
-    safeCount(supabase.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active")),
+    safeCount(sb.from("sites").select("*", { count: "exact", head: true })),
+    safeCount(sb.from("profiles").select("*", { count: "exact", head: true })),
+    safeCount(sb.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "trialing")),
+    safeCount(sb.from("subscriptions").select("*", { count: "exact", head: true }).eq("status", "active")),
   ]);
 
-  // uptime_checks може бути великою — рахуємо окремо з fallback
   let checksCount = 0;
   try {
-    const { count } = await supabase
-      .from("uptime_checks")
-      .select("*", { count: "exact", head: true });
+    const { count } = await sb.from("uptime_checks").select("*", { count: "exact", head: true });
     checksCount = count ?? 0;
   } catch {
     checksCount = 0;
   }
 
-  // Список організацій з планами
+  // Організації з підписками та учасниками
   let orgsWithPlans: {
     id: string; name: string; created_at: string;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -58,7 +59,7 @@ export default async function AdminPage() {
   let plans: { id: string; code: string; name: string }[] = [];
 
   try {
-    const { data: orgs, error: orgsError } = await supabase
+    const { data: orgs, error: orgsError } = await sb
       .from("organizations")
       .select(`
         id,
@@ -72,7 +73,7 @@ export default async function AdminPage() {
 
     if (orgsError) console.error("Admin orgs query error:", orgsError);
 
-    const { data: plansData } = await supabase
+    const { data: plansData } = await sb
       .from("plans")
       .select("id, code, name")
       .order("price_usd");
@@ -115,7 +116,6 @@ export default async function AdminPage() {
           <p className="text-sm text-[var(--text-secondary)]">{user.email}</p>
         </div>
 
-        {/* Статистика */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
             { label: "Користувачів", value: usersCount, accent: false },
@@ -134,10 +134,7 @@ export default async function AdminPage() {
           ))}
         </div>
 
-        {/* Список організацій */}
         <UsersTable orgs={orgsWithPlans} plans={plans} />
-
-        {/* Ручний запуск cron */}
         <AdminPanel />
       </main>
     </div>
