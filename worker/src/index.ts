@@ -27,6 +27,8 @@ import {
 } from "./lib/gscHandler";
 import { runSeoChecks } from "./lib/seoChecker";
 import { runCompetitorChecks } from "./lib/competitorChecker";
+import { runUrlSpeedChecks } from "./lib/urlSpeedChecker";
+import { runFormChecks } from "./lib/formChecker";
 import { runBrokenLinksChecks } from "./lib/brokenLinksChecker";
 import {
   handleStripeCheckout,
@@ -262,10 +264,26 @@ const worker = {
 
       if (url.pathname === "/api/admin/run-seo") {
         ctx.waitUntil(
-          runSeoChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+          runUrlSpeedChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY).catch(e =>
+          console.error("urlSpeedChecks cron error:", e)
+        ),
+        runFormChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY).catch(e =>
+          console.error("formChecks cron error:", e)
+        ),
+        runSeoChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
             .then(s => console.log("Manual SEO:", JSON.stringify(s)))
         );
         return json({ ok: true, message: "SEO checks started" }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/run-url-speeds") {
+        const r = await runUrlSpeedChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+        return json({ ok: true, ...r }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/run-forms") {
+        const r = await runFormChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+        return json({ ok: true, ...r }, 200, origin);
       }
 
       if (url.pathname === "/api/admin/run-competitors") {
@@ -663,6 +681,143 @@ const worker = {
       }
       const updated = await patchResp.json() as Array<{ status_page_slug: string | null; status_page_enabled: boolean }>;
       return json({ ok: true, slug: updated[0]?.status_page_slug, enabled: updated[0]?.status_page_enabled }, 200, origin);
+    }
+
+    // ── Multi-URL speed monitoring ────────────────────────────────────────────
+    const monitoredUrlsMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/monitored-urls$/);
+    if (monitoredUrlsMatch) {
+      const siteId = monitoredUrlsMatch[1];
+      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" };
+
+      if (request.method === "GET") {
+        // Список URL + останній speed check
+        const res = await fetch(`${env.SUPABASE_URL}/rest/v1/monitored_urls?site_id=eq.${siteId}&active=eq.true&select=id,url,label,created_at&order=created_at.asc`, { headers: h });
+        const urls = await res.json() as Array<{ id: string; url: string; label: string | null; created_at: string }>;
+
+        // Для кожного URL — останній check
+        const withChecks = await Promise.all(urls.map(async mu => {
+          const cr = await fetch(`${env.SUPABASE_URL}/rest/v1/url_speed_checks?monitored_url_id=eq.${mu.id}&order=checked_at.desc&limit=10&select=load_time_ms,status_code,checked_at`, { headers: h });
+          const checks = cr.ok ? await cr.json() : [];
+          return { ...mu, checks };
+        }));
+
+        return json(withChecks, 200, origin);
+      }
+
+      if (request.method === "POST") {
+        const body = await request.json() as { url: string; label?: string };
+        if (!body.url) return json({ error: "url required" }, 400, origin);
+        const res = await fetch(`${env.SUPABASE_URL}/rest/v1/monitored_urls`, {
+          method: "POST", headers: h,
+          body: JSON.stringify({ site_id: siteId, url: body.url, label: body.label ?? null }),
+        });
+        if (!res.ok) return json({ error: await res.text() }, 400, origin);
+        return json(await res.json(), 201, origin);
+      }
+    }
+
+    const monitoredUrlDeleteMatch = url.pathname.match(/^\/api\/monitored-urls\/([^/]+)$/);
+    if (monitoredUrlDeleteMatch && request.method === "DELETE") {
+      const id = monitoredUrlDeleteMatch[1];
+      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` };
+      await fetch(`${env.SUPABASE_URL}/rest/v1/monitored_urls?id=eq.${id}`, { method: "DELETE", headers: h });
+      return json({ ok: true }, 200, origin);
+    }
+
+    // ── Form monitoring ────────────────────────────────────────────────────────
+    const monitoredFormsMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/monitored-forms$/);
+    if (monitoredFormsMatch) {
+      const siteId = monitoredFormsMatch[1];
+      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" };
+
+      if (request.method === "GET") {
+        const res = await fetch(`${env.SUPABASE_URL}/rest/v1/monitored_forms?site_id=eq.${siteId}&active=eq.true&select=id,page_url,label,created_at&order=created_at.asc`, { headers: h });
+        const forms = await res.json() as Array<{ id: string; page_url: string; label: string | null; created_at: string }>;
+        const withChecks = await Promise.all(forms.map(async mf => {
+          const cr = await fetch(`${env.SUPABASE_URL}/rest/v1/form_checks?monitored_form_id=eq.${mf.id}&order=checked_at.desc&limit=1&select=form_found,fields_count,has_submit,checked_at`, { headers: h });
+          const checks = cr.ok ? await cr.json() : [];
+          return { ...mf, lastCheck: checks[0] ?? null };
+        }));
+        return json(withChecks, 200, origin);
+      }
+
+      if (request.method === "POST") {
+        const body = await request.json() as { page_url: string; label?: string; form_selector?: string };
+        if (!body.page_url) return json({ error: "page_url required" }, 400, origin);
+        const res = await fetch(`${env.SUPABASE_URL}/rest/v1/monitored_forms`, {
+          method: "POST", headers: h,
+          body: JSON.stringify({ site_id: siteId, page_url: body.page_url, label: body.label ?? null, form_selector: body.form_selector ?? null }),
+        });
+        if (!res.ok) return json({ error: await res.text() }, 400, origin);
+        return json(await res.json(), 201, origin);
+      }
+    }
+
+    const monitoredFormDeleteMatch = url.pathname.match(/^\/api\/monitored-forms\/([^/]+)$/);
+    if (monitoredFormDeleteMatch && request.method === "DELETE") {
+      const id = monitoredFormDeleteMatch[1];
+      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` };
+      await fetch(`${env.SUPABASE_URL}/rest/v1/monitored_forms?id=eq.${id}`, { method: "DELETE", headers: h });
+      return json({ ok: true }, 200, origin);
+    }
+
+    // ── Competitor changes (diff view) ─────────────────────────────────────────
+    const competitorChangesMatch = url.pathname.match(/^\/api\/competitors\/([^/]+)\/changes$/);
+    if (competitorChangesMatch && request.method === "GET") {
+      const competitorId = competitorChangesMatch[1];
+      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` };
+      const res = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/competitor_changes?competitor_id=eq.${competitorId}&order=detected_at.desc&limit=10&select=id,detected_at,change_summary,old_snapshot,new_snapshot`,
+        { headers: h }
+      );
+      return json(await res.json(), 200, origin);
+    }
+
+    // ── Admin stats ────────────────────────────────────────────────────────────
+    if (url.pathname === "/api/admin/stats" && request.method === "GET") {
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+      const userData = await userRes.json() as { id?: string };
+      if (!userData.id) return json({ error: "Unauthorized" }, 401, origin);
+
+      const profileRes = await fetch(`${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${userData.id}&select=platform_role`,
+        { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } });
+      const profiles = await profileRes.json() as Array<{ platform_role: string }>;
+      if (profiles[0]?.platform_role !== "admin") return json({ error: "Forbidden" }, 403, origin);
+
+      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, "Prefer": "count=exact", "Accept": "application/json" };
+      const tables = ["profiles", "sites", "uptime_checks"];
+      const statusFilters = [
+        { table: "subscriptions", filter: "status=eq.trialing" },
+        { table: "subscriptions", filter: "status=eq.active" },
+      ];
+
+      const [usersRes, sitesRes, checksRes, trialsRes, paidRes] = await Promise.all([
+        fetch(`${env.SUPABASE_URL}/rest/v1/profiles?select=id`, { headers: { ...h, "Range-Unit": "items", "Range": "0-0" } }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/sites?select=id`, { headers: { ...h, "Range-Unit": "items", "Range": "0-0" } }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_checks?select=id`, { headers: { ...h, "Range-Unit": "items", "Range": "0-0" } }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?status=eq.trialing&select=id`, { headers: { ...h, "Range-Unit": "items", "Range": "0-0" } }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?status=eq.active&select=id`, { headers: { ...h, "Range-Unit": "items", "Range": "0-0" } }),
+      ]);
+
+      function getCount(res: Response): number {
+        const cr = res.headers.get("content-range");
+        if (!cr) return 0;
+        const m = cr.match(/\/(\d+)/);
+        return m ? parseInt(m[1]) : 0;
+      }
+
+      return json({
+        users: getCount(usersRes),
+        sites: getCount(sitesRes),
+        checks: getCount(checksRes),
+        trials: getCount(trialsRes),
+        paid: getCount(paidRes),
+      }, 200, origin);
     }
 
     return json({ error: "Маршрут не знайдено" }, 404, origin);

@@ -15,6 +15,8 @@ import { IncidentTimeline } from "./IncidentTimeline";
 import { StatusPageSection } from "./StatusPageSection";
 import { GscPanel } from "./GscPanel";
 import { RefreshSpeedButton } from "./RefreshSpeedButton";
+import { MultiUrlPanel } from "./MultiUrlPanel";
+import { FormMonitorPanel } from "./FormMonitorPanel";
 
 export const metadata = { title: "Моніторинг сайту — Qorax" };
 
@@ -495,6 +497,25 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             initialSlug={(site as { status_page_slug?: string | null }).status_page_slug ?? null}
             workerUrl={process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev"}
             appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.app"}
+          />
+        </Section>
+
+        {/* ── Multi-URL Speed ── */}
+        <Section icon={<Zap size={14} />} title="Швидкість URL" accent="lime">
+          <MultiUrlPanel
+            siteId={site.id}
+            workerUrl={process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev"}
+            accessToken={accessToken}
+          />
+        </Section>
+
+        {/* ── Form Monitoring ── */}
+        <Section icon={<CheckCircle size={14} />} title="Моніторинг форм">
+          <FormMonitorPanel
+            siteId={site.id}
+            workerUrl={process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev"}
+            accessToken={accessToken}
+            siteUrl={site.url}
           />
         </Section>
 

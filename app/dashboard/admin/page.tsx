@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AdminPanel } from "./AdminPanel";
 import { UsersTable } from "./UsersTable";
+import { AdminStats } from "./AdminStats";
 
 export const metadata = { title: "Адмін панель — Qorax" };
 
@@ -24,16 +25,6 @@ export default async function AdminPage() {
   if (profile?.platform_role !== "admin") redirect("/dashboard");
 
   const workerUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
-
-  // Отримуємо статистику через worker API (там є service role key)
-  let stats = { users: 0, sites: 0, trials: 0, paid: 0, checks: 0 };
-  try {
-    const res = await fetch(`${workerUrl}/api/admin/stats`, {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      cache: "no-store",
-    });
-    if (res.ok) stats = await res.json();
-  } catch { /* показуємо нулі */ }
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
@@ -59,25 +50,13 @@ export default async function AdminPage() {
           <p className="text-sm text-[var(--text-secondary)]">{user.email}</p>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-          {[
-            { label: "Користувачів", value: stats.users, accent: false },
-            { label: "Сайтів", value: stats.sites, accent: false },
-            { label: "Тріалів", value: stats.trials, accent: false },
-            { label: "Платних", value: stats.paid, accent: true },
-            { label: "Uptime-перевірок", value: stats.checks.toLocaleString(), accent: false },
-          ].map(s => (
-            <div key={s.label} className="rounded-2xl border hairline bg-[var(--bg-raised)] p-4">
-              <p className="text-xs text-[var(--text-tertiary)] mb-1">{s.label}</p>
-              <p className="font-display text-2xl font-bold tabular-nums"
-                style={{ color: s.accent ? "var(--lime)" : "var(--text-primary)" }}>
-                {s.value}
-              </p>
-            </div>
-          ))}
-        </div>
+        {/* Статистика — підтягується client-side через API worker */}
+        <AdminStats accessToken={accessToken} workerUrl={workerUrl} />
 
+        {/* Клієнти */}
         <UsersTable accessToken={accessToken} workerUrl={workerUrl} />
+
+        {/* Ручний запуск */}
         <AdminPanel />
       </main>
     </div>

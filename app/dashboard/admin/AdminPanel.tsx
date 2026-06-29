@@ -44,6 +44,20 @@ const CRON_JOBS: CronJob[] = [
     schedule: "Щодня о 3:00",
   },
   {
+    id: "url-speeds",
+    label: "Multi-URL speed check",
+    description: "Перевіряє швидкість усіх tracked URL (checkout, contact, тощо)",
+    endpoint: "/api/admin/run-url-speeds",
+    schedule: "Щодня о 3:00",
+  },
+  {
+    id: "forms",
+    label: "Перевірка форм",
+    description: "Перевіряє наявність та стан форм на сайтах клієнтів",
+    endpoint: "/api/admin/run-forms",
+    schedule: "Щодня о 3:00",
+  },
+  {
     id: "broken-links",
     label: "Перевірка битих посилань",
     description: "Краулить сайти (до 100 посилань), перевіряє HEAD запитами, зберігає результат",

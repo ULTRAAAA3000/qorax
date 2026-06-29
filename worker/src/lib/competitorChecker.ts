@@ -28,6 +28,7 @@ interface CompetitorSiteRow {
   url: string;
   display_name: string | null;
   content_hash: string | null;
+  content_snapshot: string | null;
   last_checked_at: string | null;
 }
 
@@ -73,7 +74,7 @@ export async function runCompetitorChecks(
   // Беремо всі конкуруючі сайти одним запитом
   const competitorsResult = await selectRows<CompetitorSiteRow>(
     "competitor_sites",
-    "select=id,site_id,url,display_name,content_hash,last_checked_at",
+    "select=id,site_id,url,display_name,content_hash,content_snapshot,last_checked_at",
     supabaseUrl,
     serviceRoleKey
   );
@@ -189,7 +190,8 @@ async function checkCompetitor(
   if (!hasChanged) return { changed: false };
 
   // Генеруємо короткий summary про зміни
-  const changeSummary = buildChangeSummary(competitor.url, cleanText);
+  const oldSnapshot = competitor.content_snapshot ?? null;
+  const changeSummary = buildChangeSummary(competitor.url, oldSnapshot, cleanText);
 
   // Записуємо competitor_change
   await insertRow(
@@ -198,6 +200,8 @@ async function checkCompetitor(
       competitor_id: competitor.id,
       site_id: competitor.site_id,
       old_hash: competitor.content_hash,
+      old_snapshot: oldSnapshot?.slice(0, 3000) ?? null,
+      new_snapshot: snapshot.slice(0, 3000),
       new_hash: newHash,
       change_summary: changeSummary,
       alert_sent: false,
@@ -355,12 +359,58 @@ async function sha256(text: string): Promise<string> {
 }
 
 /** Простий summary зміни (без AI — щоб не витрачати квоту) */
-function buildChangeSummary(url: string, newText: string): string {
+/** Повертає короткий текстовий diff між старим та новим знімком */
+function buildChangeSummary(url: string, oldText: string | null, newText: string): string {
   const hostname = (() => {
     try { return new URL(url).hostname; } catch { return url; }
   })();
-  const words = newText.split(/\s+/).length;
-  return `На сайті ${hostname} зафіксовано зміни контенту (~${words.toLocaleString("uk")} слів у поточній версії).`;
+
+  if (!oldText) {
+    const words = newText.split(/\s+/).length;
+    return `На сайті ${hostname} зафіксовано зміни контенту (~${words.toLocaleString("uk")} слів у поточній версії).`;
+  }
+
+  // Word-level diff (додано / видалено слів)
+  const oldWords = new Set(oldText.split(/\s+/).filter(Boolean));
+  const newWords = new Set(newText.split(/\s+/).filter(Boolean));
+
+  const added: string[] = [];
+  const removed: string[] = [];
+  for (const w of newWords) { if (!oldWords.has(w)) added.push(w); }
+  for (const w of oldWords) { if (!newWords.has(w)) removed.push(w); }
+
+  const parts: string[] = [];
+  if (added.length > 0) parts.push(`+${added.length} нових слів (напр.: «${added.slice(0,3).join("», «")}»)`);
+  if (removed.length > 0) parts.push(`−${removed.length} видалених слів (напр.: «${removed.slice(0,3).join("», «")}»)`);
+  if (parts.length === 0) parts.push("незначні структурні зміни");
+
+  return `${hostname}: ${parts.join("; ")}.`;
+}
+
+/** Генерує рядки з inline diff (до 60 рядків) для відображення у дашборді */
+export function buildInlineDiff(oldText: string, newText: string): Array<{ type: "same"|"add"|"del"; text: string }> {
+  const oldLines = oldText.split("\n").map(l => l.trim()).filter(Boolean);
+  const newLines = newText.split("\n").map(l => l.trim()).filter(Boolean);
+  const oldSet = new Set(oldLines);
+  const newSet = new Set(newLines);
+  const result: Array<{ type: "same"|"add"|"del"; text: string }> = [];
+
+  // Видалені рядки
+  for (const l of oldLines.slice(0, 80)) {
+    if (!newSet.has(l)) result.push({ type: "del", text: l.slice(0, 120) });
+    else result.push({ type: "same", text: l.slice(0, 120) });
+  }
+  // Додані рядки
+  for (const l of newLines.slice(0, 80)) {
+    if (!oldSet.has(l)) result.push({ type: "add", text: l.slice(0, 120) });
+  }
+
+  // Фільтруємо: тільки add/del, плюс контекст (1 same навколо)
+  const filtered: typeof result = [];
+  for (let i = 0; i < result.length && filtered.length < 60; i++) {
+    if (result[i].type !== "same") filtered.push(result[i]);
+  }
+  return filtered.slice(0, 30);
 }
 
 /** HTML для email-сповіщення про зміну конкурента */
