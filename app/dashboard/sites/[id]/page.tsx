@@ -12,6 +12,7 @@ import { LiveUptimePanel } from "./LiveUptimePanel";
 import { QoraxusChat } from "./QoraxusChat";
 import { UptimeBadgeSection } from "./UptimeBadgeSection";
 import { IncidentTimeline } from "./IncidentTimeline";
+import { StatusPageSection } from "./StatusPageSection";
 import { GscPanel } from "./GscPanel";
 import { RefreshSpeedButton } from "./RefreshSpeedButton";
 
@@ -53,7 +54,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
   const { data: site } = await supabase
     .from("sites")
-    .select("id, url, display_name, monitoring_enabled, created_at")
+    .select("id, url, display_name, monitoring_enabled, created_at, status_page_slug, status_page_enabled")
     .eq("id", id)
     .single();
 
@@ -483,6 +484,18 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           ) : (
             <EmptySlot text="Перший місячний звіт згенерується автоматично в кінці місяця" />
           )}
+        </Section>
+
+        {/* ── Status Page (Growth) ── */}
+        <Section icon={<Eye size={14} />} title="Публічна сторінка статусу" accent="cyan">
+          <StatusPageSection
+            siteId={site.id}
+            accessToken={accessToken}
+            initialEnabled={(site as { status_page_enabled?: boolean }).status_page_enabled ?? false}
+            initialSlug={(site as { status_page_slug?: string | null }).status_page_slug ?? null}
+            workerUrl={process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev"}
+            appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.app"}
+          />
         </Section>
 
         {/* ── Uptime Badge ── */}

@@ -518,7 +518,154 @@ const worker = {
       });
     }
 
-        return json({ error: "Маршрут не знайдено" }, 404, origin);
+    // GET /api/status/:slug — публічні дані сторінки статусу (Growth)
+    const statusMatch = url.pathname.match(/^\/api\/status\/([^/]+)$/);
+    if (statusMatch && request.method === "GET") {
+      const slug = statusMatch[1];
+      const h = {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        Accept: "application/json",
+      };
+
+      // Знаходимо сайт за slug
+      const siteResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/sites?select=id,url,display_name,status_page_enabled&status_page_slug=eq.${encodeURIComponent(slug)}&limit=1`,
+        { headers: h }
+      );
+      if (!siteResp.ok) return json({ error: "Server error" }, 500, origin);
+      const sites = await siteResp.json() as Array<{
+        id: string; url: string; display_name: string; status_page_enabled: boolean;
+      }>;
+      const site = sites[0];
+      if (!site || !site.status_page_enabled) {
+        return json({ error: "Сторінку статусу не знайдено" }, 404, origin);
+      }
+
+      const siteId = site.id;
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      const [checksResp, incidentsResp, speedResp, sslResp] = await Promise.all([
+        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_checks?select=status,checked_at&site_id=eq.${siteId}&checked_at=gte.${weekAgo}&order=checked_at.desc`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_incidents?select=id,started_at,resolved_at,duration_seconds&site_id=eq.${siteId}&started_at=gte.${monthAgo}&order=started_at.desc&limit=20`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/speed_checks?select=load_time_ms,checked_at&site_id=eq.${siteId}&checked_at=gte.${weekAgo}&order=checked_at.desc&limit=50`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/ssl_certificates?select=days_until_expiry,valid_until&site_id=eq.${siteId}&limit=1`, { headers: h }),
+      ]);
+
+      const checks = checksResp.ok ? await checksResp.json() as Array<{ status: string; checked_at: string }> : [];
+      const incidents = incidentsResp.ok ? await incidentsResp.json() as Array<{ id: string; started_at: string; resolved_at: string | null; duration_seconds: number | null }> : [];
+      const speeds = speedResp.ok ? await speedResp.json() as Array<{ load_time_ms: number; checked_at: string }> : [];
+      const sslArr = sslResp.ok ? await sslResp.json() as Array<{ days_until_expiry: number | null; valid_until: string | null }> : [];
+
+      // Uptime % за 7 днів
+      const totalChecks = checks.length;
+      const upChecks = checks.filter(c => c.status === "up").length;
+      const uptimePct7d = totalChecks > 0 ? (upChecks / totalChecks) * 100 : 100;
+
+      // Поточний статус (останні 2 перевірки)
+      const recentChecks = checks.slice(0, 2);
+      const currentStatus = recentChecks.length === 0
+        ? "unknown"
+        : recentChecks[0].status === "up" ? "up" : "down";
+
+      // Uptime по днях за 7 днів (для графіка)
+      const dailyUptime: Array<{ date: string; pct: number; checks: number }> = [];
+      for (let i = 6; i >= 0; i--) {
+        const dayStart = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
+        dayStart.setHours(0, 0, 0, 0);
+        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+        const dayChecks = checks.filter(c => {
+          const t = new Date(c.checked_at).getTime();
+          return t >= dayStart.getTime() && t < dayEnd.getTime();
+        });
+        const dayUp = dayChecks.filter(c => c.status === "up").length;
+        dailyUptime.push({
+          date: dayStart.toISOString().slice(0, 10),
+          pct: dayChecks.length > 0 ? (dayUp / dayChecks.length) * 100 : 100,
+          checks: dayChecks.length,
+        });
+      }
+
+      // Середня швидкість за 24 год
+      const recentSpeeds = speeds.filter(s => new Date(s.checked_at).getTime() > new Date(dayAgo).getTime());
+      const avgSpeedMs = recentSpeeds.length
+        ? Math.round(recentSpeeds.reduce((a, b) => a + b.load_time_ms, 0) / recentSpeeds.length)
+        : null;
+
+      const ssl = sslArr[0] ?? null;
+
+      return json({
+        site: {
+          displayName: site.display_name,
+          url: site.url,
+        },
+        currentStatus,
+        uptimePct7d: Math.round(uptimePct7d * 100) / 100,
+        avgSpeedMs,
+        dailyUptime,
+        incidents: incidents.slice(0, 10),
+        ssl: ssl ? { daysLeft: ssl.days_until_expiry, validUntil: ssl.valid_until } : null,
+        generatedAt: new Date().toISOString(),
+      }, 200, origin);
+    }
+
+    // PATCH /api/sites/:id/status-page — увімкнути/вимкнути сторінку статусу
+    const statusPageMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/status-page$/);
+    if (statusPageMatch && request.method === "PATCH") {
+      const siteId = statusPageMatch[1];
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      const body = await request.json() as { enabled?: boolean; slug?: string };
+      const h = {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      };
+
+      // Якщо вмикаємо і slug не вказаний — генеруємо автоматично
+      let slug = body.slug;
+      if (body.enabled && !slug) {
+        const siteResp = await fetch(
+          `${env.SUPABASE_URL}/rest/v1/sites?select=display_name,status_page_slug&id=eq.${siteId}&limit=1`,
+          { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, Accept: "application/json" } }
+        );
+        if (siteResp.ok) {
+          const sites = await siteResp.json() as Array<{ display_name: string; status_page_slug: string | null }>;
+          const existing = sites[0];
+          // Якщо slug вже є — використовуємо його, інакше генеруємо
+          slug = existing?.status_page_slug ?? existing?.display_name
+            ?.toLowerCase()
+            .replace(/[^a-z0-9]+/g, "-")
+            .replace(/^-|-$/g, "")
+            .slice(0, 50) + "-" + siteId.slice(0, 8);
+        }
+      }
+
+      const patch: Record<string, unknown> = {};
+      if (body.enabled !== undefined) patch.status_page_enabled = body.enabled;
+      if (slug !== undefined) patch.status_page_slug = slug;
+
+      const patchResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/sites?id=eq.${siteId}`,
+        { method: "PATCH", headers: h, body: JSON.stringify(patch) }
+      );
+      if (!patchResp.ok) {
+        const err = await patchResp.text();
+        return json({ error: err }, 400, origin);
+      }
+      const updated = await patchResp.json() as Array<{ status_page_slug: string | null; status_page_enabled: boolean }>;
+      return json({ ok: true, slug: updated[0]?.status_page_slug, enabled: updated[0]?.status_page_enabled }, 200, origin);
+    }
+
+    return json({ error: "Маршрут не знайдено" }, 404, origin);
   },
 
   // ── Cron handler ──────────────────────────────────────────────
