@@ -15,6 +15,7 @@
   "vars": {
     "NEXT_PUBLIC_API_URL": "https://qorax-api.mrcru96.workers.dev",
     "NEXT_PUBLIC_SUPABASE_URL": "https://hfyetlipxjqogbpntoif.supabase.co",
+    "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_JFQRmmeToz6mhGtXmFQgAw_QCai1-Ge",
     "LS_STORE_SUBDOMAIN": "qoraxus",
     "LS_VARIANT_STARTER": "c32e61ce-d00f-43e8-b2f8-6090ff1b3786",
     "LS_VARIANT_GROWTH": "62e2571c-e20f-478b-b156-6a16aab95176",
