@@ -5,11 +5,12 @@ import { redirect, notFound } from "next/navigation";
 import {
   Activity, Zap, Shield, AlertTriangle, CheckCircle,
   Clock, TrendingUp, ExternalLink, ChevronRight, Sparkles,
-  FileText, Search, Eye, ArrowLeft,
+  FileText, Search, Eye, ArrowLeft, Code,
 } from "lucide-react";
 import { ReportButton } from "./ReportButton";
 import { LiveUptimePanel } from "./LiveUptimePanel";
 import { QoraxusChat } from "./QoraxusChat";
+import { UptimeBadgeSection } from "./UptimeBadgeSection";
 import { GscPanel } from "./GscPanel";
 import { RefreshSpeedButton } from "./RefreshSpeedButton";
 
@@ -470,6 +471,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           ) : (
             <EmptySlot text="Перший місячний звіт згенерується автоматично в кінці місяця" />
           )}
+        </Section>
+
+        {/* ── Uptime Badge ── */}
+        <Section icon={<Code size={14} />} title="Uptime Badge" accent="lime">
+          <UptimeBadgeSection siteId={site.id} />
         </Section>
 
       </main>

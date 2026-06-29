@@ -17,6 +17,7 @@ import {
   buildSiteDownEmail,
   buildSiteRecoveredEmail,
   buildSslExpiryEmail,
+  buildWeeklyDigestEmail,
 } from "./email";
 import {
   sendTelegramMessage,
@@ -482,7 +483,8 @@ export async function runSpeedChecks(
   supabaseUrl: string,
   serviceRoleKey: string,
   pageSpeedApiKey: string,
-  geminiApiKey: string
+  geminiApiKey: string,
+  onSiteChecked?: (siteId: string, speedMs: number) => Promise<void>
 ): Promise<SpeedCheckSummary> {
   const summary: SpeedCheckSummary = {
     sitesChecked: 0,
@@ -507,7 +509,7 @@ export async function runSpeedChecks(
   for (const site of sitesResult.data) {
     summary.sitesChecked++;
     try {
-      const insightsCount = await checkSingleSiteSpeed(
+      const { insightsCount, speedMs } = await checkSingleSiteSpeed(
         site,
         supabaseUrl,
         serviceRoleKey,
@@ -516,6 +518,12 @@ export async function runSpeedChecks(
       );
       summary.sitesSucceeded++;
       summary.insightsGenerated += insightsCount;
+      // Перевірка деградації після кожного сайту (якщо callback заданий)
+      if (onSiteChecked && speedMs > 0) {
+        await onSiteChecked(site.id, speedMs).catch(e =>
+          console.warn(`Speed degradation check failed for ${site.url}:`, e)
+        );
+      }
     } catch (err) {
       summary.errors.push(
         `Speed check failed for ${site.url}: ${err instanceof Error ? err.message : "unknown"}`
@@ -532,7 +540,7 @@ export async function runSpeedCheckForSite(
   serviceRoleKey: string,
   pageSpeedApiKey: string,
   geminiApiKey: string
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<number> {
   const siteResult = await selectRows<SiteRow>(
     "sites",
     `select=id,url,display_name,monitoring_enabled&id=eq.${encodeURIComponent(siteId)}`,
@@ -540,11 +548,11 @@ export async function runSpeedCheckForSite(
     serviceRoleKey
   );
   if (!siteResult.ok || siteResult.data.length === 0) {
-    return { ok: false, error: "Сайт не знайдено" };
+    return 0;
   }
   const site = siteResult.data[0];
-  await checkSingleSiteSpeed(site, supabaseUrl, serviceRoleKey, pageSpeedApiKey, geminiApiKey);
-  return { ok: true };
+  const { speedMs } = await checkSingleSiteSpeed(site, supabaseUrl, serviceRoleKey, pageSpeedApiKey, geminiApiKey);
+  return speedMs;
 }
 
 async function checkSingleSiteSpeed(
@@ -553,9 +561,8 @@ async function checkSingleSiteSpeed(
   serviceRoleKey: string,
   pageSpeedApiKey: string,
   geminiApiKey: string
-): Promise<number> {
+): Promise<{ insightsCount: number; speedMs: number }> {
   // Запускаємо basicCheck і PageSpeed паралельно
-  // PageSpeed може впасти (403/timeout) — це не блокує збереження basicCheck і AI
   const [basic, pageSpeed] = await Promise.all([
     runBasicCheck(site.url),
     runPageSpeedChecks(site.url, pageSpeedApiKey).catch(err => {
@@ -567,12 +574,14 @@ async function checkSingleSiteSpeed(
     }),
   ]);
 
-  // Завжди зберігаємо basicCheck (час відповіді) — він працює навіть якщо PageSpeed заблокований
+  const speedMs = basic.responseTimeMs ?? 0;
+
+  // Завжди зберігаємо basicCheck (час відповіді)
   await insertRow(
     "speed_checks",
     {
       site_id: site.id,
-      load_time_ms: basic.responseTimeMs ?? 0,
+      load_time_ms: speedMs,
       page_size_kb: basic.pageSizeKb,
     },
     supabaseUrl,
@@ -585,7 +594,7 @@ async function checkSingleSiteSpeed(
     insertCwvRow(site.id, "desktop", pageSpeed.desktop, supabaseUrl, serviceRoleKey),
   ]);
 
-  // AI інсайти генеруємо завжди — навіть без PageSpeed даних basicCheck дає достатньо інфо
+  // AI інсайти генеруємо завжди
   const insightsCount = await generateSiteInsights(
     site,
     basic,
@@ -595,7 +604,7 @@ async function checkSingleSiteSpeed(
     serviceRoleKey
   );
 
-  return insightsCount;
+  return { insightsCount, speedMs };
 }
 
 async function insertCwvRow(
@@ -868,4 +877,246 @@ function buildTrialExpiredHtml(p: {
     <p style="font-size:12px;color:#5a7090;text-align:center;margin:0;">Питання? Відповідайте на цей лист.<br>Qorax · Моніторинг сайтів</p>
   </div>
 </body></html>`;
+}
+
+// ─── Weekly Digest ────────────────────────────────────────────
+// Викликається з cron щопонеділка о 8:00 (0 8 * * 1).
+// Збирає дані за останні 7 днів по кожному сайту і шле дайджест власнику.
+
+export async function sendWeeklyDigests(
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  resendApiKey: string,
+  appUrl: string
+): Promise<{ sent: number; errors: string[] }> {
+  const summary = { sent: 0, errors: [] as string[] };
+  const h = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, Accept: "application/json" };
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Всі активні орги (trial або paid)
+  const subsResp = await fetch(
+    `${supabaseUrl}/rest/v1/subscriptions?select=organization_id,status&status=in.(trialing,active)`,
+    { headers: h }
+  );
+  if (!subsResp.ok) { summary.errors.push("Failed to fetch subscriptions"); return summary; }
+  const subs = await subsResp.json() as Array<{ organization_id: string; status: string }>;
+
+  for (const sub of subs) {
+    const orgId = sub.organization_id;
+
+    // Сайти організації
+    const sitesResp = await fetch(
+      `${supabaseUrl}/rest/v1/sites?select=id,url,display_name&organization_id=eq.${orgId}&monitoring_enabled=eq.true`,
+      { headers: h }
+    );
+    if (!sitesResp.ok) continue;
+    const sites = await sitesResp.json() as Array<{ id: string; url: string; display_name: string }>;
+    if (!sites.length) continue;
+
+    // Власник орги
+    const memberResp = await fetch(
+      `${supabaseUrl}/rest/v1/organization_members?select=user_id&organization_id=eq.${orgId}&role=eq.owner&limit=1`,
+      { headers: h }
+    );
+    if (!memberResp.ok) continue;
+    const members = await memberResp.json() as Array<{ user_id: string }>;
+    const ownerId = members[0]?.user_id;
+    if (!ownerId) continue;
+
+    const authResp = await fetch(`${supabaseUrl}/auth/v1/admin/users/${ownerId}`, {
+      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+    });
+    if (!authResp.ok) continue;
+    const authUser = await authResp.json() as { email?: string; user_metadata?: { full_name?: string } };
+    if (!authUser.email) continue;
+    const firstName = authUser.user_metadata?.full_name?.split(" ")[0] || authUser.email.split("@")[0];
+
+    // По кожному сайту збираємо метрики
+    for (const site of sites) {
+      try {
+        const [uptimeResp, incidentResp, speedResp, seoResp, sslResp] = await Promise.all([
+          fetch(`${supabaseUrl}/rest/v1/uptime_checks?select=status&site_id=eq.${site.id}&checked_at=gte.${weekAgo}`, { headers: h }),
+          fetch(`${supabaseUrl}/rest/v1/uptime_incidents?select=started_at,resolved_at&site_id=eq.${site.id}&started_at=gte.${weekAgo}`, { headers: h }),
+          fetch(`${supabaseUrl}/rest/v1/speed_checks?select=load_time_ms,checked_at&site_id=eq.${site.id}&checked_at=gte.${weekAgo}&order=checked_at.asc`, { headers: h }),
+          fetch(`${supabaseUrl}/rest/v1/page_seo_audits?select=issues&site_id=eq.${site.id}&checked_at=gte.${weekAgo}&order=checked_at.desc&limit=1`, { headers: h }),
+          fetch(`${supabaseUrl}/rest/v1/ssl_certificates?select=days_until_expiry&site_id=eq.${site.id}&limit=1`, { headers: h }),
+        ]);
+
+        const uptimeChecks = uptimeResp.ok ? await uptimeResp.json() as Array<{ status: string }> : [];
+        const incidents = incidentResp.ok ? await incidentResp.json() as Array<{ started_at: string; resolved_at: string | null }> : [];
+        const speedChecks = speedResp.ok ? await speedResp.json() as Array<{ load_time_ms: number; checked_at: string }> : [];
+        const seoAudits = seoResp.ok ? await seoResp.json() as Array<{ issues: unknown }> : [];
+        const sslArr = sslResp.ok ? await sslResp.json() as Array<{ days_until_expiry: number | null }> : [];
+
+        // Uptime %
+        const totalChecks = uptimeChecks.length;
+        const upChecks = uptimeChecks.filter(c => c.status === "up").length;
+        const uptimePct = totalChecks > 0 ? (upChecks / totalChecks) * 100 : 100;
+
+        // Простій
+        let totalDowntimeMinutes = 0;
+        for (const inc of incidents) {
+          const start = new Date(inc.started_at).getTime();
+          const end = inc.resolved_at ? new Date(inc.resolved_at).getTime() : Date.now();
+          totalDowntimeMinutes += Math.round((end - start) / 60000);
+        }
+
+        // Швидкість
+        const speeds = speedChecks.map(c => c.load_time_ms);
+        const avgSpeedMs = speeds.length ? Math.round(speeds.reduce((a, b) => a + b, 0) / speeds.length) : null;
+        // Попередній тиждень для порівняння
+        const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+        const prevSpeedResp = await fetch(
+          `${supabaseUrl}/rest/v1/speed_checks?select=load_time_ms&site_id=eq.${site.id}&checked_at=gte.${twoWeeksAgo}&checked_at=lt.${weekAgo}`,
+          { headers: h }
+        );
+        const prevSpeeds = prevSpeedResp.ok
+          ? (await prevSpeedResp.json() as Array<{ load_time_ms: number }>).map(c => c.load_time_ms)
+          : [];
+        const prevAvgSpeedMs = prevSpeeds.length ? Math.round(prevSpeeds.reduce((a, b) => a + b, 0) / prevSpeeds.length) : null;
+
+        // SEO issues
+        let newSeoIssues = 0;
+        if (seoAudits[0]?.issues) {
+          try {
+            const issues = Array.isArray(seoAudits[0].issues)
+              ? seoAudits[0].issues
+              : JSON.parse(String(seoAudits[0].issues));
+            newSeoIssues = issues.length;
+          } catch { /* ignore */ }
+        }
+
+        const sslDaysLeft = sslArr[0]?.days_until_expiry ?? null;
+
+        const { subject, html } = buildWeeklyDigestEmail({
+          firstName,
+          siteName: site.display_name,
+          siteUrl: site.url,
+          dashboardUrl: `${appUrl}/dashboard/sites/${site.id}`,
+          uptimePct,
+          avgSpeedMs,
+          prevAvgSpeedMs,
+          incidentsCount: incidents.length,
+          totalDowntimeMinutes,
+          newSeoIssues,
+          sslDaysLeft,
+        });
+
+        const result = await sendEmail({ to: authUser.email, subject, html }, resendApiKey);
+        if (result.ok) summary.sent++;
+        else summary.errors.push(`${site.display_name}: ${result.error}`);
+      } catch (err) {
+        summary.errors.push(`${site.display_name}: ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+  }
+
+  return summary;
+}
+
+// ─── Speed degradation alert ──────────────────────────────────
+// Викликається після runSpeedCheckForSite.
+// Якщо поточна швидкість вдвічі гірша за середню за 7 днів — шле алерт.
+
+export async function checkSpeedDegradation(
+  siteId: string,
+  currentSpeedMs: number,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  resendApiKey: string,
+  telegramBotToken: string,
+  appUrl: string
+): Promise<void> {
+  const h = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, Accept: "application/json" };
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Середнє за 7 днів (виключаємо поточний замір)
+  const resp = await fetch(
+    `${supabaseUrl}/rest/v1/speed_checks?select=load_time_ms&site_id=eq.${siteId}&checked_at=gte.${weekAgo}&order=checked_at.desc&limit=20`,
+    { headers: h }
+  );
+  if (!resp.ok) return;
+  const checks = await resp.json() as Array<{ load_time_ms: number }>;
+  if (checks.length < 3) return; // Замало даних для порівняння
+
+  const avg = checks.reduce((a, b) => a + b.load_time_ms, 0) / checks.length;
+
+  // Тригер: поточне значення вдвічі гірше середнього І перевищує 3с абсолютно
+  if (currentSpeedMs < avg * 2 || currentSpeedMs < 3000) return;
+
+  // Отримуємо сайт і налаштування
+  const siteResp = await fetch(`${supabaseUrl}/rest/v1/sites?select=id,url,display_name,organization_id&id=eq.${siteId}&limit=1`, { headers: h });
+  if (!siteResp.ok) return;
+  const sites = await siteResp.json() as Array<{ id: string; url: string; display_name: string; organization_id: string }>;
+  const site = sites[0];
+  if (!site) return;
+
+  // Перевіряємо чи не шляли вже сьогодні (щоб не спамити)
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+  const alertCheckResp = await fetch(
+    `${supabaseUrl}/rest/v1/speed_degradation_alerts?select=id&site_id=eq.${siteId}&alerted_at=gte.${todayStart.toISOString()}&limit=1`,
+    { headers: h }
+  );
+  if (alertCheckResp.ok) {
+    const existing = await alertCheckResp.json() as Array<unknown>;
+    if (existing.length > 0) return; // Вже шляли сьогодні
+  }
+
+  const settings = await getOrgNotifSettings(siteId, supabaseUrl, serviceRoleKey);
+  if (!settings) return;
+
+  const fmtMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}с` : `${ms}мс`;
+  const dashboardUrl = `${appUrl}/dashboard/sites/${siteId}`;
+
+  if (settings.email_enabled) {
+    const html = `<!DOCTYPE html>
+<html lang="uk">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+    <div style="margin-bottom:28px;"><span style="font-size:18px;font-weight:700;color:#f5f5f7;letter-spacing:-0.02em;">Qorax</span></div>
+    <div style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.3);border-radius:16px;padding:24px;margin-bottom:20px;">
+      <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#F5A623;text-transform:uppercase;letter-spacing:0.05em;">⚡ Швидкість впала</p>
+      <h1 style="margin:0 0 6px;font-size:20px;font-weight:600;color:#f5f5f7;">${site.display_name}</h1>
+      <p style="margin:0;font-size:13px;color:#6e6e73;font-family:'Courier New',monospace;">${site.url}</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <span style="font-size:13px;color:#6e6e73;">Поточна швидкість</span>
+        <span style="font-size:13px;font-weight:600;color:#F5A623;">${fmtMs(currentSpeedMs)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;">
+        <span style="font-size:13px;color:#6e6e73;">Середня за 7 днів</span>
+        <span style="font-size:13px;font-weight:600;color:#d6ff3f;">${fmtMs(Math.round(avg))}</span>
+      </div>
+    </div>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#d6ff3f;color:#0a0a0a;font-size:14px;font-weight:600;padding:12px 28px;border-radius:12px;text-decoration:none;">Перевірити в дашборді →</a>
+    </div>
+    <p style="font-size:12px;color:#6e6e73;text-align:center;margin:0;">Qorax · Моніторинг сайтів</p>
+  </div>
+</body>
+</html>`;
+    await sendEmail({
+      to: settings.email,
+      subject: `⚡ ${site.display_name} — швидкість впала до ${fmtMs(currentSpeedMs)} (норма ${fmtMs(Math.round(avg))})`,
+      html,
+    }, resendApiKey);
+  }
+
+  if (settings.telegram_enabled && settings.telegram_chat_id) {
+    await sendTelegramMessage(
+      settings.telegram_chat_id,
+      `⚡ *Швидкість впала* — ${site.display_name}\n\nПоточна: *${fmtMs(currentSpeedMs)}*\nНорма (7 днів): ${fmtMs(Math.round(avg))}\n\n[Відкрити дашборд](${dashboardUrl})`,
+      telegramBotToken
+    );
+  }
+
+  // Записуємо алерт щоб не спамити
+  await fetch(`${supabaseUrl}/rest/v1/speed_degradation_alerts`, {
+    method: "POST",
+    headers: { ...h, "Content-Type": "application/json", Prefer: "return=minimal" },
+    body: JSON.stringify({ site_id: siteId, speed_ms: currentSpeedMs, avg_ms: Math.round(avg), alerted_at: new Date().toISOString() }),
+  });
 }

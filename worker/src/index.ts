@@ -11,7 +11,7 @@ import { runBasicCheck } from "./lib/basicCheck";
 import { runPageSpeedChecks } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead, selectRows } from "./lib/supabase";
-import { runUptimeChecks, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails } from "./lib/monitoring";
+import { runUptimeChecks, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails, sendWeeklyDigests, checkSpeedDegradation } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
 import { handleChatRequest } from "./lib/chatHandler";
@@ -461,9 +461,61 @@ const worker = {
           env.SUPABASE_SERVICE_ROLE_KEY,
           env.GOOGLE_PAGESPEED_API_KEY,
           env.GEMINI_API_KEY
-        ).then(r => console.log(`Manual speed for site ${siteId}:`, r))
+        ).then(async (speedMs) => {
+          console.log(`Manual speed for site ${siteId}:`, speedMs);
+          // Перевіряємо деградацію після ручного запуску теж
+          if (typeof speedMs === "number" && speedMs > 0) {
+            await checkSpeedDegradation(
+              siteId, speedMs,
+              env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY,
+              env.RESEND_API_KEY, env.TELEGRAM_BOT_TOKEN, env.APP_URL
+            ).catch(e => console.warn("Speed degradation check error:", e));
+          }
+        })
       );
       return json({ ok: true, message: "Speed check started" }, 200, origin);
+    }
+
+    // GET /api/badge/:siteId — публічний SVG бейдж "Monitored by Qorax"
+    const badgeMatch = url.pathname.match(/^\/api\/badge\/([^/]+)$/);
+    if (badgeMatch && request.method === "GET") {
+      const siteId = badgeMatch[1];
+      // Публічний — отримуємо тільки uptime % за 7 днів
+      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const h = {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        Accept: "application/json",
+      };
+      const checksResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/uptime_checks?select=status&site_id=eq.${siteId}&checked_at=gte.${weekAgo}`,
+        { headers: h }
+      );
+      let uptimePct = 99.9;
+      if (checksResp.ok) {
+        const checks = await checksResp.json() as Array<{ status: string }>;
+        if (checks.length > 0) {
+          uptimePct = (checks.filter(c => c.status === "up").length / checks.length) * 100;
+        }
+      }
+      const pctStr = uptimePct.toFixed(2) + "%";
+      const color = uptimePct >= 99.5 ? "#4ade80" : uptimePct >= 98 ? "#fb923c" : "#f87171";
+      const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="200" height="24" role="img" aria-label="Monitored by Qorax: ${pctStr} uptime">
+  <title>Monitored by Qorax: ${pctStr} uptime</title>
+  <rect width="200" height="24" rx="4" fill="#111"/>
+  <rect x="2" y="2" width="4" height="4" rx="1" fill="${color}"/>
+  <text x="12" y="16.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="11" fill="#a1a1aa">Monitored by</text>
+  <text x="92" y="16.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="11" font-weight="600" fill="#f5f5f7">Qorax</text>
+  <text x="136" y="16.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="11" fill="#a1a1aa">·</text>
+  <text x="143" y="16.5" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" font-size="11" font-weight="600" fill="${color}">${pctStr}</text>
+</svg>`;
+      return new Response(svg, {
+        headers: {
+          "Content-Type": "image/svg+xml",
+          "Cache-Control": "public, max-age=300",
+          ...corsHeaders(origin),
+        },
+      });
     }
 
         return json({ error: "Маршрут не знайдено" }, 404, origin);
@@ -478,7 +530,15 @@ const worker = {
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
           env.GOOGLE_PAGESPEED_API_KEY,
-          env.GEMINI_API_KEY
+          env.GEMINI_API_KEY,
+          // Передаємо callback для перевірки деградації після кожного сайту
+          async (siteId: string, speedMs: number) => {
+            await checkSpeedDegradation(
+              siteId, speedMs,
+              env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY,
+              env.RESEND_API_KEY, env.TELEGRAM_BOT_TOKEN, env.APP_URL
+            );
+          }
         ),
         runSeoChecks(
           env.SUPABASE_URL,
@@ -519,6 +579,19 @@ const worker = {
       ]);
       console.log(`Trials expired: ${expiredCount}`);
       console.log(`Trial emails: ${JSON.stringify(emailResult)}`);
+      return;
+    }
+
+    // 0 8 * * 1 — щопонеділка о 8:00: weekly digest
+    if (event.cron === "0 8 * * 1") {
+      const digestResult = await sendWeeklyDigests(
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY,
+        env.RESEND_API_KEY,
+        env.APP_URL
+      );
+      console.log(`Weekly digests: sent=${digestResult.sent}, errors=${digestResult.errors.length}`);
+      if (digestResult.errors.length) console.warn("Digest errors:", digestResult.errors);
       return;
     }
 

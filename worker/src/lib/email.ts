@@ -409,3 +409,116 @@ export function buildTrialExpiredEmail(params: {
 </html>`;
   return { subject, html };
 }
+
+// ─── Weekly Digest Email ──────────────────────────────────────
+
+export function buildWeeklyDigestEmail(params: {
+  firstName: string;
+  siteName: string;
+  siteUrl: string;
+  dashboardUrl: string;
+  uptimePct: number;
+  avgSpeedMs: number | null;
+  prevAvgSpeedMs: number | null;
+  incidentsCount: number;
+  totalDowntimeMinutes: number;
+  newSeoIssues: number;
+  sslDaysLeft: number | null;
+}): { subject: string; html: string } {
+  const subject = `📊 Тижневий звіт Qorax — ${params.siteName}`;
+
+  const uptimeColor = params.uptimePct >= 99.5 ? "#d6ff3f" : params.uptimePct >= 98 ? "#F5A623" : "#F5675A";
+  const uptimeLabel = params.uptimePct >= 99.5 ? "Відмінно" : params.uptimePct >= 98 ? "Прийнятно" : "Увага";
+
+  const speedDelta = params.avgSpeedMs && params.prevAvgSpeedMs
+    ? params.avgSpeedMs - params.prevAvgSpeedMs
+    : null;
+  const speedColor = !params.avgSpeedMs ? "#6e6e73"
+    : params.avgSpeedMs <= 1500 ? "#d6ff3f"
+    : params.avgSpeedMs <= 3000 ? "#F5A623" : "#F5675A";
+
+  const fmtMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}с` : `${ms}мс`;
+  const fmtUptime = (pct: number) => pct.toFixed(2) + "%";
+
+  const speedDeltaHtml = speedDelta !== null
+    ? `<span style="font-size:12px;color:${speedDelta > 0 ? "#F5675A" : "#d6ff3f"};margin-left:6px;">${speedDelta > 0 ? "▲" : "▼"} ${fmtMs(Math.abs(speedDelta))} vs минулого тижня</span>`
+    : "";
+
+  const downtimeHtml = params.totalDowntimeMinutes > 0
+    ? `<div style="background:rgba(245,103,90,0.06);border:1px solid rgba(245,103,90,0.2);border-radius:10px;padding:14px 16px;margin-top:12px;">
+        <p style="margin:0;font-size:13px;color:#a1a1a6;">Загальний простій: <strong style="color:#F5675A;">${params.totalDowntimeMinutes} хв</strong> за ${params.incidentsCount} ${params.incidentsCount === 1 ? "інцидент" : "інциденти"}</p>
+      </div>`
+    : `<div style="background:rgba(214,255,63,0.05);border:1px solid rgba(214,255,63,0.15);border-radius:10px;padding:14px 16px;margin-top:12px;">
+        <p style="margin:0;font-size:13px;color:#a1a1a6;">✓ Жодного падіння за тиждень</p>
+      </div>`;
+
+  const seoHtml = params.newSeoIssues > 0
+    ? `<div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <span style="font-size:13px;color:#a1a1a6;">Нові SEO проблеми</span>
+        <span style="font-size:13px;font-weight:600;color:#F5A623;">${params.newSeoIssues}</span>
+      </div>`
+    : "";
+
+  const sslHtml = params.sslDaysLeft !== null && params.sslDaysLeft < 30
+    ? `<div style="background:rgba(245,166,35,0.06);border:1px solid rgba(245,166,35,0.2);border-radius:10px;padding:14px 16px;margin-top:12px;">
+        <p style="margin:0;font-size:13px;color:#a1a1a6;">⚠️ SSL закінчується через <strong style="color:#F5A623;">${params.sslDaysLeft} днів</strong> — поновіть вчасно</p>
+      </div>`
+    : "";
+
+  const html = `<!DOCTYPE html>
+<html lang="uk">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+
+    <div style="margin-bottom:28px;display:flex;align-items:center;justify-content:space-between;">
+      <span style="font-size:18px;font-weight:700;color:#f5f5f7;letter-spacing:-0.02em;">Qorax</span>
+      <span style="font-size:12px;color:#6e6e73;">Тижневий звіт</span>
+    </div>
+
+    <div style="margin-bottom:24px;">
+      <p style="margin:0 0 4px;font-size:20px;font-weight:600;color:#f5f5f7;">${params.siteName}</p>
+      <p style="margin:0;font-size:13px;color:#6e6e73;font-family:'Courier New',monospace;">${params.siteUrl}</p>
+    </div>
+
+    <!-- Uptime блок -->
+    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:20px;margin-bottom:16px;">
+      <p style="margin:0 0 12px;font-size:12px;font-weight:600;color:#6e6e73;text-transform:uppercase;letter-spacing:0.06em;">Доступність</p>
+      <div style="display:flex;align-items:baseline;gap:10px;">
+        <span style="font-size:36px;font-weight:700;color:${uptimeColor};letter-spacing:-0.02em;">${fmtUptime(params.uptimePct)}</span>
+        <span style="font-size:12px;color:${uptimeColor};font-weight:600;">${uptimeLabel}</span>
+      </div>
+      ${downtimeHtml}
+    </div>
+
+    <!-- Speed блок -->
+    <div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:20px;margin-bottom:16px;">
+      <p style="margin:0 0 12px;font-size:12px;font-weight:600;color:#6e6e73;text-transform:uppercase;letter-spacing:0.06em;">Час відповіді (середній)</p>
+      ${params.avgSpeedMs
+        ? `<div style="display:flex;align-items:baseline;gap:8px;">
+            <span style="font-size:32px;font-weight:700;color:${speedColor};letter-spacing:-0.02em;">${fmtMs(params.avgSpeedMs)}</span>
+            ${speedDeltaHtml}
+          </div>`
+        : `<span style="font-size:14px;color:#6e6e73;">Дані з'являться після першого скану</span>`
+      }
+    </div>
+
+    <!-- Метрики рядок -->
+    ${(seoHtml || sslHtml) ? `<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.07);border-radius:16px;padding:20px;margin-bottom:16px;">${seoHtml}${sslHtml}</div>` : ""}
+
+    <div style="text-align:center;margin:28px 0;">
+      <a href="${params.dashboardUrl}" style="display:inline-block;background:#d6ff3f;color:#0a0a0a;font-size:14px;font-weight:600;padding:13px 28px;border-radius:12px;text-decoration:none;">
+        Повний звіт у дашборді →
+      </a>
+    </div>
+
+    <p style="font-size:12px;color:#6e6e73;text-align:center;margin:0;line-height:1.7;">
+      Звіт генерується щопонеділка автоматично.<br>
+      Qorax · Моніторинг сайтів
+    </p>
+  </div>
+</body>
+</html>`;
+
+  return { subject, html };
+}
