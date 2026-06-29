@@ -11,6 +11,7 @@ import { ReportButton } from "./ReportButton";
 import { LiveUptimePanel } from "./LiveUptimePanel";
 import { QoraxusChat } from "./QoraxusChat";
 import { UptimeBadgeSection } from "./UptimeBadgeSection";
+import { IncidentTimeline } from "./IncidentTimeline";
 import { GscPanel } from "./GscPanel";
 import { RefreshSpeedButton } from "./RefreshSpeedButton";
 
@@ -88,7 +89,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   const [
     uptimeChecks, openIncidents, speedChecks, cwvChecks, sslArr,
     aiInsights, reports, seoAuditArr, sitemapAuditArr, competitors,
-    competitorChanges, brokenLinks,
+    competitorChanges, brokenLinks, historyIncidents,
   ] = await Promise.all([
     safe(supabase.from("uptime_checks").select("status, response_time_ms, checked_at").eq("site_id", id).order("checked_at", { ascending: false }).limit(288)),
     safe(supabase.from("uptime_incidents").select("id, started_at, resolved_at").eq("site_id", id).is("resolved_at", null).limit(1)),
@@ -102,6 +103,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     safe(supabase.from("competitor_sites").select("id, url, display_name, last_change_at").eq("site_id", id).limit(5)),
     safe(supabase.from("competitor_changes").select("detected_at, competitor_id").eq("site_id", id).order("detected_at", { ascending: false }).limit(10)),
     safe(supabase.from("broken_links").select("id, broken_url, http_status_code, first_found_at").eq("site_id", id).eq("status", "broken").order("first_found_at", { ascending: false }).limit(20)),
+    safe(supabase.from("uptime_incidents").select("id, started_at, resolved_at, duration_seconds").eq("site_id", id).order("started_at", { ascending: false }).limit(30)),
   ]);
 
   const ssl = sslArr[0] ?? null;
@@ -216,6 +218,16 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             supabaseUrl={supabaseUrl}
             supabaseAnonKey={supabaseAnonKey}
           />
+        </Section>
+
+        {/* ── Incident Timeline ── */}
+        <Section
+          icon={<AlertTriangle size={14} />}
+          title="Історія інцидентів"
+          badge={historyIncidents.length > 0 ? `${historyIncidents.length}` : undefined}
+          badgeColor={historyIncidents.some(i => !i.resolved_at) ? "red" : "mono"}
+        >
+          <IncidentTimeline incidents={historyIncidents} isUp={isUp} />
         </Section>
 
         {/* ── Speed trend ── */}
