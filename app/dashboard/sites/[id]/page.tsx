@@ -4,13 +4,18 @@ import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import {
   Activity, Zap, Shield, AlertTriangle, CheckCircle,
-  Clock, TrendingUp, ExternalLink, ChevronRight, Sparkles,
-  FileText, Search, Eye, ArrowLeft,
+  Clock, ExternalLink, ChevronRight, Sparkles,
+  FileText, Search, Eye, ArrowLeft, Code, TrendingUp,
 } from "lucide-react";
 import { ReportButton } from "./ReportButton";
 import { LiveUptimePanel } from "./LiveUptimePanel";
 import { QoraxusChat } from "./QoraxusChat";
 import { GscPanel } from "./GscPanel";
+import { RefreshSpeedButton } from "./RefreshSpeedButton";
+import { MultiUrlPanel } from "./MultiUrlPanel";
+import { FormMonitorPanel } from "./FormMonitorPanel";
+import { StatusPageSection } from "./StatusPageSection";
+import { UptimeBadgeSection } from "./UptimeBadgeSection";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Моніторинг сайту — Qorax" };
@@ -57,7 +62,6 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
   if (!site) notFound();
 
-  // Check org + plan for GSC gate
   const { data: membership } = await supabase
     .from("organization_members")
     .select("organization_id")
@@ -113,392 +117,485 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "";
+  const workerUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
 
-  // Quick stats for top bar
   const uptimePct = uptimeChecks.length
     ? ((uptimeChecks.filter(c => c.status === "up").length / uptimeChecks.length) * 100).toFixed(1)
     : null;
   const sslOk = ssl && (ssl.days_until_expiry === 999 || (ssl.days_until_expiry ?? 0) > 0);
-  const criticalInsights = aiInsights.filter(i => i.severity === "critical").length;
+  const seoIssueCount = (() => {
+    try {
+      const raw = seoAudit?.issues;
+      const list = Array.isArray(raw) ? raw : JSON.parse(typeof raw === "string" ? raw : "[]");
+      return list.length;
+    } catch { return 0; }
+  })();
+
+  const navItems = [
+    { id: "uptime",      label: "Uptime",          icon: <Activity size={14} />,    badge: isUp ? "ОК" : "DOWN", badgeRed: !isUp },
+    { id: "speed",       label: "Швидкість",        icon: <TrendingUp size={14} />,  badge: latestSpeed ? fmtMs(latestSpeed.load_time_ms) : undefined },
+    { id: "pagespeed",   label: "PageSpeed",        icon: <Zap size={14} />,         badge: mobileCwv?.performance_score != null ? String(mobileCwv.performance_score) : undefined },
+    { id: "ai",          label: "AI Insights",      icon: <Sparkles size={14} />,    badge: aiInsights.length ? String(aiInsights.length) : undefined, badgeRed: aiInsights.some(i => i.severity === "critical") },
+    { id: "seo",         label: "SEO аудит",        icon: <Search size={14} />,      badge: seoIssueCount > 0 ? String(seoIssueCount) : undefined, badgeRed: seoIssueCount > 0 },
+    { id: "gsc",         label: "Search Console",   icon: <Search size={14} /> },
+    { id: "links",       label: "Биті посилання",   icon: <AlertTriangle size={14} />, badge: brokenLinks.length ? String(brokenLinks.length) : undefined, badgeRed: true },
+    { id: "ssl",         label: "SSL",              icon: <Shield size={14} />,       badge: sslOk ? "OK" : undefined },
+    { id: "competitors", label: "Конкуренти",       icon: <Eye size={14} />,          badge: competitorChanges.length ? "Зміни" : undefined, badgeRed: competitorChanges.length > 0 },
+    { id: "multiurl",    label: "Мульті-URL",       icon: <TrendingUp size={14} /> },
+    { id: "forms",       label: "Форми",            icon: <CheckCircle size={14} /> },
+    { id: "reports",     label: "PDF звіти",        icon: <FileText size={14} />,     badge: reports.length ? String(reports.length) : undefined },
+    { id: "status",      label: "Сторінка статусу", icon: <Eye size={14} /> },
+    { id: "badge",       label: "Uptime Badge",     icon: <Code size={14} /> },
+  ];
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
 
-      {/* ── Navbar ── */}
+      {/* ── Topbar ── */}
       <header className="sticky top-0 z-40"
         style={{
-          background: "rgba(10,10,10,0.8)",
-          backdropFilter: "blur(20px) saturate(160%)",
-          WebkitBackdropFilter: "blur(20px) saturate(160%)",
+          background: "rgba(12,17,29,0.92)",
+          backdropFilter: "blur(20px)",
+          WebkitBackdropFilter: "blur(20px)",
           borderBottom: "1px solid rgba(255,255,255,0.06)",
         }}>
-        <div className="mx-auto max-w-6xl px-6 sm:px-8 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="h-14 flex items-center justify-between px-5 gap-4" style={{ maxWidth: "100%" }}>
+          <div className="flex items-center gap-3 min-w-0">
             <Link href="/dashboard"><QoraxLogo size="sm" /></Link>
             <span style={{ color: "rgba(255,255,255,0.12)" }}>/</span>
-            <Link href="/dashboard"
-              className="flex items-center gap-1.5 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">
+            <Link href="/dashboard" className="flex items-center gap-1.5 text-sm transition-colors"
+              style={{ color: "var(--text-tertiary)" }}>
               <ArrowLeft size={13} /> Сайти
             </Link>
             <span style={{ color: "rgba(255,255,255,0.12)" }}>/</span>
-            <span className="text-sm text-[var(--text-primary)] truncate max-w-[180px]">{site.display_name}</span>
+            <span className="text-sm font-medium truncate max-w-[160px]">{site.display_name}</span>
           </div>
-          <div className="flex items-center gap-2">
-            <Link href={`/dashboard/sites/${site.id}/competitor`}
-              className="text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors hidden sm:block">
-              Конкуренти
-            </Link>
+          <div className="flex items-center gap-2 shrink-0">
             <a href={site.url} target="_blank" rel="noopener noreferrer"
-              className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5">
-              <ExternalLink size={14} />
+              className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors"
+              style={{ color: "var(--text-tertiary)", border: "1px solid rgba(255,255,255,0.07)" }}>
+              <ExternalLink size={13} />
             </a>
             <ReportButton siteId={site.id} />
           </div>
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 sm:px-8 py-8 space-y-5">
+      <div className="flex" style={{ minHeight: "calc(100vh - 56px)" }}>
 
-        {/* ── Site hero ── */}
-        <div className="rounded-2xl p-5 sm:p-6 flex flex-col sm:flex-row sm:items-center gap-4"
-          style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            {/* Status badge */}
-            <div className="relative shrink-0">
-              <div className="h-11 w-11 rounded-xl flex items-center justify-center"
-                style={{
-                  background: isUp ? "rgba(214,255,63,0.08)" : "rgba(245,103,90,0.08)",
-                  border: `1px solid ${isUp ? "rgba(214,255,63,0.2)" : "rgba(245,103,90,0.2)"}`,
-                }}>
-                <Activity size={18} style={{ color: isUp ? "var(--lime)" : "#F5675A" }} />
-              </div>
-              <div className="absolute -top-1 -right-1 h-3 w-3 rounded-full"
-                style={{ background: isUp ? "var(--lime)" : "#F5675A", boxShadow: `0 0 8px ${isUp ? "rgba(214,255,63,0.5)" : "rgba(245,103,90,0.5)"}` }}>
-                {isUp && <div className="absolute inset-0 rounded-full animate-ping" style={{ background: "var(--lime)", opacity: 0.3 }} />}
-              </div>
-            </div>
-            <div className="min-w-0">
-              <h1 className="font-display text-lg sm:text-xl font-semibold truncate">{site.display_name}</h1>
-              <p className="text-xs font-mono text-[var(--text-tertiary)] mt-0.5 truncate">{hostname}</p>
-            </div>
-          </div>
+        {/* ── Sidebar ── */}
+        <aside className="hidden lg:flex flex-col shrink-0 sticky top-14"
+          style={{
+            width: 224,
+            height: "calc(100vh - 56px)",
+            background: "rgba(255,255,255,0.015)",
+            borderRight: "1px solid rgba(255,255,255,0.06)",
+            overflowY: "auto",
+          }}>
 
-          {/* Quick stat pills */}
-          <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap">
-            <StatPill
-              label="Uptime"
-              value={uptimePct ? `${uptimePct}%` : "—"}
-              color={uptimePct && parseFloat(uptimePct) >= 99 ? "lime" : "orange"}
-            />
-            <StatPill
-              label="Швидкість"
-              value={fmtMs(latestSpeed?.load_time_ms ?? null)}
-              color={(latestSpeed?.load_time_ms ?? 9999) <= 1500 ? "lime" : (latestSpeed?.load_time_ms ?? 9999) <= 3000 ? "orange" : "red"}
-            />
-            <StatPill
-              label="SSL"
-              value={sslOk ? "OK" : ssl ? "⚠" : "—"}
-              color={sslOk ? "lime" : "red"}
-            />
-            {criticalInsights > 0 && (
-              <StatPill label="AI Issues" value={`${criticalInsights} крит.`} color="red" />
-            )}
-          </div>
-        </div>
-
-        {/* ── Uptime monitor ── */}
-        <Section icon={<Activity size={14} />} title="Живий моніторинг">
-          <LiveUptimePanel
-            siteId={site.id}
-            initialChecks={uptimeChecks}
-            initialIsUp={isUp}
-            supabaseUrl={supabaseUrl}
-            supabaseAnonKey={supabaseAnonKey}
-          />
-        </Section>
-
-        {/* ── Speed trend ── */}
-        <Section
-          icon={<TrendingUp size={14} />}
-          title="Час відповіді"
-          badge={latestSpeed ? fmtMs(latestSpeed.load_time_ms) : undefined}
-          badgeColor="mono"
-        >
-          <SpeedChart checks={speedChecks} />
-          {speedChecks.length > 0 && (
-            <p className="text-xs text-[var(--text-tertiary)] mt-3">
-              Останні {speedChecks.length} замірів · щоденний скан о 3:00
-            </p>
-          )}
-        </Section>
-
-        {/* ── Core Web Vitals ── */}
-        <Section icon={<Zap size={14} />} title="PageSpeed Insights">
-          {mobileCwv || desktopCwv ? (
-            <div className="grid sm:grid-cols-2 gap-5">
-              {mobileCwv && <CwvBlock label="📱 Мобільний" data={mobileCwv} />}
-              {desktopCwv && <CwvBlock label="🖥 Десктоп" data={desktopCwv} />}
-            </div>
-          ) : (
-            <EmptySlot text="Дані з'являться після першого щоденного скану (о 3:00)" />
-          )}
-        </Section>
-
-        {/* ── AI Insights ── */}
-        <Section icon={<Sparkles size={14} />} title="AI Revenue Impact" accent="cyan">
-          {aiInsights.length > 0 ? (
-            <div className="space-y-3">
-              {aiInsights.map((insight, i) => <InsightCard key={i} insight={insight} />)}
-            </div>
-          ) : (
-            <EmptySlot text="AI-інсайти з'являться після першого повного сканування" />
-          )}
-        </Section>
-
-        {/* ── SEO Audit ── */}
-        <Section
-          icon={<Search size={14} />}
-          title="SEO аудит"
-          badge={seoAudit ? fmtDate(seoAudit.checked_at) : undefined}
-          badgeColor="mono"
-        >
-          {seoAudit ? (
-            <div className="space-y-4">
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                <SeoCell label="Title" length={seoAudit.title_length} min={30} max={60} exists={!!seoAudit.title} />
-                <SeoCell label="Description" length={seoAudit.meta_description_length} min={70} max={160} exists={!!seoAudit.meta_description} />
-                <SeoCheckCell label="H1"
-                  ok={seoAudit.has_h1 && seoAudit.h1_count === 1}
-                  warn={seoAudit.has_h1 && seoAudit.h1_count > 1}
-                  value={seoAudit.has_h1 ? `${seoAudit.h1_count} шт.` : "Немає"}
-                />
-                <SeoCheckCell label="Schema"
-                  ok={seoAudit.has_schema_markup}
-                  warn={false}
-                  value={seoAudit.has_schema_markup ? "✓ OK" : "Немає"}
-                />
-              </div>
-
-              {(() => {
-                let issueList: string[] = [];
-                try {
-                  const raw = seoAudit.issues;
-                  issueList = Array.isArray(raw) ? raw : JSON.parse(typeof raw === "string" ? raw : "[]");
-                } catch { issueList = []; }
-                return issueList.length > 0 ? (
-                  <div className="space-y-2">
-                    {issueList.map((issue: string, i: number) => (
-                      <div key={i} className="flex items-start gap-2.5 rounded-xl px-4 py-3"
-                        style={{ background: "rgba(245,103,90,0.05)", border: "1px solid rgba(245,103,90,0.15)" }}>
-                        <AlertTriangle size={12} style={{ color: "#F5675A", flexShrink: 0, marginTop: 2 }} />
-                        <p className="text-sm text-[var(--text-secondary)]">{issue}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2.5 rounded-xl px-4 py-3"
-                    style={{ background: "rgba(214,255,63,0.05)", border: "1px solid rgba(214,255,63,0.15)" }}>
-                    <CheckCircle size={13} style={{ color: "var(--lime)" }} />
-                    <p className="text-sm text-[var(--text-secondary)]">SEO мета-теги в нормі</p>
-                  </div>
-                );
-              })()}
-
-              {sitemapAudit && (
-                <div className="grid grid-cols-2 gap-2.5">
-                  <SitemapCell
-                    label="sitemap.xml"
-                    found={sitemapAudit.sitemap_found}
-                    value={sitemapAudit.sitemap_found ? `${sitemapAudit.urls_in_sitemap ?? "?"} URL` : "Не знайдено"}
-                    danger={!sitemapAudit.sitemap_found}
-                  />
-                  <SitemapCell
-                    label="robots.txt"
-                    found={sitemapAudit.robots_found && !sitemapAudit.robots_blocks_important_pages}
-                    value={!sitemapAudit.robots_found ? "Не знайдено" : sitemapAudit.robots_blocks_important_pages ? "Блокує індексацію" : "OK"}
-                    danger={sitemapAudit.robots_blocks_important_pages}
-                  />
+          {/* Site identity */}
+          <div className="px-4 py-5 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className="relative shrink-0">
+                <div className="h-8 w-8 rounded-lg flex items-center justify-center"
+                  style={{
+                    background: isUp ? "rgba(214,255,63,0.08)" : "rgba(245,103,90,0.08)",
+                    border: `1px solid ${isUp ? "rgba(214,255,63,0.2)" : "rgba(245,103,90,0.2)"}`,
+                  }}>
+                  <Activity size={14} style={{ color: isUp ? "var(--lime)" : "#F5675A" }} />
                 </div>
-              )}
+                <div className="absolute -top-0.5 -right-0.5 h-2.5 w-2.5 rounded-full"
+                  style={{ background: isUp ? "var(--lime)" : "#F5675A" }} />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate leading-tight">{site.display_name}</p>
+                <p className="text-[10px] font-mono truncate" style={{ color: "var(--text-tertiary)" }}>{hostname}</p>
+              </div>
             </div>
-          ) : (
-            <EmptySlot text="SEO аудит запускається щодня о 3:00" />
-          )}
-        </Section>
 
-        {/* ── Google Search Console ── */}
-        <Section
-          icon={<Search size={14} style={{ color: "var(--cyan)" }} />}
-          title="Google Search Console"
-          accent="cyan"
-        >
-          {canUseGsc ? (
-            <GscPanel
+            {/* KPI strip */}
+            <div className="grid grid-cols-3 gap-1.5">
+              <KpiTile label="Uptime" value={uptimePct ? `${uptimePct}%` : "—"} ok={(parseFloat(uptimePct ?? "0")) >= 99} />
+              <KpiTile label="Швидкість" value={fmtMs(latestSpeed?.load_time_ms ?? null)} ok={(latestSpeed?.load_time_ms ?? 9999) <= 1500} />
+              <KpiTile label="SSL" value={sslOk ? "OK" : "—"} ok={!!sslOk} />
+            </div>
+          </div>
+
+          {/* Nav */}
+          <nav className="px-2 py-3 flex-1">
+            <p className="text-[10px] font-medium uppercase tracking-widest px-2 mb-2"
+              style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>Моніторинг</p>
+            {navItems.slice(0, 4).map(item => (
+              <NavLink key={item.id} href={`#${item.id}`} label={item.label} icon={item.icon}
+                badge={item.badge} badgeRed={item.badgeRed} />
+            ))}
+
+            <p className="text-[10px] font-medium uppercase tracking-widest px-2 mt-4 mb-2"
+              style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>SEO & Аналітика</p>
+            {navItems.slice(4, 7).map(item => (
+              <NavLink key={item.id} href={`#${item.id}`} label={item.label} icon={item.icon}
+                badge={item.badge} badgeRed={item.badgeRed} />
+            ))}
+
+            <p className="text-[10px] font-medium uppercase tracking-widest px-2 mt-4 mb-2"
+              style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>Безпека & Інше</p>
+            {navItems.slice(7).map(item => (
+              <NavLink key={item.id} href={`#${item.id}`} label={item.label} icon={item.icon}
+                badge={item.badge} badgeRed={item.badgeRed} />
+            ))}
+          </nav>
+        </aside>
+
+        {/* ── Main content ── */}
+        <main className="flex-1 min-w-0 px-5 sm:px-8 py-6 space-y-4" style={{ maxWidth: 880 }}>
+
+          {/* ── Uptime ── */}
+          <Section id="uptime" icon={<Activity size={14} />} title="Живий моніторинг">
+            <LiveUptimePanel
+              siteId={site.id}
+              initialChecks={uptimeChecks}
+              initialIsUp={isUp}
+              supabaseUrl={supabaseUrl}
+              supabaseAnonKey={supabaseAnonKey}
+            />
+          </Section>
+
+          {/* ── Speed line chart ── */}
+          <Section
+            id="speed"
+            icon={<TrendingUp size={14} />}
+            title="Час відповіді"
+            badge={latestSpeed ? fmtMs(latestSpeed.load_time_ms) : undefined}
+            action={
+              <RefreshSpeedButton
+                siteId={site.id}
+                accessToken={accessToken}
+                workerUrl={workerUrl}
+              />
+            }
+          >
+            <SpeedLineChart checks={speedChecks} />
+          </Section>
+
+          {/* ── PageSpeed ── */}
+          <Section
+            id="pagespeed"
+            icon={<Zap size={14} />}
+            title="PageSpeed Insights"
+            action={
+              <RefreshSpeedButton
+                siteId={site.id}
+                accessToken={accessToken}
+                workerUrl={workerUrl}
+              />
+            }
+          >
+            {mobileCwv || desktopCwv ? (
+              <div className="grid sm:grid-cols-2 gap-4">
+                {mobileCwv && <CwvBlock label="Мобільний" data={mobileCwv} />}
+                {desktopCwv && <CwvBlock label="Десктоп" data={desktopCwv} />}
+              </div>
+            ) : (
+              <EmptySlot text="Натисни Оновити щоб отримати PageSpeed дані. Щоденний скан — о 3:00." />
+            )}
+          </Section>
+
+          {/* ── AI ── */}
+          <Section id="ai" icon={<Sparkles size={14} />} title="AI Revenue Impact" accent="lime">
+            {aiInsights.length > 0 ? (
+              <div className="space-y-3">
+                {aiInsights.map((insight, i) => <InsightCard key={i} insight={insight} />)}
+              </div>
+            ) : (
+              <EmptySlot text="AI-інсайти з'являться після першого повного сканування" />
+            )}
+          </Section>
+
+          {/* ── SEO ── */}
+          <Section
+            id="seo"
+            icon={<Search size={14} />}
+            title="SEO аудит"
+            badge={seoAudit ? fmtDate(seoAudit.checked_at) : undefined}
+          >
+            {seoAudit ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <SeoCell label="Title" length={seoAudit.title_length} min={30} max={60} exists={!!seoAudit.title} />
+                  <SeoCell label="Description" length={seoAudit.meta_description_length} min={70} max={160} exists={!!seoAudit.meta_description} />
+                  <SeoCheckCell label="H1" ok={seoAudit.has_h1 && seoAudit.h1_count === 1} warn={seoAudit.has_h1 && seoAudit.h1_count > 1} value={seoAudit.has_h1 ? `${seoAudit.h1_count} шт.` : "Немає"} />
+                  <SeoCheckCell label="Schema" ok={seoAudit.has_schema_markup} warn={false} value={seoAudit.has_schema_markup ? "OK" : "Немає"} />
+                </div>
+                {(() => {
+                  let issueList: string[] = [];
+                  try {
+                    const raw = seoAudit.issues;
+                    issueList = Array.isArray(raw) ? raw : JSON.parse(typeof raw === "string" ? raw : "[]");
+                  } catch { issueList = []; }
+                  return issueList.length > 0 ? (
+                    <div className="space-y-2">
+                      {issueList.map((issue: string, i: number) => (
+                        <div key={i} className="flex items-start gap-2.5 rounded-xl px-4 py-3"
+                          style={{ background: "rgba(245,103,90,0.05)", border: "1px solid rgba(245,103,90,0.15)" }}>
+                          <AlertTriangle size={12} style={{ color: "#F5675A", flexShrink: 0, marginTop: 2 }} />
+                          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{issue}</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2.5 rounded-xl px-4 py-3"
+                      style={{ background: "rgba(214,255,63,0.05)", border: "1px solid rgba(214,255,63,0.12)" }}>
+                      <CheckCircle size={13} style={{ color: "var(--lime)" }} />
+                      <p className="text-sm" style={{ color: "var(--text-secondary)" }}>SEO мета-теги в нормі</p>
+                    </div>
+                  );
+                })()}
+                {sitemapAudit && (
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <SitemapCell label="sitemap.xml"
+                      found={sitemapAudit.sitemap_found}
+                      value={!sitemapAudit.sitemap_found ? "Не знайдено" : sitemapAudit.urls_in_sitemap != null ? `${sitemapAudit.urls_in_sitemap} URL` : "Знайдено"}
+                      danger={!sitemapAudit.sitemap_found} />
+                    <SitemapCell label="robots.txt"
+                      found={sitemapAudit.robots_found && !sitemapAudit.robots_blocks_important_pages}
+                      value={!sitemapAudit.robots_found ? "Не знайдено" : sitemapAudit.robots_blocks_important_pages ? "Блокує індексацію" : "OK"}
+                      danger={sitemapAudit.robots_blocks_important_pages} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              <EmptySlot text="SEO аудит запускається щодня о 3:00" />
+            )}
+          </Section>
+
+          {/* ── GSC ── */}
+          <Section id="gsc" icon={<Search size={14} />} title="Google Search Console">
+            {canUseGsc ? (
+              <GscPanel siteId={site.id} accessToken={accessToken} workerUrl={workerUrl} />
+            ) : (
+              <div className="rounded-xl px-4 py-4 flex items-center justify-between gap-4"
+                style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.07)" }}>
+                <div>
+                  <p className="text-sm font-medium mb-1">Доступно на Growth і Agency</p>
+                  <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+                    Кліки, покази, CTR та позиції у Google — прямо з офіційного API.
+                  </p>
+                </div>
+                <a href="/dashboard/upgrade"
+                  className="shrink-0 text-sm font-semibold px-4 py-2 rounded-xl"
+                  style={{ background: "var(--lime)", color: "#0a0a0a" }}>
+                  Upgrade →
+                </a>
+              </div>
+            )}
+          </Section>
+
+          {/* ── Broken links ── */}
+          <Section id="links" icon={<AlertTriangle size={14} />} title="Биті посилання"
+            badge={brokenLinks.length > 0 ? `${brokenLinks.length}` : undefined} badgeRed>
+            {brokenLinks.length > 0 ? (
+              <div className="space-y-2">
+                {brokenLinks.map((link, i) => (
+                  <div key={link.id ?? i} className="flex items-center justify-between gap-4 rounded-xl px-4 py-2.5"
+                    style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                    <p className="text-xs font-mono truncate min-w-0" style={{ color: "var(--text-secondary)" }}>
+                      {link.broken_url}
+                    </p>
+                    <span className="shrink-0 text-xs font-mono px-2 py-0.5 rounded-md"
+                      style={{ background: "rgba(245,103,90,0.1)", color: "#F5675A" }}>
+                      {link.http_status_code || "timeout"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <EmptySlot text="Перевірка щонеділі. Якщо битих посилань немає — чудово ✓" />
+            )}
+          </Section>
+
+          {/* ── SSL ── */}
+          <Section id="ssl" icon={<Shield size={14} />} title="SSL сертифікат">
+            {ssl ? (
+              <div className="flex items-center gap-4">
+                <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
+                  style={{
+                    background: sslOk ? "rgba(214,255,63,0.08)" : "rgba(245,103,90,0.08)",
+                    border: `1px solid ${sslOk ? "rgba(214,255,63,0.2)" : "rgba(245,103,90,0.2)"}`,
+                  }}>
+                  {sslOk
+                    ? <CheckCircle size={16} style={{ color: "var(--lime)" }} />
+                    : <AlertTriangle size={16} style={{ color: "#F5675A" }} />}
+                </div>
+                <div>
+                  <p className="text-sm font-medium">
+                    {ssl.days_until_expiry === 999 ? "SSL активний"
+                      : (ssl.days_until_expiry ?? 0) > 0 ? `Дійсний ще ${ssl.days_until_expiry} днів`
+                      : "Проблема з сертифікатом"}
+                  </p>
+                  <p className="text-xs mt-0.5" style={{ color: "var(--text-tertiary)" }}>
+                    Перевірено {fmtDate(ssl.last_checked_at)}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <EmptySlot text="SSL перевіряється при кожному uptime-скані" />
+            )}
+          </Section>
+
+          {/* ── Competitors ── */}
+          {competitors.length > 0 && (
+            <Section id="competitors" icon={<Eye size={14} />} title="Конкуренти"
+              action={
+                <Link href={`/dashboard/sites/${id}/competitor`} className="text-xs transition-opacity hover:opacity-70"
+                  style={{ color: "var(--lime)" }}>
+                  Налаштувати →
+                </Link>
+              }>
+              <div className="space-y-2">
+                {competitors.map((comp) => {
+                  const changed = competitorChanges.find((c) => c.competitor_id === comp.id);
+                  let compHostname = comp.url;
+                  try { compHostname = new URL(comp.url).hostname; } catch { /* keep */ }
+                  return (
+                    <div key={comp.id} className="flex items-center justify-between rounded-xl px-4 py-3"
+                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">{comp.display_name || compHostname}</p>
+                        <p className="text-xs font-mono mt-0.5 truncate" style={{ color: "var(--text-tertiary)" }}>{comp.url}</p>
+                      </div>
+                      <div className="shrink-0 ml-4">
+                        {changed ? (
+                          <span className="text-xs px-2.5 py-1 rounded-lg font-medium"
+                            style={{ background: "rgba(245,166,35,0.1)", color: "#F5A623", border: "1px solid rgba(245,166,35,0.2)" }}>
+                            Зміни
+                          </span>
+                        ) : (
+                          <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>Без змін</span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Section>
+          )}
+
+          {/* ── Multi-URL ── */}
+          <Section id="multiurl" icon={<TrendingUp size={14} />} title="Швидкість URL">
+            <MultiUrlPanel siteId={site.id} workerUrl={workerUrl} accessToken={accessToken} />
+          </Section>
+
+          {/* ── Forms ── */}
+          <Section id="forms" icon={<CheckCircle size={14} />} title="Моніторинг форм">
+            <FormMonitorPanel siteId={site.id} workerUrl={workerUrl} accessToken={accessToken} siteUrl={site.url} />
+          </Section>
+
+          {/* ── Reports ── */}
+          <Section id="reports" icon={<FileText size={14} />} title="PDF звіти">
+            {reports.length > 0 ? (
+              <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
+                {reports.map((r) => <ReportRow key={r.id} report={r} />)}
+              </div>
+            ) : (
+              <EmptySlot text="Перший місячний звіт згенерується автоматично в кінці місяця" />
+            )}
+          </Section>
+
+          {/* ── Status page ── */}
+          <Section id="status" icon={<Eye size={14} />} title="Публічна сторінка статусу">
+            <StatusPageSection
               siteId={site.id}
               accessToken={accessToken}
-              workerUrl={process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev"}
+              initialEnabled={(site as { status_page_enabled?: boolean }).status_page_enabled ?? false}
+              initialSlug={(site as { status_page_slug?: string | null }).status_page_slug ?? null}
+              workerUrl={workerUrl}
+              appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.app"}
             />
-          ) : (
-            <div className="rounded-xl px-4 py-4 flex items-center justify-between gap-4"
-              style={{ background: "rgba(140,246,255,0.03)", border: "1px solid rgba(140,246,255,0.1)" }}>
-              <div>
-                <p className="text-sm font-medium mb-1">Доступно на Growth і Agency</p>
-                <p className="text-xs text-[var(--text-tertiary)]">
-                  Кліки, покази, CTR та позиції у Google — прямо з офіційного API.
-                </p>
-              </div>
-              <a href="/dashboard/upgrade"
-                className="shrink-0 text-sm font-semibold px-4 py-2 rounded-xl transition-opacity hover:opacity-80"
-                style={{ background: "var(--lime)", color: "#0a0a0a" }}>
-                Upgrade →
-              </a>
-            </div>
-          )}
-        </Section>
-
-        {/* ── Broken Links ── */}
-        <Section
-          icon={<AlertTriangle size={14} />}
-          title="Биті посилання"
-          badge={brokenLinks.length > 0 ? `${brokenLinks.length} активних` : undefined}
-          badgeColor="red"
-        >
-          {brokenLinks.length > 0 ? (
-            <div className="space-y-2">
-              {brokenLinks.map((link, i) => (
-                <div key={link.id ?? i} className="flex items-center justify-between gap-4 rounded-xl px-4 py-2.5"
-                  style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                  <p className="text-xs font-mono truncate min-w-0 text-[var(--text-secondary)]">
-                    {link.broken_url}
-                  </p>
-                  <span className="shrink-0 text-xs font-mono px-2 py-0.5 rounded-md"
-                    style={{ background: "rgba(245,103,90,0.1)", color: "#F5675A" }}>
-                    {link.http_status_code || "timeout"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <EmptySlot text="Перевірка щонеділі. Якщо битих посилань немає — чудово ✓" />
-          )}
-        </Section>
-
-        {/* ── SSL ── */}
-        <Section icon={<Shield size={14} />} title="SSL сертифікат">
-          {ssl ? (
-            <div className="flex items-center gap-4">
-              <div className="h-10 w-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{
-                  background: sslOk ? "rgba(214,255,63,0.08)" : "rgba(245,103,90,0.08)",
-                  border: `1px solid ${sslOk ? "rgba(214,255,63,0.2)" : "rgba(245,103,90,0.2)"}`,
-                }}>
-                {sslOk
-                  ? <CheckCircle size={16} style={{ color: "var(--lime)" }} />
-                  : <AlertTriangle size={16} style={{ color: "#F5675A" }} />}
-              </div>
-              <div>
-                <p className="text-sm font-medium">
-                  {ssl.days_until_expiry === 999 ? "SSL активний"
-                    : (ssl.days_until_expiry ?? 0) > 0 ? `Дійсний ще ${ssl.days_until_expiry} днів`
-                    : "Проблема з сертифікатом"}
-                </p>
-                <p className="text-xs text-[var(--text-tertiary)] mt-0.5">
-                  Перевірено {fmtDate(ssl.last_checked_at)}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <EmptySlot text="SSL перевіряється при кожному uptime-скані" />
-          )}
-        </Section>
-
-        {/* ── Competitors ── */}
-        {competitors.length > 0 && (
-          <Section
-            icon={<Eye size={14} />}
-            title="Конкуренти"
-            action={<Link href={`/dashboard/sites/${id}/competitor`} className="text-xs transition-opacity hover:opacity-70" style={{ color: "var(--cyan)" }}>Налаштувати →</Link>}
-          >
-            <div className="space-y-2">
-              {competitors.map((comp) => {
-                const changed = competitorChanges.find((c) => c.competitor_id === comp.id);
-                let compHostname = comp.url;
-                try { compHostname = new URL(comp.url).hostname; } catch { /* keep */ }
-                return (
-                  <div key={comp.id} className="flex items-center justify-between rounded-xl px-4 py-3"
-                    style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-                    <div className="min-w-0">
-                      <p className="text-sm font-medium truncate">{comp.display_name || compHostname}</p>
-                      <p className="text-xs text-[var(--text-tertiary)] font-mono mt-0.5 truncate">{comp.url}</p>
-                    </div>
-                    <div className="shrink-0 ml-4">
-                      {changed ? (
-                        <span className="text-xs px-2.5 py-1 rounded-lg font-medium"
-                          style={{ background: "rgba(245,166,35,0.1)", color: "#F5A623", border: "1px solid rgba(245,166,35,0.2)" }}>
-                          ● Зміни
-                        </span>
-                      ) : (
-                        <span className="text-xs text-[var(--text-tertiary)]">Без змін</span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           </Section>
-        )}
 
-        {/* ── Reports ── */}
-        <Section icon={<FileText size={14} />} title="PDF звіти">
-          {reports.length > 0 ? (
-            <div className="divide-y" style={{ borderColor: "rgba(255,255,255,0.05)" }}>
-              {reports.map((r) => <ReportRow key={r.id} report={r} />)}
-            </div>
-          ) : (
-            <EmptySlot text="Перший місячний звіт згенерується автоматично в кінці місяця" />
-          )}
-        </Section>
+          {/* ── Badge ── */}
+          <Section id="badge" icon={<Code size={14} />} title="Uptime Badge">
+            <UptimeBadgeSection siteId={site.id} />
+          </Section>
 
-      </main>
+        </main>
+      </div>
 
       <QoraxusChat siteId={site.id} siteName={site.display_name} accessToken={accessToken} />
     </div>
   );
 }
 
-// ─── Layout primitives ─────────────────────────────────────────
+// ─── Sidebar primitives ────────────────────────────────────────
 
-function Section({ icon, title, badge, badgeColor, accent, action, children }: {
+function KpiTile({ label, value, ok }: { label: string; value: string; ok: boolean }) {
+  return (
+    <div className="rounded-lg px-2 py-2 text-center"
+      style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
+      <p className="text-[9px] font-medium uppercase tracking-wide mb-0.5"
+        style={{ color: "rgba(255,255,255,0.3)", letterSpacing: "0.06em" }}>{label}</p>
+      <p className="text-xs font-semibold font-mono"
+        style={{ color: ok ? "var(--lime)" : "var(--text-secondary)" }}>{value}</p>
+    </div>
+  );
+}
+
+function NavLink({ href, label, icon, badge, badgeRed }: {
+  href: string; label: string; icon: React.ReactNode;
+  badge?: string; badgeRed?: boolean;
+}) {
+  return (
+    <a href={href}
+      className="flex items-center gap-2.5 px-2 py-2 rounded-lg text-xs transition-colors group"
+      style={{ color: "var(--text-tertiary)" }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)"; (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ""; (e.currentTarget as HTMLElement).style.color = "var(--text-tertiary)"; }}>
+      <span className="shrink-0 opacity-60">{icon}</span>
+      <span className="flex-1 truncate">{label}</span>
+      {badge && (
+        <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-md"
+          style={{
+            background: badgeRed ? "rgba(245,103,90,0.15)" : "rgba(214,255,63,0.08)",
+            color: badgeRed ? "#F5675A" : "var(--lime)",
+          }}>
+          {badge}
+        </span>
+      )}
+    </a>
+  );
+}
+
+// ─── Section wrapper ───────────────────────────────────────────
+
+function Section({ id, icon, title, badge, badgeRed, accent, action, children }: {
+  id: string;
   icon: React.ReactNode;
   title: string;
   badge?: string;
-  badgeColor?: "mono" | "red" | "lime" | "cyan";
-  accent?: "cyan" | "lime";
+  badgeRed?: boolean;
+  accent?: "lime";
   action?: React.ReactNode;
   children: React.ReactNode;
 }) {
-  const badgeStyle = badgeColor === "red"
-    ? { background: "rgba(245,103,90,0.1)", color: "#F5675A", border: "1px solid rgba(245,103,90,0.2)" }
-    : badgeColor === "lime"
-    ? { background: "rgba(214,255,63,0.08)", color: "var(--lime)", border: "1px solid rgba(214,255,63,0.15)" }
-    : badgeColor === "cyan"
-    ? { background: "rgba(140,246,255,0.08)", color: "var(--cyan)", border: "1px solid rgba(140,246,255,0.15)" }
-    : { color: "var(--text-tertiary)" };
-
-  const accentBorder = accent === "cyan" ? "rgba(140,246,255,0.1)" : accent === "lime" ? "rgba(214,255,63,0.1)" : "rgba(255,255,255,0.06)";
-  const accentBg = accent ? `rgba(${accent === "cyan" ? "140,246,255" : "214,255,63"},0.02)` : "rgba(255,255,255,0.02)";
+  const accentBorder = accent === "lime" ? "rgba(214,255,63,0.1)" : "rgba(255,255,255,0.06)";
+  const accentBg = accent === "lime" ? "rgba(214,255,63,0.02)" : "rgba(255,255,255,0.015)";
 
   return (
-    <div className="rounded-2xl p-5 sm:p-6"
+    <div id={id} className="rounded-2xl p-5"
       style={{ background: accentBg, border: `1px solid ${accentBorder}` }}>
-      <div className="flex items-center justify-between mb-5">
-        <div className="flex items-center gap-2.5">
-          <span className="text-[var(--text-tertiary)]">{icon}</span>
-          <h2 className="text-sm font-semibold text-[var(--text-primary)]">{title}</h2>
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <span style={{ color: "var(--text-tertiary)" }}>{icon}</span>
+          <h2 className="text-sm font-semibold">{title}</h2>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           {badge && (
-            <span className="text-xs font-mono px-2.5 py-1 rounded-lg" style={badgeStyle}>{badge}</span>
+            <span className="text-xs font-mono px-2 py-0.5 rounded-md"
+              style={badgeRed
+                ? { background: "rgba(245,103,90,0.1)", color: "#F5675A", border: "1px solid rgba(245,103,90,0.2)" }
+                : { color: "var(--text-tertiary)" }}>
+              {badge}
+            </span>
           )}
           {action}
         </div>
@@ -508,38 +605,61 @@ function Section({ icon, title, badge, badgeColor, accent, action, children }: {
   );
 }
 
-function StatPill({ label, value, color }: { label: string; value: string; color: "lime" | "orange" | "red" | "mono" }) {
-  const styles = {
-    lime: { background: "rgba(214,255,63,0.08)", color: "var(--lime)", border: "1px solid rgba(214,255,63,0.2)" },
-    orange: { background: "rgba(245,166,35,0.08)", color: "#F5A623", border: "1px solid rgba(245,166,35,0.2)" },
-    red: { background: "rgba(245,103,90,0.08)", color: "#F5675A", border: "1px solid rgba(245,103,90,0.2)" },
-    mono: { background: "rgba(255,255,255,0.04)", color: "var(--text-secondary)", border: "1px solid rgba(255,255,255,0.08)" },
-  };
-  return (
-    <div className="rounded-lg px-3 py-1.5" style={styles[color]}>
-      <p className="text-[10px] font-mono text-[var(--text-tertiary)] mb-0.5">{label}</p>
-      <p className="text-sm font-semibold leading-none">{value}</p>
-    </div>
-  );
-}
+// ─── SVG Line Chart ────────────────────────────────────────────
 
-// ─── Chart ─────────────────────────────────────────────────────
-
-function SpeedChart({ checks }: { checks: { load_time_ms: number }[] }) {
+function SpeedLineChart({ checks }: { checks: { load_time_ms: number; checked_at: string }[] }) {
   if (!checks.length) return <EmptySlot text="Дані з'являться після першого сканування" />;
-  const vals = [...checks].reverse().map((c) => c.load_time_ms);
+
+  const vals = [...checks].reverse().slice(-20).map(c => c.load_time_ms);
   const max = Math.max(...vals, 1);
+  const min = Math.min(...vals);
+  const W = 600; const H = 80; const PAD = 8;
+
+  const pts = vals.map((v, i) => {
+    const x = PAD + (i / Math.max(vals.length - 1, 1)) * (W - PAD * 2);
+    const y = PAD + (1 - (v - min) / Math.max(max - min, 1)) * (H - PAD * 2);
+    return `${x},${y}`;
+  });
+  const polyline = pts.join(" ");
+  const area = `${pts[0]} ${pts.join(" ")} ${W - PAD},${H} ${PAD},${H}`;
+
+  const avgMs = Math.round(vals.reduce((s, v) => s + v, 0) / vals.length);
+  const lastMs = vals[vals.length - 1];
+  const color = lastMs > 3000 ? "#F5675A" : lastMs > 1500 ? "#F5A623" : "var(--lime)";
+
   return (
-    <div className="flex items-end gap-0.5 h-16 mt-1">
-      {vals.slice(-60).map((v, i) => (
-        <div key={i} className="flex-1 rounded-sm transition-opacity hover:opacity-80 min-w-[3px]"
-          style={{
-            height: `${Math.max((v / max) * 100, 4)}%`,
-            background: v > 3000 ? "#F5675A" : v > 1500 ? "#F5A623" : "var(--lime)",
-            opacity: 0.7 + (i / vals.length) * 0.3,
-          }}
-          title={`${v}мс`} />
-      ))}
+    <div>
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-baseline gap-2">
+          <span className="text-2xl font-display font-bold font-mono" style={{ color }}>
+            {lastMs >= 1000 ? `${(lastMs / 1000).toFixed(1)}с` : `${lastMs}мс`}
+          </span>
+          <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>остання перевірка</span>
+        </div>
+        <span className="text-xs font-mono" style={{ color: "var(--text-tertiary)" }}>
+          avg {avgMs >= 1000 ? `${(avgMs / 1000).toFixed(1)}с` : `${avgMs}мс`}
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", height: 80, display: "block", overflow: "visible" }}
+        preserveAspectRatio="none">
+        <defs>
+          <linearGradient id={`sg-${checks.length}`} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor="var(--lime)" stopOpacity="0.15" />
+            <stop offset="100%" stopColor="var(--lime)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <polygon points={area} fill={`url(#sg-${checks.length})`} />
+        <polyline points={polyline} fill="none" stroke="var(--lime)" strokeWidth="1.5"
+          strokeLinejoin="round" strokeLinecap="round" />
+        {/* dots at each point */}
+        {pts.map((pt, i) => {
+          const [x, y] = pt.split(",").map(Number);
+          return <circle key={i} cx={x} cy={y} r="2.5" fill="var(--bg)" stroke="var(--lime)" strokeWidth="1.5" />;
+        })}
+      </svg>
+      <p className="text-xs mt-2" style={{ color: "var(--text-tertiary)" }}>
+        Останні {vals.length} замірів · щоденний скан о 3:00
+      </p>
     </div>
   );
 }
@@ -554,10 +674,10 @@ function CwvBlock({ label, data }: {
   const color = scoreColor(score);
   return (
     <div className="rounded-xl p-4" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <p className="text-xs text-[var(--text-tertiary)] mb-3">{label}</p>
+      <p className="text-xs mb-3" style={{ color: "var(--text-tertiary)" }}>{label}</p>
       <div className="flex items-baseline gap-2 mb-4">
         <span className="text-4xl font-display font-bold" style={{ color }}>{score ?? "—"}</span>
-        <span className="text-xs text-[var(--text-tertiary)]">/ 100</span>
+        <span className="text-xs" style={{ color: "var(--text-tertiary)" }}>/ 100</span>
       </div>
       <div className="grid grid-cols-3 gap-2">
         <MetricPill label="LCP" value={data.lcp_ms ? `${(data.lcp_ms / 1000).toFixed(1)}с` : "—"}
@@ -576,7 +696,7 @@ function MetricPill({ label, value, ok, warn }: { label: string; value: string; 
   return (
     <div className="rounded-lg px-2 py-2 text-center"
       style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <p className="text-[10px] text-[var(--text-tertiary)] mb-0.5">{label}</p>
+      <p className="text-[10px] mb-0.5" style={{ color: "var(--text-tertiary)" }}>{label}</p>
       <p className="text-xs font-mono font-semibold" style={{ color }}>{value}</p>
     </div>
   );
@@ -592,7 +712,7 @@ function SeoCell({ label, length, min, max, exists }: {
   const color = !exists ? "#F5675A" : ok ? "var(--lime)" : "#F5A623";
   return (
     <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <p className="text-xs text-[var(--text-tertiary)] mb-2">{label}</p>
+      <p className="text-xs mb-2" style={{ color: "var(--text-tertiary)" }}>{label}</p>
       <div className="flex items-center gap-1.5">
         {ok ? <CheckCircle size={11} style={{ color }} /> : <AlertTriangle size={11} style={{ color }} />}
         <span className="text-xs font-medium" style={{ color: ok ? "var(--text-primary)" : color }}>
@@ -607,7 +727,7 @@ function SeoCheckCell({ label, ok, warn, value }: { label: string; ok: boolean; 
   const color = ok ? "var(--lime)" : warn ? "#F5A623" : "#F5675A";
   return (
     <div className="rounded-xl p-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <p className="text-xs text-[var(--text-tertiary)] mb-2">{label}</p>
+      <p className="text-xs mb-2" style={{ color: "var(--text-tertiary)" }}>{label}</p>
       <div className="flex items-center gap-1.5">
         {ok ? <CheckCircle size={11} style={{ color }} /> : <AlertTriangle size={11} style={{ color }} />}
         <span className="text-xs font-medium" style={{ color: ok ? "var(--text-primary)" : color }}>{value}</span>
@@ -620,7 +740,7 @@ function SitemapCell({ label, found, value, danger }: { label: string; found: bo
   const color = found ? "var(--lime)" : danger ? "#F5675A" : "#F5A623";
   return (
     <div className="rounded-xl px-4 py-3" style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
-      <p className="text-xs text-[var(--text-tertiary)] mb-1.5">{label}</p>
+      <p className="text-xs mb-1.5" style={{ color: "var(--text-tertiary)" }}>{label}</p>
       <div className="flex items-center gap-1.5">
         {found ? <CheckCircle size={12} style={{ color }} /> : <AlertTriangle size={12} style={{ color }} />}
         <span className="text-sm font-medium" style={{ color: found ? "var(--text-primary)" : color }}>{value}</span>
@@ -629,7 +749,7 @@ function SitemapCell({ label, found, value, danger }: { label: string; found: bo
   );
 }
 
-// ─── AI Insight card ───────────────────────────────────────────
+// ─── AI Insight ────────────────────────────────────────────────
 
 function InsightCard({ insight }: {
   insight: {
@@ -639,13 +759,13 @@ function InsightCard({ insight }: {
 }) {
   const crit = insight.severity === "critical";
   const warn = insight.severity === "warning";
-  const accentColor = crit ? "#F5675A" : warn ? "#F5A623" : "var(--cyan)";
-  const accentRgb = crit ? "245,103,90" : warn ? "245,166,35" : "140,246,255";
+  const accentColor = crit ? "#F5675A" : warn ? "#F5A623" : "var(--lime)";
+  const accentRgb = crit ? "245,103,90" : warn ? "245,166,35" : "214,255,63";
   return (
     <div className="rounded-xl p-4"
       style={{ background: `rgba(${accentRgb},0.04)`, border: `1px solid rgba(${accentRgb},0.15)` }}>
       <div className="flex items-center gap-2.5 mb-2">
-        <span className="text-xs font-mono font-semibold uppercase" style={{ color: accentColor }}>
+        <span className="text-xs font-mono font-semibold" style={{ color: accentColor }}>
           {crit ? "● Критично" : warn ? "● Увага" : "● Інфо"}
         </span>
         {insight.estimated_monthly_loss_usd && (
@@ -656,8 +776,8 @@ function InsightCard({ insight }: {
         )}
       </div>
       <p className="text-sm font-semibold mb-1.5">{insight.problem_summary}</p>
-      <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{insight.plain_explanation}</p>
-      <p className="text-xs text-[var(--text-tertiary)] mt-3 flex items-center gap-1">
+      <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>{insight.plain_explanation}</p>
+      <p className="text-xs mt-3 flex items-center gap-1" style={{ color: "var(--text-tertiary)" }}>
         <ChevronRight size={11} />{insight.recommendation}
       </p>
     </div>
@@ -677,17 +797,17 @@ function ReportRow({ report }: {
       <div className="flex items-center gap-3">
         <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
           style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.07)" }}>
-          <FileText size={13} className="text-[var(--text-tertiary)]" />
+          <FileText size={13} style={{ color: "var(--text-tertiary)" }} />
         </div>
         <div>
           <p className="text-sm font-medium">{label}</p>
-          <p className="text-xs text-[var(--text-tertiary)] mt-0.5">{fmtDate(report.created_at)}</p>
+          <p className="text-xs mt-0.5" style={{ color: "var(--text-tertiary)" }}>{fmtDate(report.created_at)}</p>
         </div>
       </div>
       {report.pdf_url && (
         <a href={report.pdf_url} target="_blank" rel="noopener noreferrer"
-          className="text-xs font-semibold px-3 py-1.5 rounded-lg hover:opacity-80 transition-opacity"
-          style={{ background: "rgba(140,246,255,0.08)", border: "1px solid rgba(140,246,255,0.15)", color: "var(--cyan)" }}>
+          className="text-xs font-semibold px-3 py-1.5 rounded-lg"
+          style={{ background: "rgba(214,255,63,0.08)", border: "1px solid rgba(214,255,63,0.15)", color: "var(--lime)" }}>
           PDF ↓
         </a>
       )}
@@ -699,12 +819,8 @@ function EmptySlot({ text }: { text: string }) {
   return (
     <div className="rounded-xl px-4 py-4 flex items-center gap-2.5"
       style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
-      <Clock size={13} className="text-[var(--text-tertiary)] shrink-0" />
-      <p className="text-sm text-[var(--text-tertiary)]">{text}</p>
+      <Clock size={13} style={{ color: "var(--text-tertiary)", flexShrink: 0 }} />
+      <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>{text}</p>
     </div>
   );
 }
-
-// Unused but kept
-const _unused = { Activity, Clock };
-void _unused;
