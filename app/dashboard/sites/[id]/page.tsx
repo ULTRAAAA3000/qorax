@@ -18,6 +18,7 @@ import { RefreshSpeedButton } from "./RefreshSpeedButton";
 import { MultiUrlPanel } from "./MultiUrlPanel";
 import { FormMonitorPanel } from "./FormMonitorPanel";
 
+export const dynamic = "force-dynamic";
 export const metadata = { title: "Моніторинг сайту — Qorax" };
 
 function scoreColor(score: number | null): string {
