@@ -14,8 +14,10 @@ import { GscPanel } from "./GscPanel";
 import { RefreshSpeedButton } from "./RefreshSpeedButton";
 import { MultiUrlPanel } from "./MultiUrlPanel";
 import { FormMonitorPanel } from "./FormMonitorPanel";
+import { SpeedHeatmap } from "./SpeedHeatmap";
 import { StatusPageSection } from "./StatusPageSection";
 import { UptimeBadgeSection } from "./UptimeBadgeSection";
+import { IncidentTimeline } from "./IncidentTimeline";
 
 export const dynamic = "force-dynamic";
 export const metadata = { title: "Моніторинг сайту — Qorax" };
@@ -56,7 +58,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
   const { data: site } = await supabase
     .from("sites")
-    .select("id, url, display_name, monitoring_enabled, created_at")
+    .select("id, url, display_name, monitoring_enabled, created_at, status_page_enabled, status_page_slug")
     .eq("id", id)
     .single();
 
@@ -91,7 +93,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   const [
     uptimeChecks, openIncidents, speedChecks, cwvChecks, sslArr,
     aiInsights, reports, seoAuditArr, sitemapAuditArr, competitors,
-    competitorChanges, brokenLinks,
+    competitorChanges, brokenLinks, historyIncidents,
   ] = await Promise.all([
     safe(supabase.from("uptime_checks").select("status, response_time_ms, checked_at").eq("site_id", id).order("checked_at", { ascending: false }).limit(288)),
     safe(supabase.from("uptime_incidents").select("id, started_at, resolved_at").eq("site_id", id).is("resolved_at", null).limit(1)),
@@ -105,6 +107,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     safe(supabase.from("competitor_sites").select("id, url, display_name, last_change_at").eq("site_id", id).limit(5)),
     safe(supabase.from("competitor_changes").select("detected_at, competitor_id").eq("site_id", id).order("detected_at", { ascending: false }).limit(10)),
     safe(supabase.from("broken_links").select("id, broken_url, http_status_code, first_found_at").eq("site_id", id).eq("status", "broken").order("first_found_at", { ascending: false }).limit(20)),
+    safe(supabase.from("uptime_incidents").select("id, started_at, resolved_at, duration_seconds").eq("site_id", id).order("started_at", { ascending: false }).limit(30)),
   ]);
 
   const ssl = sslArr[0] ?? null;
@@ -134,6 +137,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   const navItems = [
     { id: "uptime",      label: "Uptime",          icon: <Activity size={14} />,    badge: isUp ? "ОК" : "DOWN", badgeRed: !isUp },
     { id: "speed",       label: "Швидкість",        icon: <TrendingUp size={14} />,  badge: latestSpeed ? fmtMs(latestSpeed.load_time_ms) : undefined },
+    { id: "heatmap",     label: "Heatmap",          icon: <Clock size={14} /> },
     { id: "pagespeed",   label: "PageSpeed",        icon: <Zap size={14} />,         badge: mobileCwv?.performance_score != null ? String(mobileCwv.performance_score) : undefined },
     { id: "ai",          label: "AI Insights",      icon: <Sparkles size={14} />,    badge: aiInsights.length ? String(aiInsights.length) : undefined, badgeRed: aiInsights.some(i => i.severity === "critical") },
     { id: "seo",         label: "SEO аудит",        icon: <Search size={14} />,      badge: seoIssueCount > 0 ? String(seoIssueCount) : undefined, badgeRed: seoIssueCount > 0 },
@@ -260,6 +264,14 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             />
           </Section>
 
+          {/* ── Incident Timeline ── */}
+          {historyIncidents.length > 0 && (
+            <Section id="incidents" icon={<Clock size={14} />} title="Історія інцидентів"
+              badge={`${historyIncidents.length} за 30 днів`} badgeRed>
+              <IncidentTimeline incidents={historyIncidents} isUp={isUp} />
+            </Section>
+          )}
+
           {/* ── Speed line chart ── */}
           <Section
             id="speed"
@@ -275,6 +287,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             }
           >
             <SpeedLineChart checks={speedChecks} />
+          </Section>
+
+          {/* ── Speed Heatmap ── */}
+          <Section id="heatmap" icon={<Clock size={14} />} title="Heatmap швидкості">
+            <SpeedHeatmap checks={speedChecks} />
           </Section>
 
           {/* ── PageSpeed ── */}
@@ -506,8 +523,8 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             <StatusPageSection
               siteId={site.id}
               accessToken={accessToken}
-              initialEnabled={(site as { status_page_enabled?: boolean }).status_page_enabled ?? false}
-              initialSlug={(site as { status_page_slug?: string | null }).status_page_slug ?? null}
+              initialEnabled={!!(site as Record<string, unknown>).status_page_enabled}
+              initialSlug={(site as Record<string, unknown>).status_page_slug as string | null ?? null}
               workerUrl={workerUrl}
               appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.app"}
             />
