@@ -58,11 +58,22 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
   const { data: site } = await supabase
     .from("sites")
-    .select("id, url, display_name, monitoring_enabled, created_at, status_page_enabled, status_page_slug")
+    .select("id, url, display_name, monitoring_enabled, created_at")
     .eq("id", id)
     .single();
 
   if (!site) notFound();
+
+  // Окремий запит для status_page полів (міграція 0025/0027 може бути ще не запущена)
+  let statusPageData: { status_page_enabled?: boolean; status_page_slug?: string | null } | null = null;
+  try {
+    const spRes = await supabase
+      .from("sites")
+      .select("status_page_enabled, status_page_slug")
+      .eq("id", id)
+      .maybeSingle();
+    statusPageData = spRes.data ?? null;
+  } catch { /* columns not yet migrated */ }
 
   const { data: membership } = await supabase
     .from("organization_members")
@@ -523,8 +534,8 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             <StatusPageSection
               siteId={site.id}
               accessToken={accessToken}
-              initialEnabled={!!(site as Record<string, unknown>).status_page_enabled}
-              initialSlug={(site as Record<string, unknown>).status_page_slug as string | null ?? null}
+              initialEnabled={!!(statusPageData?.status_page_enabled)}
+              initialSlug={statusPageData?.status_page_slug ?? null}
               workerUrl={workerUrl}
               appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.app"}
             />
