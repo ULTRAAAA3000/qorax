@@ -1,15 +1,14 @@
 -- ============================================================
 -- QORAX — Migration 0027: fix incomplete 0026 + status_page
--- Запускати якщо 0026 впала на половині.
--- Використовуємо drop policy if exists перед create.
+-- form_checks таблиця створена частково — дропаємо і ребілдуємо
 -- ============================================================
 
--- 1. competitor_changes snapshot columns (idempotent)
+-- 1. competitor_changes snapshot columns
 alter table competitor_changes
   add column if not exists old_snapshot text,
   add column if not exists new_snapshot text;
 
--- 2. monitored_urls
+-- 2. monitored_urls (idempotent)
 create table if not exists monitored_urls (
   id          uuid primary key default gen_random_uuid(),
   site_id     uuid not null references sites(id) on delete cascade,
@@ -31,7 +30,7 @@ create policy "org members" on monitored_urls
     )
   );
 
--- 3. url_speed_checks
+-- 3. url_speed_checks (idempotent)
 create table if not exists url_speed_checks (
   id               uuid primary key default gen_random_uuid(),
   monitored_url_id uuid not null references monitored_urls(id) on delete cascade,
@@ -53,7 +52,7 @@ create policy "org members" on url_speed_checks
     )
   );
 
--- 4. monitored_forms
+-- 4. monitored_forms (idempotent)
 create table if not exists monitored_forms (
   id            uuid primary key default gen_random_uuid(),
   site_id       uuid not null references sites(id) on delete cascade,
@@ -76,8 +75,9 @@ create policy "org members" on monitored_forms
     )
   );
 
--- 5. form_checks
-create table if not exists form_checks (
+-- 5. form_checks — дропаємо стару незавершену і ребілдуємо
+drop table if exists form_checks cascade;
+create table form_checks (
   id                uuid primary key default gen_random_uuid(),
   monitored_form_id uuid not null references monitored_forms(id) on delete cascade,
   site_id           uuid not null references sites(id) on delete cascade,
@@ -86,10 +86,9 @@ create table if not exists form_checks (
   has_submit        boolean,
   checked_at        timestamptz not null default now()
 );
-create index if not exists idx_form_checks_form_date
+create index idx_form_checks_form_date
   on form_checks(monitored_form_id, checked_at desc);
 alter table form_checks enable row level security;
-drop policy if exists "org members" on form_checks;
 create policy "org members" on form_checks
   using (
     site_id in (
@@ -99,12 +98,11 @@ create policy "org members" on form_checks
     )
   );
 
--- 6. status_page columns on sites (migration 0025 може бути теж не запущена)
+-- 6. status_page columns на sites
 alter table sites
   add column if not exists status_page_slug text,
   add column if not exists status_page_enabled boolean not null default false;
 
--- Унікальний індекс окремо (щоб не падати якщо вже є)
 create unique index if not exists idx_sites_status_slug
   on sites(status_page_slug)
   where status_page_slug is not null;
