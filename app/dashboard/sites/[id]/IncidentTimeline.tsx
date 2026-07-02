@@ -6,7 +6,7 @@ interface Incident {
   id: string;
   started_at: string;
   resolved_at: string | null;
-  duration_seconds: number | null;
+  duration_seconds?: number | null;
 }
 
 interface Props {
@@ -60,7 +60,11 @@ export function IncidentTimeline({ incidents, isUp }: Props) {
 
   // Рахуємо підсумки
   const resolved = incidents.filter(i => i.resolved_at);
-  const totalDownSec = resolved.reduce((acc, i) => acc + (i.duration_seconds ?? 0), 0);
+  const totalDownSec = resolved.reduce((acc, i) => {
+    if (i.duration_seconds != null) return acc + i.duration_seconds;
+    if (i.resolved_at) return acc + Math.round((new Date(i.resolved_at).getTime() - new Date(i.started_at).getTime()) / 1000);
+    return acc;
+  }, 0);
   const openCount = incidents.filter(i => !i.resolved_at).length;
 
   return (

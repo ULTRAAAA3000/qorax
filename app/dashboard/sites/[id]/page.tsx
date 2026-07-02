@@ -42,8 +42,15 @@ function fmtDate(iso: string | null | undefined) {
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function safe<T = any>(p: PromiseLike<{ data: T[] | null }>): Promise<T[]> {
-  try { const r = await p; return r.data ?? []; } catch { return []; }
+async function safe<T = any>(p: PromiseLike<{ data: T[] | null; error?: unknown }>): Promise<T[]> {
+  try {
+    const r = await p;
+    // Supabase returns { data, error } — ignore errors gracefully
+    if (!r || !r.data) return [];
+    return r.data;
+  } catch {
+    return [];
+  }
 }
 
 export default async function SiteDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -101,11 +108,36 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   let hostname = site.url;
   try { hostname = new URL(site.url).hostname; } catch { /* keep raw */ }
 
-  const [
+  let uptimeChecks: {status:string;response_time_ms:number|null;checked_at:string}[] = [];
+  let openIncidents: {id:string;started_at:string;resolved_at:string|null}[] = [];
+  let speedChecks: {load_time_ms:number;checked_at:string}[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let cwvChecks: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let sslArr: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let aiInsights: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let reports: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let seoAuditArr: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let sitemapAuditArr: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let competitors: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let competitorChanges: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let brokenLinks: any[] = [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let historyIncidents: any[] = [];
+
+  try {
+    [
     uptimeChecks, openIncidents, speedChecks, cwvChecks, sslArr,
     aiInsights, reports, seoAuditArr, sitemapAuditArr, competitors,
     competitorChanges, brokenLinks, historyIncidents,
-  ] = await Promise.all([
+    ] = await Promise.all([
     safe(supabase.from("uptime_checks").select("status, response_time_ms, checked_at").eq("site_id", id).order("checked_at", { ascending: false }).limit(288)),
     safe(supabase.from("uptime_incidents").select("id, started_at, resolved_at").eq("site_id", id).is("resolved_at", null).limit(1)),
     safe(supabase.from("speed_checks").select("load_time_ms, checked_at").eq("site_id", id).order("checked_at", { ascending: false }).limit(30)),
@@ -118,8 +150,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     safe(supabase.from("competitor_sites").select("id, url, display_name, last_change_at").eq("site_id", id).limit(5)),
     safe(supabase.from("competitor_changes").select("detected_at, competitor_id").eq("site_id", id).order("detected_at", { ascending: false }).limit(10)),
     safe(supabase.from("broken_links").select("id, broken_url, http_status_code, first_found_at").eq("site_id", id).eq("status", "broken").order("first_found_at", { ascending: false }).limit(20)),
-    safe(supabase.from("uptime_incidents").select("id, started_at, resolved_at, duration_seconds").eq("site_id", id).order("started_at", { ascending: false }).limit(30)),
-  ]);
+    safe(supabase.from("uptime_incidents").select("id, started_at, resolved_at").eq("site_id", id).order("started_at", { ascending: false }).limit(30)),
+    ]);
+  } catch (e) {
+    console.error("Site page DB error:", e);
+  }
 
   const ssl = sslArr[0] ?? null;
   const seoAudit = seoAuditArr[0] ?? null;
