@@ -72,6 +72,18 @@ function json(data: unknown, status: number, origin: string | null): Response {
   });
 }
 
+// Базові заголовки для прямих fetch-запитів до Supabase REST API з
+// service role key. Раніше `{ apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+// Authorization: \`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}\` }` було
+// продубльовано 11 разів у цьому файлі — виклики просто спредять
+// додаткові поля (Prefer, Accept, Content-Type) поверх базових.
+function supabaseHeaders(env: Env): Record<string, string> {
+  return {
+    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+  };
+}
+
 const worker = {
   async fetch(request: Request, env: Env, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -129,7 +141,7 @@ const worker = {
       const auth = await requireAdmin(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
       if (!auth.ok) return json({ error: auth.status === 401 ? "Unauthorized" : "Forbidden" }, auth.status!, origin);
 
-      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, Prefer: "count=exact" };
+      const h = { ...supabaseHeaders(env), Prefer: "count=exact" };
       const [usersRes, sitesRes, trialsRes, paidRes, checksRes] = await Promise.all([
         fetch(`${env.SUPABASE_URL}/rest/v1/profiles?select=id`, { headers: h }),
         fetch(`${env.SUPABASE_URL}/rest/v1/sites?select=id`, { headers: h }),
@@ -156,9 +168,9 @@ const worker = {
 
       const [plansRes, orgsRes] = await Promise.all([
         fetch(`${env.SUPABASE_URL}/rest/v1/plans?select=id,code,name&order=price_usd`,
-          { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }),
+          { headers: supabaseHeaders(env) }),
         fetch(`${env.SUPABASE_URL}/rest/v1/organizations?select=id,name,created_at,organization_members(user_id,role),subscriptions(id,status,trial_ends_at,plan_id,created_at)&order=created_at.desc&limit=100`,
-          { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }),
+          { headers: supabaseHeaders(env) }),
       ]);
 
       const plans = await plansRes.json() as Array<{ id: string; code: string; name: string }>;
@@ -178,7 +190,7 @@ const worker = {
       if (userIds.length > 0) {
         try {
           const authRes = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users?per_page=1000`, {
-            headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+            headers: supabaseHeaders(env),
           });
           if (authRes.ok) {
             const authData = await authRes.json() as { users: Array<{ id: string; email: string }> };
@@ -618,7 +630,7 @@ const worker = {
       if (body.enabled && !slug) {
         const siteResp = await fetch(
           `${env.SUPABASE_URL}/rest/v1/sites?select=display_name,status_page_slug&id=eq.${siteId}&limit=1`,
-          { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, Accept: "application/json" } }
+          { headers: { ...supabaseHeaders(env), Accept: "application/json" } }
         );
         if (siteResp.ok) {
           const sites = await siteResp.json() as Array<{ display_name: string; status_page_slug: string | null }>;
@@ -652,7 +664,7 @@ const worker = {
     const monitoredUrlsMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/monitored-urls$/);
     if (monitoredUrlsMatch) {
       const siteId = monitoredUrlsMatch[1];
-      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" };
+      const h = { ...supabaseHeaders(env), "Content-Type": "application/json", Prefer: "return=representation" };
 
       if (request.method === "GET") {
         // Список URL + останній speed check
@@ -684,7 +696,7 @@ const worker = {
     const monitoredUrlDeleteMatch = url.pathname.match(/^\/api\/monitored-urls\/([^/]+)$/);
     if (monitoredUrlDeleteMatch && request.method === "DELETE") {
       const id = monitoredUrlDeleteMatch[1];
-      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` };
+      const h = supabaseHeaders(env);
       await fetch(`${env.SUPABASE_URL}/rest/v1/monitored_urls?id=eq.${id}`, { method: "DELETE", headers: h });
       return json({ ok: true }, 200, origin);
     }
@@ -693,7 +705,7 @@ const worker = {
     const monitoredFormsMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/monitored-forms$/);
     if (monitoredFormsMatch) {
       const siteId = monitoredFormsMatch[1];
-      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json", Prefer: "return=representation" };
+      const h = { ...supabaseHeaders(env), "Content-Type": "application/json", Prefer: "return=representation" };
 
       if (request.method === "GET") {
         const res = await fetch(`${env.SUPABASE_URL}/rest/v1/monitored_forms?site_id=eq.${siteId}&active=eq.true&select=id,page_url,label,created_at&order=created_at.asc`, { headers: h });
@@ -721,7 +733,7 @@ const worker = {
     const monitoredFormDeleteMatch = url.pathname.match(/^\/api\/monitored-forms\/([^/]+)$/);
     if (monitoredFormDeleteMatch && request.method === "DELETE") {
       const id = monitoredFormDeleteMatch[1];
-      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` };
+      const h = supabaseHeaders(env);
       await fetch(`${env.SUPABASE_URL}/rest/v1/monitored_forms?id=eq.${id}`, { method: "DELETE", headers: h });
       return json({ ok: true }, 200, origin);
     }
@@ -730,7 +742,7 @@ const worker = {
     const competitorChangesMatch = url.pathname.match(/^\/api\/competitors\/([^/]+)\/changes$/);
     if (competitorChangesMatch && request.method === "GET") {
       const competitorId = competitorChangesMatch[1];
-      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` };
+      const h = supabaseHeaders(env);
       const res = await fetch(
         `${env.SUPABASE_URL}/rest/v1/competitor_changes?competitor_id=eq.${competitorId}&order=detected_at.desc&limit=10&select=id,detected_at,change_summary,old_snapshot,new_snapshot`,
         { headers: h }
@@ -743,7 +755,7 @@ const worker = {
       const auth = await requireAdmin(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
       if (!auth.ok) return json({ error: auth.status === 401 ? "Unauthorized" : "Forbidden" }, auth.status!, origin);
 
-      const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, "Prefer": "count=exact", "Accept": "application/json" };
+      const h = { ...supabaseHeaders(env), "Prefer": "count=exact", "Accept": "application/json" };
       const tables = ["profiles", "sites", "uptime_checks"];
       const statusFilters = [
         { table: "subscriptions", filter: "status=eq.trialing" },

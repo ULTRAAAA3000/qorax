@@ -49,14 +49,22 @@ export async function sendEmail(
 
 // ─── Email templates ──────────────────────────────────────────
 
-export function buildSiteDownEmail(params: {
+// Спільна "оболонка" для алертних листів (down/recovered/SSL expiry) —
+// однакова структура: лого, кольорова alert-картка з крапкою-індикатором,
+// details-блок, CTA-кнопка, footer. Раніше HTML цієї обгортки був
+// продубльований у трьох функціях нижче з ідентичною версткою.
+function renderAlertEmailShell(p: {
+  accentColor: string;
+  accentBg: string;
+  accentBorder: string;
+  badgeText: string;
   siteDisplayName: string;
   siteUrl: string;
-  downtimeSince: string;
+  detailsHtml: string;
   dashboardUrl: string;
-}): { subject: string; html: string } {
-  const subject = `🔴 ${params.siteDisplayName} — сайт недоступний`;
-  const html = `
+  footerHtml: string;
+}): string {
+  return `
 <!DOCTYPE html>
 <html lang="uk">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
@@ -68,40 +76,61 @@ export function buildSiteDownEmail(params: {
     </div>
 
     <!-- Alert card -->
-    <div style="background:rgba(245,103,90,0.08);border:1px solid rgba(245,103,90,0.35);border-radius:16px;padding:24px;margin-bottom:24px;">
+    <div style="background:${p.accentBg};border:1px solid ${p.accentBorder};border-radius:16px;padding:24px;margin-bottom:24px;">
       <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <div style="width:10px;height:10px;border-radius:50%;background:#F5675A;"></div>
-        <span style="font-size:13px;font-weight:600;color:#F5675A;text-transform:uppercase;letter-spacing:0.05em;">Сайт недоступний</span>
+        <div style="width:10px;height:10px;border-radius:50%;background:${p.accentColor};"></div>
+        <span style="font-size:13px;font-weight:600;color:${p.accentColor};text-transform:uppercase;letter-spacing:0.05em;">${p.badgeText}</span>
       </div>
-      <h1 style="margin:0 0 6px;font-size:20px;font-weight:600;color:#f5f5f7;">${params.siteDisplayName}</h1>
-      <p style="margin:0;font-size:13px;color:#6e6e73;font-family:'Courier New',monospace;">${params.siteUrl}</p>
+      <h1 style="margin:0 0 6px;font-size:20px;font-weight:600;color:#f5f5f7;">${p.siteDisplayName}</h1>
+      <p style="margin:0;font-size:13px;color:#6e6e73;font-family:'Courier New',monospace;">${p.siteUrl}</p>
     </div>
 
     <!-- Details -->
     <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;margin-bottom:24px;">
-      <p style="margin:0 0 8px;font-size:14px;color:#a1a1a6;">
-        <strong style="color:#f5f5f7;">Qorax виявив проблему</strong> і вже відстежує відновлення.
-      </p>
-      <p style="margin:0;font-size:13px;color:#6e6e73;">
-        Недоступний з: ${params.downtimeSince}
-      </p>
+      ${p.detailsHtml}
     </div>
 
     <!-- CTA -->
     <div style="text-align:center;margin-bottom:32px;">
-      <a href="${params.dashboardUrl}" style="display:inline-block;background:#d6ff3f;color:#0a0a0a;font-size:14px;font-weight:600;padding:12px 28px;border-radius:12px;text-decoration:none;">
+      <a href="${p.dashboardUrl}" style="display:inline-block;background:#d6ff3f;color:#0a0a0a;font-size:14px;font-weight:600;padding:12px 28px;border-radius:12px;text-decoration:none;">
         Відкрити дашборд →
       </a>
     </div>
 
     <!-- Footer -->
     <p style="font-size:12px;color:#6e6e73;text-align:center;margin:0;">
-      Ви отримали цей лист тому що у вас налаштовані email-алерти в Qorax.<br>
-      Ми надішлемо повідомлення коли сайт відновиться.
+      ${p.footerHtml}
     </p>
   </div>
 </body>
 </html>`;
+}
+
+export function buildSiteDownEmail(params: {
+  siteDisplayName: string;
+  siteUrl: string;
+  downtimeSince: string;
+  dashboardUrl: string;
+}): { subject: string; html: string } {
+  const subject = `🔴 ${params.siteDisplayName} — сайт недоступний`;
+  const html = renderAlertEmailShell({
+    accentColor: "#F5675A",
+    accentBg: "rgba(245,103,90,0.08)",
+    accentBorder: "rgba(245,103,90,0.35)",
+    badgeText: "Сайт недоступний",
+    siteDisplayName: params.siteDisplayName,
+    siteUrl: params.siteUrl,
+    detailsHtml: `
+      <p style="margin:0 0 8px;font-size:14px;color:#a1a1a6;">
+        <strong style="color:#f5f5f7;">Qorax виявив проблему</strong> і вже відстежує відновлення.
+      </p>
+      <p style="margin:0;font-size:13px;color:#6e6e73;">
+        Недоступний з: ${params.downtimeSince}
+      </p>`,
+    dashboardUrl: params.dashboardUrl,
+    footerHtml: `Ви отримали цей лист тому що у вас налаштовані email-алерти в Qorax.<br>
+      Ми надішлемо повідомлення коли сайт відновиться.`,
+  });
   return { subject, html };
 }
 
@@ -116,43 +145,20 @@ export function buildSiteRecoveredEmail(params: {
     ? `${params.downtimeDurationMinutes} хв`
     : `${Math.round(params.downtimeDurationMinutes / 60)} год ${params.downtimeDurationMinutes % 60} хв`;
 
-  const html = `
-<!DOCTYPE html>
-<html lang="uk">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
-    <div style="margin-bottom:32px;">
-      <span style="font-size:18px;font-weight:700;color:#f5f5f7;letter-spacing:-0.02em;">Qorax</span>
-    </div>
-
-    <div style="background:rgba(214,255,63,0.06);border:1px solid rgba(214,255,63,0.3);border-radius:16px;padding:24px;margin-bottom:24px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <div style="width:10px;height:10px;border-radius:50%;background:#d6ff3f;"></div>
-        <span style="font-size:13px;font-weight:600;color:#d6ff3f;text-transform:uppercase;letter-spacing:0.05em;">Сайт відновлено</span>
-      </div>
-      <h1 style="margin:0 0 6px;font-size:20px;font-weight:600;color:#f5f5f7;">${params.siteDisplayName}</h1>
-      <p style="margin:0;font-size:13px;color:#6e6e73;font-family:'Courier New',monospace;">${params.siteUrl}</p>
-    </div>
-
-    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;margin-bottom:24px;">
+  const html = renderAlertEmailShell({
+    accentColor: "#d6ff3f",
+    accentBg: "rgba(214,255,63,0.06)",
+    accentBorder: "rgba(214,255,63,0.3)",
+    badgeText: "Сайт відновлено",
+    siteDisplayName: params.siteDisplayName,
+    siteUrl: params.siteUrl,
+    detailsHtml: `
       <p style="margin:0 0 8px;font-size:14px;color:#a1a1a6;">
         Сайт знову доступний. Тривалість простою: <strong style="color:#f5f5f7;">${durationText}</strong>.
-      </p>
-    </div>
-
-    <div style="text-align:center;margin-bottom:32px;">
-      <a href="${params.dashboardUrl}" style="display:inline-block;background:#d6ff3f;color:#0a0a0a;font-size:14px;font-weight:600;padding:12px 28px;border-radius:12px;text-decoration:none;">
-        Відкрити дашборд →
-      </a>
-    </div>
-
-    <p style="font-size:12px;color:#6e6e73;text-align:center;margin:0;">
-      Qorax продовжує стежити за вашим сайтом.
-    </p>
-  </div>
-</body>
-</html>`;
+      </p>`,
+    dashboardUrl: params.dashboardUrl,
+    footerHtml: `Qorax продовжує стежити за вашим сайтом.`,
+  });
   return { subject, html };
 }
 
@@ -168,46 +174,23 @@ export function buildSslExpiryEmail(params: {
   const accentBg = isUrgent ? "rgba(245,103,90,0.08)" : "rgba(245,166,35,0.08)";
   const accentBorder = isUrgent ? "rgba(245,103,90,0.35)" : "rgba(245,166,35,0.3)";
 
-  const html = `
-<!DOCTYPE html>
-<html lang="uk">
-<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
-    <div style="margin-bottom:32px;">
-      <span style="font-size:18px;font-weight:700;color:#f5f5f7;letter-spacing:-0.02em;">Qorax</span>
-    </div>
-
-    <div style="background:${accentBg};border:1px solid ${accentBorder};border-radius:16px;padding:24px;margin-bottom:24px;">
-      <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">
-        <div style="width:10px;height:10px;border-radius:50%;background:${accentColor};"></div>
-        <span style="font-size:13px;font-weight:600;color:${accentColor};text-transform:uppercase;letter-spacing:0.05em;">
+  const html = renderAlertEmailShell({
+    accentColor,
+    accentBg,
+    accentBorder,
+    badgeText: `
           SSL закінчується через ${params.daysLeft} днів
-        </span>
-      </div>
-      <h1 style="margin:0 0 6px;font-size:20px;font-weight:600;color:#f5f5f7;">${params.siteDisplayName}</h1>
-      <p style="margin:0;font-size:13px;color:#6e6e73;font-family:'Courier New',monospace;">${params.siteUrl}</p>
-    </div>
-
-    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;margin-bottom:24px;">
+        `,
+    siteDisplayName: params.siteDisplayName,
+    siteUrl: params.siteUrl,
+    detailsHtml: `
       <p style="margin:0;font-size:14px;color:#a1a1a6;">
         Після закінчення SSL браузери показуватимуть відвідувачам попередження про небезпеку.
         Поновіть сертифікат у свого хостинг-провайдера якнайшвидше.
-      </p>
-    </div>
-
-    <div style="text-align:center;margin-bottom:32px;">
-      <a href="${params.dashboardUrl}" style="display:inline-block;background:#d6ff3f;color:#0a0a0a;font-size:14px;font-weight:600;padding:12px 28px;border-radius:12px;text-decoration:none;">
-        Відкрити дашборд →
-      </a>
-    </div>
-
-    <p style="font-size:12px;color:#6e6e73;text-align:center;margin:0;">
-      Qorax автоматично перевіряє SSL кожні 5 хвилин.
-    </p>
-  </div>
-</body>
-</html>`;
+      </p>`,
+    dashboardUrl: params.dashboardUrl,
+    footerHtml: `Qorax автоматично перевіряє SSL кожні 5 хвилин.`,
+  });
   return { subject, html };
 }
 
