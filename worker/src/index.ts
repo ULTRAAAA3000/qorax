@@ -30,11 +30,6 @@ import { runCompetitorChecks } from "./lib/competitorChecker";
 import { runUrlSpeedChecks } from "./lib/urlSpeedChecker";
 import { runFormChecks } from "./lib/formChecker";
 import { runBrokenLinksChecks } from "./lib/brokenLinksChecker";
-import {
-  handleStripeCheckout,
-  handleStripePortal,
-  handleStripeWebhookRequest,
-} from "./lib/stripeHandler";
 import { requireAdmin } from "./lib/adminAuth";
 import { corsHeaders } from "./lib/cors";
 
@@ -87,17 +82,6 @@ const worker = {
       return handleReportRequest(request, env, origin);
     }
 
-    // ── Stripe ───────────────────────────────────────────────────
-    if (url.pathname === "/api/stripe/checkout" && request.method === "POST") {
-      return handleStripeCheckout(request, env, origin);
-    }
-    if (url.pathname === "/api/stripe/portal" && request.method === "POST") {
-      return handleStripePortal(request, env, origin);
-    }
-    if (url.pathname === "/api/stripe/webhook" && request.method === "POST") {
-      return handleStripeWebhookRequest(request, env);
-    }
-
     // Webhook від Telegram — приймає update коли користувач пише /start <org_id> боту.
     // Не потребує CORS (Telegram шле напряму серверу, не через браузер).
     if (url.pathname === "/api/telegram/webhook" && request.method === "POST") {
@@ -112,30 +96,8 @@ const worker = {
 
     // Внутренний эндпоинт для ручного запуска speed-check (защищён токеном)
     // ── Admin endpoints (захищені ADMIN_TOKEN) ──────────────────
-    // GET /api/admin/stats — статистика для адмін панелі (захищено JWT + platform_role=admin)
-    if (url.pathname === "/api/admin/stats" && request.method === "GET") {
-      const auth = await requireAdmin(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
-      if (!auth.ok) return json({ error: auth.status === 401 ? "Unauthorized" : "Forbidden" }, auth.status!, origin);
-
-      const h = { ...supabaseHeaders(env), Prefer: "count=exact" };
-      const [usersRes, sitesRes, trialsRes, paidRes, checksRes] = await Promise.all([
-        fetch(`${env.SUPABASE_URL}/rest/v1/profiles?select=id`, { headers: h }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/sites?select=id`, { headers: h }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?status=eq.trialing&select=id`, { headers: h }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/subscriptions?status=eq.active&select=id`, { headers: h }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_checks?select=id`, { headers: h }),
-      ]);
-
-      const getCount = (res: Response) => parseInt(res.headers.get("content-range")?.split("/")[1] ?? "0");
-
-      return json({
-        users: getCount(usersRes),
-        sites: getCount(sitesRes),
-        trials: getCount(trialsRes),
-        paid: getCount(paidRes),
-        checks: getCount(checksRes),
-      }, 200, origin);
-    }
+    // Примітка: /api/admin/stats визначено нижче (з ефективними Range-запитами),
+    // тут раніше був дубльований менш ефективний обробник — видалено.
 
     // GET /api/admin/clients — список клієнтів (захищено JWT + platform_role=admin)
     if (url.pathname === "/api/admin/clients" && request.method === "GET") {

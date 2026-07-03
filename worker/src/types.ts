@@ -15,9 +15,6 @@ export interface Env {
   RESEND_API_KEY: string;
   // Базовый URL фронтенда — для ссылок в письмах
   APP_URL: string;
-  // Stripe
-  STRIPE_SECRET_KEY: string;
-  STRIPE_WEBHOOK_SECRET: string;
   // Telegram Bot API токен — для Growth/Agency алертов
   TELEGRAM_BOT_TOKEN: string;
   // Необов'язковий секрет для верифікації webhook-запитів від Telegram
