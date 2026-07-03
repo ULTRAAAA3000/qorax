@@ -441,7 +441,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
               initialEnabled={!!(statusPageData?.status_page_enabled)}
               initialSlug={statusPageData?.status_page_slug ?? null}
               workerUrl={workerUrl}
-              appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.app"}
+              appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev"}
             />
           </Section>
 
