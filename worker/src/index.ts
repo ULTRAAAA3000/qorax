@@ -873,7 +873,7 @@ const worker = {
       return;
     }
 
-    // 0 5 * * * — щодня о 5:00: expire trials + email нагадування
+    // 0 5 * * * — щодня о 5:00: expire trials + email нагадування + weekly digest (по понеділках)
     if (event.cron === "0 5 * * *") {
       const [expiredCount, emailResult] = await Promise.all([
         expireTrials(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
@@ -886,19 +886,19 @@ const worker = {
       ]);
       console.log(`Trials expired: ${expiredCount}`);
       console.log(`Trial emails: ${JSON.stringify(emailResult)}`);
-      return;
-    }
 
-    // 0 8 * * 1 — щопонеділка о 8:00: weekly digest
-    if (event.cron === "0 8 * * 1") {
-      const digestResult = await sendWeeklyDigests(
-        env.SUPABASE_URL,
-        env.SUPABASE_SERVICE_ROLE_KEY,
-        env.RESEND_API_KEY,
-        env.APP_URL
-      );
-      console.log(`Weekly digests: sent=${digestResult.sent}, errors=${digestResult.errors.length}`);
-      if (digestResult.errors.length) console.warn("Digest errors:", digestResult.errors);
+      // Weekly digest — тільки в понеділок (день тижня = 1)
+      const dayOfWeek = new Date().getUTCDay(); // 0=Sun, 1=Mon
+      if (dayOfWeek === 1) {
+        const digestResult = await sendWeeklyDigests(
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY,
+          env.RESEND_API_KEY,
+          env.APP_URL
+        );
+        console.log(`Weekly digests: sent=${digestResult.sent}, errors=${digestResult.errors.length}`);
+        if (digestResult.errors.length) console.warn("Digest errors:", digestResult.errors);
+      }
       return;
     }
 
