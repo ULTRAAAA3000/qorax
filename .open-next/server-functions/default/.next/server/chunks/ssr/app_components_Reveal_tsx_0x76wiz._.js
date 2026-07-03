@@ -1,3 +1,0 @@
-module.exports=[91123,a=>{"use strict";var b=a.i(87924),c=a.i(46271),d=a.i(21216);let e=[.16,1,.3,1];a.s(["Reveal",0,function({children:a,delay:f=0,className:g="",y:h=16,id:i}){return(0,d.useReducedMotion)()?(0,b.jsx)("div",{id:i,className:g,children:a}):(0,b.jsx)(c.motion.div,{id:i,className:g,initial:{opacity:0,y:h},whileInView:{opacity:1,y:0},viewport:{once:!0,margin:"-10% 0px -10% 0px"},transition:{duration:.6,delay:f,ease:e},children:a})}])}];
-
-//# sourceMappingURL=app_components_Reveal_tsx_0x76wiz._.js.map

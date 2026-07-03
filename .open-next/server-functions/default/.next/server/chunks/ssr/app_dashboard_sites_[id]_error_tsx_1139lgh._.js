@@ -1,3 +1,0 @@
-module.exports=[15622,a=>{"use strict";var b=a.i(87924);a.s(["default",0,function({error:a}){return(0,b.jsxs)("div",{style:{padding:40,fontFamily:"monospace",color:"white",background:"#0a0a0a",minHeight:"100vh"},children:[(0,b.jsx)("h1",{style:{color:"#F5675A"},children:"Runtime Error on /dashboard/sites/[id]"}),(0,b.jsxs)("p",{children:[(0,b.jsx)("strong",{children:"Message:"})," ",a.message]}),a.digest&&(0,b.jsxs)("p",{children:[(0,b.jsx)("strong",{children:"Digest:"})," ",a.digest]}),(0,b.jsx)("pre",{style:{marginTop:20,padding:16,background:"#111",borderRadius:8,fontSize:12,overflow:"auto"},children:a.stack})]})}])}];
-
-//# sourceMappingURL=app_dashboard_sites_%5Bid%5D_error_tsx_1139lgh._.js.map
