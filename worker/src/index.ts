@@ -35,6 +35,7 @@ import {
   handleStripePortal,
   handleStripeWebhookRequest,
 } from "./lib/stripeHandler";
+import { requireAdmin } from "./lib/adminAuth";
 
 // CORS — дозволяємо всі наші домени через wildcard matching
 function getAllowedOrigin(origin: string | null): string {
@@ -125,21 +126,8 @@ const worker = {
     // ── Admin endpoints (захищені ADMIN_TOKEN) ──────────────────
     // GET /api/admin/stats — статистика для адмін панелі (захищено JWT + platform_role=admin)
     if (url.pathname === "/api/admin/stats" && request.method === "GET") {
-      const authHeader = request.headers.get("Authorization");
-      const token = authHeader?.replace("Bearer ", "") ?? "";
-      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
-        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
-      });
-      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
-      const userData = await userRes.json() as { id?: string };
-      if (!userData.id) return json({ error: "Unauthorized" }, 401, origin);
-
-      const profileRes = await fetch(
-        `${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${userData.id}&select=platform_role`,
-        { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }
-      );
-      const profiles = await profileRes.json() as Array<{ platform_role: string }>;
-      if (profiles[0]?.platform_role !== "admin") return json({ error: "Forbidden" }, 403, origin);
+      const auth = await requireAdmin(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+      if (!auth.ok) return json({ error: auth.status === 401 ? "Unauthorized" : "Forbidden" }, auth.status!, origin);
 
       const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, Prefer: "count=exact" };
       const [usersRes, sitesRes, trialsRes, paidRes, checksRes] = await Promise.all([
@@ -163,21 +151,8 @@ const worker = {
 
     // GET /api/admin/clients — список клієнтів (захищено JWT + platform_role=admin)
     if (url.pathname === "/api/admin/clients" && request.method === "GET") {
-      const authHeader = request.headers.get("Authorization");
-      const token = authHeader?.replace("Bearer ", "") ?? "";
-      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
-        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
-      });
-      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
-      const userData = await userRes.json() as { id?: string };
-      if (!userData.id) return json({ error: "Unauthorized" }, 401, origin);
-
-      const profileRes = await fetch(
-        `${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${userData.id}&select=platform_role`,
-        { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }
-      );
-      const profiles = await profileRes.json() as Array<{ platform_role: string }>;
-      if (profiles[0]?.platform_role !== "admin") return json({ error: "Forbidden" }, 403, origin);
+      const auth = await requireAdmin(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+      if (!auth.ok) return json({ error: auth.status === 401 ? "Unauthorized" : "Forbidden" }, auth.status!, origin);
 
       const [plansRes, orgsRes] = await Promise.all([
         fetch(`${env.SUPABASE_URL}/rest/v1/plans?select=id,code,name&order=price_usd`,
@@ -254,7 +229,7 @@ const worker = {
         }, 200, origin);
       }
 
-            if (url.pathname === "/api/admin/run-speed") {
+      if (url.pathname === "/api/admin/run-speed") {
         ctx.waitUntil(
           runSpeedChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.GOOGLE_PAGESPEED_API_KEY, env.GEMINI_API_KEY)
             .then(s => console.log("Manual speed:", JSON.stringify(s)))
@@ -337,23 +312,8 @@ const worker = {
 
     // POST /api/admin/change-plan — зміна плану для організації (захищено session JWT)
     if (url.pathname === "/api/admin/change-plan" && request.method === "POST") {
-      // Перевіряємо що юзер — адмін через Supabase JWT
-      const authHeader = request.headers.get("Authorization");
-      const token = authHeader?.replace("Bearer ", "") ?? "";
-      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
-        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
-      });
-      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
-      const userData = await userRes.json() as { id?: string };
-      if (!userData.id) return json({ error: "Unauthorized" }, 401, origin);
-
-      // Перевіряємо platform_role = admin
-      const profileRes = await fetch(
-        `${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${userData.id}&select=platform_role`,
-        { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }
-      );
-      const profiles = await profileRes.json() as Array<{ platform_role: string }>;
-      if (profiles[0]?.platform_role !== "admin") return json({ error: "Forbidden" }, 403, origin);
+      const auth = await requireAdmin(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+      if (!auth.ok) return json({ error: auth.status === 401 ? "Unauthorized" : "Forbidden" }, auth.status!, origin);
 
       const body = await request.json() as { org_id: string; plan_id: string };
       if (!body.org_id || !body.plan_id) return json({ error: "org_id and plan_id required" }, 400, origin);
@@ -780,19 +740,8 @@ const worker = {
 
     // ── Admin stats ────────────────────────────────────────────────────────────
     if (url.pathname === "/api/admin/stats" && request.method === "GET") {
-      const authHeader = request.headers.get("Authorization");
-      const token = authHeader?.replace("Bearer ", "") ?? "";
-      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
-        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
-      });
-      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
-      const userData = await userRes.json() as { id?: string };
-      if (!userData.id) return json({ error: "Unauthorized" }, 401, origin);
-
-      const profileRes = await fetch(`${env.SUPABASE_URL}/rest/v1/profiles?id=eq.${userData.id}&select=platform_role`,
-        { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } });
-      const profiles = await profileRes.json() as Array<{ platform_role: string }>;
-      if (profiles[0]?.platform_role !== "admin") return json({ error: "Forbidden" }, 403, origin);
+      const auth = await requireAdmin(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+      if (!auth.ok) return json({ error: auth.status === 401 ? "Unauthorized" : "Forbidden" }, auth.status!, origin);
 
       const h = { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, "Prefer": "count=exact", "Accept": "application/json" };
       const tables = ["profiles", "sites", "uptime_checks"];
