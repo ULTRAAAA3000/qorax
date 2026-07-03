@@ -166,7 +166,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
         </aside>
 
         {/* ── Main content ── */}
-        <main className="flex-1 min-w-0 px-5 sm:px-8 py-6 space-y-4" style={{ maxWidth: 880 }}>
+        <main className="flex-1 min-w-0 px-5 sm:px-8 py-6 space-y-4 mx-auto" style={{ maxWidth: 880 }}>
 
           {/* ── Uptime ── */}
           <Section id="uptime" icon={<Activity size={14} />} title="Живий моніторинг">
