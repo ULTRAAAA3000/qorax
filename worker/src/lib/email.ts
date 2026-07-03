@@ -425,7 +425,10 @@ export function buildWeeklyDigestEmail(params: {
   newSeoIssues: number;
   sslDaysLeft: number | null;
 }): { subject: string; html: string } {
-  const subject = `📊 Тижневий звіт Qorax — ${params.siteName}`;
+  const now = new Date();
+  const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const fmtShort = (d: Date) => d.toLocaleDateString("uk-UA", { day: "numeric", month: "short" });
+  const subject = `Тижневий звіт — ${params.siteName} · ${fmtShort(weekStart)}–${fmtShort(now)}`;
 
   const uptimeColor = params.uptimePct >= 99.5 ? "#d6ff3f" : params.uptimePct >= 98 ? "#F5A623" : "#F5675A";
   const uptimeLabel = params.uptimePct >= 99.5 ? "Відмінно" : params.uptimePct >= 98 ? "Прийнятно" : "Увага";
@@ -477,6 +480,7 @@ export function buildWeeklyDigestEmail(params: {
     </div>
 
     <div style="margin-bottom:24px;">
+      <p style="margin:0 0 8px;font-size:15px;color:#a1a1a6;">Привіт, ${params.firstName} 👋</p>
       <p style="margin:0 0 4px;font-size:20px;font-weight:600;color:#f5f5f7;">${params.siteName}</p>
       <p style="margin:0;font-size:13px;color:#6e6e73;font-family:'Courier New',monospace;">${params.siteUrl}</p>
     </div>

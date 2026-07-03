@@ -44,6 +44,13 @@ const CRON_JOBS: CronJob[] = [
     schedule: "Щодня о 3:00",
   },
   {
+    id: "weekly-digest",
+    label: "Weekly Digest Email",
+    description: "Надсилає тижневий звіт всім активним клієнтам (uptime, швидкість, SEO)",
+    endpoint: "/api/admin/run-weekly-digest",
+    schedule: "Щопонеділка о 8:00 UTC",
+  },
+  {
     id: "url-speeds",
     label: "Multi-URL speed check",
     description: "Перевіряє швидкість усіх tracked URL (checkout, contact, тощо)",
