@@ -19,7 +19,7 @@ enabled = true
 # KV → Create namespace (назва "qorax-rate-limit"), потім вписати сюди id.
 [[kv_namespaces]]
 binding = "RATE_LIMIT_KV"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "93717dc8e540476cb04642ee0fbd86b5"
 
 
 # Cron тригери керуються через Cloudflare Dashboard → qorax-api → Settings → Trigger events
