@@ -452,7 +452,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
         </main>
 
-        {/* ── AI Chat panel (right) ── */}
+        {/* ── AI Chat panel (right, desktop only) ── */}
         <aside className="hidden xl:flex flex-col shrink-0 sticky top-14"
           style={{
             width: 340,
@@ -460,9 +460,12 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             background: "rgba(255,255,255,0.015)",
             borderLeft: "1px solid rgba(255,255,255,0.06)",
           }}>
-          <QoraxusChat siteId={site.id} siteName={site.display_name} accessToken={accessToken} />
+          <QoraxusChat siteId={site.id} siteName={site.display_name} accessToken={accessToken} mode="desktop" />
         </aside>
       </div>
+
+      {/* ── AI Chat floating button + popup (mobile/tablet only) ── */}
+      <QoraxusChat siteId={site.id} siteName={site.display_name} accessToken={accessToken} mode="mobile" />
     </div>
   );
 }

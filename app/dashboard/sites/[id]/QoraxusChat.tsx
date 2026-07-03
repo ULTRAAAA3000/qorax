@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Sparkles, Send, ChevronDown, Loader2 } from "lucide-react";
+import { Sparkles, Send, ChevronDown, Loader2, X } from "lucide-react";
 
 interface Message {
   role: "user" | "model";
@@ -35,25 +35,11 @@ async function getFreshToken(): Promise<string> {
   }
 }
 
-export function QoraxusChat({
-  siteId,
-  siteName,
-}: {
-  siteId: string;
-  siteName: string;
-  accessToken?: string; // залишаємо для сумісності але не використовуємо
-}) {
+function useChat(siteId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  // Скрол до останнього повідомлення
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
 
   async function send(text: string) {
     if (!text.trim() || loading) return;
@@ -121,6 +107,41 @@ export function QoraxusChat({
     }
   }
 
+  return { messages, input, setInput, loading, error, send };
+}
+
+function ChatBody({
+  siteName,
+  messages,
+  input,
+  setInput,
+  loading,
+  error,
+  send,
+  onClose,
+  autoFocus,
+}: {
+  siteName: string;
+  messages: Message[];
+  input: string;
+  setInput: (v: string) => void;
+  loading: boolean;
+  error: string | null;
+  send: (text: string) => void;
+  onClose?: () => void;
+  autoFocus?: boolean;
+}) {
+  const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  useEffect(() => {
+    if (autoFocus) setTimeout(() => inputRef.current?.focus(), 150);
+  }, [autoFocus]);
+
   function handleKey(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
@@ -133,20 +154,30 @@ export function QoraxusChat({
   return (
     <div className="flex flex-col h-full min-h-0">
       {/* Header */}
-      <div className="flex items-center gap-2.5 px-4 py-3.5 border-b shrink-0"
+      <div className="flex items-center justify-between gap-2.5 px-4 py-3.5 border-b shrink-0"
         style={{ borderColor: "rgba(255,255,255,0.06)" }}>
-        <div
-          className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
-          style={{ background: "rgba(214,255,63,0.12)" }}
-        >
-          <Sparkles size={14} style={{ color: "var(--lime)" }} />
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div
+            className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0"
+            style={{ background: "rgba(214,255,63,0.12)" }}
+          >
+            <Sparkles size={14} style={{ color: "var(--lime)" }} />
+          </div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold leading-tight">Qoraxus</p>
+            <p className="text-xs leading-tight truncate" style={{ color: "var(--text-tertiary)" }}>
+              AI-асистент · {siteName}
+            </p>
+          </div>
         </div>
-        <div className="min-w-0">
-          <p className="text-sm font-semibold leading-tight">Qoraxus</p>
-          <p className="text-xs leading-tight truncate" style={{ color: "var(--text-tertiary)" }}>
-            AI-асистент · {siteName}
-          </p>
-        </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="p-1.5 rounded-lg transition-opacity hover:opacity-60 shrink-0"
+          >
+            <X size={15} style={{ color: "var(--text-tertiary)" }} />
+          </button>
+        )}
       </div>
 
       {/* Messages */}
@@ -297,5 +328,71 @@ export function QoraxusChat({
         </p>
       </div>
     </div>
+  );
+}
+
+export function QoraxusChat({
+  siteId,
+  siteName,
+  mode = "both",
+}: {
+  siteId: string;
+  siteName: string;
+  accessToken?: string; // залишаємо для сумісності але не використовуємо
+  mode?: "desktop" | "mobile" | "both";
+}) {
+  const chat = useChat(siteId);
+  const [mobileOpen, setMobileOpen] = useState(false);
+
+  return (
+    <>
+      {/* ── Desktop: завжди відкрита панель (рендериться батьком у сайдбарі) ── */}
+      {mode !== "mobile" && (
+        <div className="hidden xl:flex flex-col h-full min-h-0">
+          <ChatBody siteName={siteName} {...chat} />
+        </div>
+      )}
+
+      {/* ── Mobile / tablet: floating-кнопка + попап, як раніше ── */}
+      {mode !== "desktop" && (
+        <div className="xl:hidden">
+          {!mobileOpen && (
+            <button
+              onClick={() => setMobileOpen(true)}
+              className="fixed bottom-5 right-5 z-50 flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium shadow-lg transition-all hover:scale-105 active:scale-95"
+              style={{
+                background: "var(--lime)",
+                color: "#0c111d",
+                boxShadow: "0 0 0 1px rgba(214,255,63,0.3), 0 8px 32px rgba(214,255,63,0.15)",
+                transitionDuration: "150ms",
+              }}
+            >
+              <Sparkles size={15} />
+              Qoraxus AI
+            </button>
+          )}
+
+          {mobileOpen && (
+            <div
+              className="fixed inset-0 z-50 flex flex-col sm:inset-auto sm:bottom-5 sm:right-5"
+              style={{
+                background: "var(--bg-raised)",
+                border: "1px solid var(--border-hairline)",
+                boxShadow: "0 0 0 1px rgba(255,255,255,0.04), 0 24px 64px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div className="flex-1 min-h-0 sm:w-[380px] sm:h-[560px] sm:rounded-2xl sm:overflow-hidden flex flex-col">
+                <ChatBody
+                  siteName={siteName}
+                  {...chat}
+                  onClose={() => setMobileOpen(false)}
+                  autoFocus
+                />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </>
   );
 }

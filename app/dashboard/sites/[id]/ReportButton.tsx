@@ -40,14 +40,14 @@ export function ReportButton({ siteId }: { siteId: string }) {
     <button
       onClick={handleClick}
       disabled={loading}
-      className="inline-flex items-center gap-2 text-sm font-medium px-4 py-2 rounded-xl transition-opacity hover:opacity-80 disabled:opacity-50"
+      className="inline-flex items-center justify-center gap-2 text-sm font-medium h-8 w-8 sm:h-auto sm:w-auto sm:px-4 sm:py-2 rounded-lg sm:rounded-xl transition-opacity hover:opacity-80 disabled:opacity-50 shrink-0"
       style={{
         background: "var(--lime)",
         color: "#0C111D",
       }}
     >
       <FileText size={14} />
-      {loading ? "Генерується..." : "Отримати звіт PDF"}
+      <span className="hidden sm:inline">{loading ? "Генерується..." : "Отримати звіт PDF"}</span>
     </button>
   );
 }
