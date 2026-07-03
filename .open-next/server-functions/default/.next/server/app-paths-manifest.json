@@ -1,0 +1,21 @@
+{
+  "/(auth)/login/page": "app/(auth)/login/page.js",
+  "/(auth)/register/page": "app/(auth)/register/page.js",
+  "/_global-error/page": "app/_global-error/page.js",
+  "/_not-found/page": "app/_not-found/page.js",
+  "/about/page": "app/about/page.js",
+  "/api/admin/change-plan/route": "app/api/admin/change-plan/route.js",
+  "/dashboard/admin/page": "app/dashboard/admin/page.js",
+  "/dashboard/page": "app/dashboard/page.js",
+  "/dashboard/settings/page": "app/dashboard/settings/page.js",
+  "/dashboard/sites/[id]/competitor/page": "app/dashboard/sites/[id]/competitor/page.js",
+  "/dashboard/sites/[id]/page": "app/dashboard/sites/[id]/page.js",
+  "/dashboard/sites/new/page": "app/dashboard/sites/new/page.js",
+  "/dashboard/upgrade/page": "app/dashboard/upgrade/page.js",
+  "/docs/page": "app/docs/page.js",
+  "/features/page": "app/features/page.js",
+  "/icon.svg/route": "app/icon.svg/route.js",
+  "/page": "app/page.js",
+  "/pricing/page": "app/pricing/page.js",
+  "/status/[slug]/page": "app/status/[slug]/page.js"
+}

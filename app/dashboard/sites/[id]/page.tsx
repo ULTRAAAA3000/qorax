@@ -17,6 +17,7 @@ import { FormMonitorPanel } from "./FormMonitorPanel";
 import { SpeedHeatmap } from "./SpeedHeatmap";
 import { StatusPageSection } from "./StatusPageSection";
 import { UptimeBadgeSection } from "./UptimeBadgeSection";
+import { SidebarNavLink } from "./SidebarNavLink";
 import { IncidentTimeline } from "./IncidentTimeline";
 
 export const dynamic = "force-dynamic";
@@ -276,21 +277,21 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             <p className="text-[10px] font-medium uppercase tracking-widest px-2 mb-2"
               style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>Моніторинг</p>
             {navItems.slice(0, 4).map(item => (
-              <NavLink key={item.id} href={`#${item.id}`} label={item.label} icon={item.icon}
+              <SidebarNavLink key={item.id} href={`#${item.id}`} label={item.label} icon={item.icon}
                 badge={item.badge} badgeRed={item.badgeRed} />
             ))}
 
             <p className="text-[10px] font-medium uppercase tracking-widest px-2 mt-4 mb-2"
               style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>SEO & Аналітика</p>
             {navItems.slice(4, 7).map(item => (
-              <NavLink key={item.id} href={`#${item.id}`} label={item.label} icon={item.icon}
+              <SidebarNavLink key={item.id} href={`#${item.id}`} label={item.label} icon={item.icon}
                 badge={item.badge} badgeRed={item.badgeRed} />
             ))}
 
             <p className="text-[10px] font-medium uppercase tracking-widest px-2 mt-4 mb-2"
               style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>Безпека & Інше</p>
             {navItems.slice(7).map(item => (
-              <NavLink key={item.id} href={`#${item.id}`} label={item.label} icon={item.icon}
+              <SidebarNavLink key={item.id} href={`#${item.id}`} label={item.label} icon={item.icon}
                 badge={item.badge} badgeRed={item.badgeRed} />
             ))}
           </nav>
@@ -603,30 +604,7 @@ function KpiTile({ label, value, ok }: { label: string; value: string; ok: boole
   );
 }
 
-function NavLink({ href, label, icon, badge, badgeRed }: {
-  href: string; label: string; icon: React.ReactNode;
-  badge?: string; badgeRed?: boolean;
-}) {
-  return (
-    <a href={href}
-      className="flex items-center gap-2.5 px-2 py-2 rounded-lg text-xs transition-colors group"
-      style={{ color: "var(--text-tertiary)" }}
-      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = "rgba(255,255,255,0.05)"; (e.currentTarget as HTMLElement).style.color = "var(--text-primary)"; }}
-      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = ""; (e.currentTarget as HTMLElement).style.color = "var(--text-tertiary)"; }}>
-      <span className="shrink-0 opacity-60">{icon}</span>
-      <span className="flex-1 truncate">{label}</span>
-      {badge && (
-        <span className="shrink-0 text-[10px] font-mono px-1.5 py-0.5 rounded-md"
-          style={{
-            background: badgeRed ? "rgba(245,103,90,0.15)" : "rgba(214,255,63,0.08)",
-            color: badgeRed ? "#F5675A" : "var(--lime)",
-          }}>
-          {badge}
-        </span>
-      )}
-    </a>
-  );
-}
+// NavLink moved to SidebarNavLink.tsx (client component)
 
 // ─── Section wrapper ───────────────────────────────────────────
 

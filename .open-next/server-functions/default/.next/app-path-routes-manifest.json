@@ -1,0 +1,21 @@
+{
+  "/(auth)/login/page": "/login",
+  "/(auth)/register/page": "/register",
+  "/_global-error/page": "/_global-error",
+  "/_not-found/page": "/_not-found",
+  "/about/page": "/about",
+  "/api/admin/change-plan/route": "/api/admin/change-plan",
+  "/dashboard/admin/page": "/dashboard/admin",
+  "/dashboard/page": "/dashboard",
+  "/dashboard/settings/page": "/dashboard/settings",
+  "/dashboard/sites/[id]/competitor/page": "/dashboard/sites/[id]/competitor",
+  "/dashboard/sites/[id]/page": "/dashboard/sites/[id]",
+  "/dashboard/sites/new/page": "/dashboard/sites/new",
+  "/dashboard/upgrade/page": "/dashboard/upgrade",
+  "/docs/page": "/docs",
+  "/features/page": "/features",
+  "/icon.svg/route": "/icon.svg",
+  "/page": "/",
+  "/pricing/page": "/pricing",
+  "/status/[slug]/page": "/status/[slug]"
+}
