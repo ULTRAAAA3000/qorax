@@ -7,7 +7,7 @@ function scoreColor(score: number | null): string {
   return "#F5675A";
 }
 
-function fmtDate(iso: string | null | undefined) {
+export function fmtDate(iso: string | null | undefined) {
   if (!iso) return "—";
   try {
     return new Date(iso).toLocaleDateString("uk-UA", {

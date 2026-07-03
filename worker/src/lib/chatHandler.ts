@@ -15,6 +15,7 @@
 
 import { selectRows } from "./supabase";
 import type { Env } from "../types";
+import { corsHeaders as sharedCorsHeaders } from "./cors";
 
 const GEMINI_ENDPOINT =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
@@ -414,19 +415,11 @@ ${context}
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-function buildCorsHeaders(origin: string | null, env: Env): Record<string, string> {
-  const allowed = [
-    "http://localhost:3000",
-    "https://qorax.mrcru96.workers.dev",
-    env.APP_URL,
-  ].filter(Boolean);
-  const allowedOrigin =
-    origin && allowed.includes(origin) ? origin : (allowed[0] ?? "*");
-  return {
-    "Access-Control-Allow-Origin": allowedOrigin,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  };
+// Залишений для сумісності виклику handleChatRequest(...) без prebuiltCors —
+// делегує до спільної реалізації в lib/cors.ts (env більше не потрібен,
+// бо повний allow-list вже враховує qorax.app/*.workers.dev/*.pages.dev).
+function buildCorsHeaders(origin: string | null, _env: Env): Record<string, string> {
+  return sharedCorsHeaders(origin);
 }
 
 function jsonResponse(

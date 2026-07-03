@@ -21,7 +21,7 @@ import { IncidentTimeline } from "./IncidentTimeline";
 import { getSiteDetailData } from "./getSiteDetailData";
 import {
   KpiTile, Section, SpeedLineChart, CwvBlock, SeoCell, SeoCheckCell,
-  SitemapCell, InsightCard, ReportRow, EmptySlot,
+  SitemapCell, InsightCard, ReportRow, EmptySlot, fmtDate,
 } from "./SiteDetailUI";
 
 export const dynamic = "force-dynamic";
@@ -30,14 +30,6 @@ export const metadata = { title: "Моніторинг сайту — Qorax" };
 function fmtMs(ms: number | null) {
   if (ms === null) return "—";
   return ms >= 1000 ? `${(ms / 1000).toFixed(1)}с` : `${ms}мс`;
-}
-function fmtDate(iso: string | null | undefined) {
-  if (!iso) return "—";
-  try {
-    return new Date(iso).toLocaleDateString("uk-UA", {
-      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-    });
-  } catch { return "—"; }
 }
 
 export default async function SiteDetailPage({ params }: { params: Promise<{ id: string }> }) {

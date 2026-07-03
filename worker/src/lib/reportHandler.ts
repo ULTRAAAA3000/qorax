@@ -7,6 +7,7 @@
 import type { Env } from "../types";
 import { selectRows } from "./supabase";
 import { generateReportHtml, type ReportData } from "./pdfReport";
+import { corsHeaders } from "./cors";
 
 export async function handleReportRequest(
   request: Request,
@@ -234,18 +235,4 @@ export async function generateMonthlyReports(env: Env): Promise<number> {
   }
 
   return count;
-}
-
-const ALLOWED_ORIGINS = [
-  "http://localhost:3000",
-  "https://qorax.mrcru96.workers.dev",
-];
-
-function corsHeaders(origin: string | null): Record<string, string> {
-  const allowed = origin && ALLOWED_ORIGINS.includes(origin) ? origin : ALLOWED_ORIGINS[0];
-  return {
-    "Access-Control-Allow-Origin": allowed,
-    "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Content-Type, Authorization",
-  };
 }
