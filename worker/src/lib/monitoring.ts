@@ -319,6 +319,34 @@ async function getOrgNotifSettings(
   }
 }
 
+// Спільна відправка алерту через email + Telegram (якщо ввімкнені в
+// налаштуваннях організації). Раніше цей паттерн (email якщо enabled,
+// telegram якщо enabled+chat_id, трекати sent) був продубльований
+// в sendDownAlert, sendRecoveredAlert і checkSslExpiry.
+async function dispatchAlert(
+  settings: OrgEmailRow,
+  email: { subject: string; html: string } | null,
+  telegramText: string | null,
+  resendApiKey: string,
+  telegramBotToken: string
+): Promise<boolean> {
+  let sent = false;
+
+  if (settings.email_enabled && email) {
+    const r = await sendEmail({ to: settings.email, subject: email.subject, html: email.html }, resendApiKey);
+    if (r.ok) sent = true;
+    else console.error("Email alert failed:", r.error);
+  }
+
+  if (settings.telegram_enabled && settings.telegram_chat_id && telegramText) {
+    const r = await sendTelegramMessage(settings.telegram_chat_id, telegramText, telegramBotToken);
+    if (r.ok) sent = true;
+    else console.error("Telegram alert failed:", r.error);
+  }
+
+  return sent;
+}
+
 async function sendDownAlert(
   site: SiteRow,
   supabaseUrl: string,
@@ -330,32 +358,24 @@ async function sendDownAlert(
   const settings = await getOrgNotifSettings(site.id, supabaseUrl, serviceRoleKey);
   if (!settings || !settings.notify_site_down) return false;
 
-  let sent = false;
+  const email = settings.email_enabled
+    ? buildSiteDownEmail({
+        siteDisplayName: site.display_name,
+        siteUrl: site.url,
+        downtimeSince: new Date().toLocaleString("uk-UA"),
+        dashboardUrl: `${appUrl}/dashboard`,
+      })
+    : null;
 
-  if (settings.email_enabled) {
-    const { subject, html } = buildSiteDownEmail({
-      siteDisplayName: site.display_name,
-      siteUrl: site.url,
-      downtimeSince: new Date().toLocaleString("uk-UA"),
-      dashboardUrl: `${appUrl}/dashboard`,
-    });
-    const r = await sendEmail({ to: settings.email, subject, html }, resendApiKey);
-    if (r.ok) sent = true;
-    else console.error("Email down alert failed:", r.error);
-  }
+  const telegramText = settings.telegram_enabled && settings.telegram_chat_id
+    ? buildSiteDownTelegram({
+        siteDisplayName: site.display_name,
+        siteUrl: site.url,
+        dashboardUrl: `${appUrl}/dashboard`,
+      })
+    : null;
 
-  if (settings.telegram_enabled && settings.telegram_chat_id) {
-    const text = buildSiteDownTelegram({
-      siteDisplayName: site.display_name,
-      siteUrl: site.url,
-      dashboardUrl: `${appUrl}/dashboard`,
-    });
-    const r = await sendTelegramMessage(settings.telegram_chat_id, text, telegramBotToken);
-    if (r.ok) sent = true;
-    else console.error("Telegram down alert failed:", r.error);
-  }
-
-  return sent;
+  return dispatchAlert(settings, email, telegramText, resendApiKey, telegramBotToken);
 }
 
 async function sendRecoveredAlert(
@@ -370,31 +390,25 @@ async function sendRecoveredAlert(
   const settings = await getOrgNotifSettings(site.id, supabaseUrl, serviceRoleKey);
   if (!settings || !settings.notify_site_down) return false;
 
-  let sent = false;
+  const email = settings.email_enabled
+    ? buildSiteRecoveredEmail({
+        siteDisplayName: site.display_name,
+        siteUrl: site.url,
+        downtimeDurationMinutes: durationMinutes,
+        dashboardUrl: `${appUrl}/dashboard`,
+      })
+    : null;
 
-  if (settings.email_enabled) {
-    const { subject, html } = buildSiteRecoveredEmail({
-      siteDisplayName: site.display_name,
-      siteUrl: site.url,
-      downtimeDurationMinutes: durationMinutes,
-      dashboardUrl: `${appUrl}/dashboard`,
-    });
-    const r = await sendEmail({ to: settings.email, subject, html }, resendApiKey);
-    if (r.ok) sent = true;
-  }
+  const telegramText = settings.telegram_enabled && settings.telegram_chat_id
+    ? buildSiteRecoveredTelegram({
+        siteDisplayName: site.display_name,
+        siteUrl: site.url,
+        downtimeDurationMinutes: durationMinutes,
+        dashboardUrl: `${appUrl}/dashboard`,
+      })
+    : null;
 
-  if (settings.telegram_enabled && settings.telegram_chat_id) {
-    const text = buildSiteRecoveredTelegram({
-      siteDisplayName: site.display_name,
-      siteUrl: site.url,
-      downtimeDurationMinutes: durationMinutes,
-      dashboardUrl: `${appUrl}/dashboard`,
-    });
-    const r = await sendTelegramMessage(settings.telegram_chat_id, text, telegramBotToken);
-    if (r.ok) sent = true;
-  }
-
-  return sent;
+  return dispatchAlert(settings, email, telegramText, resendApiKey, telegramBotToken);
 }
 
 // SSL expiry checks — вызывается из runUptimeChecks раз в сутки
@@ -438,25 +452,25 @@ export async function checkSslExpiry(
     const settings = await getOrgNotifSettings(site.id, supabaseUrl, serviceRoleKey);
     if (!settings || !settings.notify_ssl_domain_expiry) continue;
 
-    if (settings.email_enabled) {
-      const { subject, html } = buildSslExpiryEmail({
-        siteDisplayName: site.display_name,
-        siteUrl: site.url,
-        daysLeft: ssl.days_until_expiry,
-        dashboardUrl: `${appUrl}/dashboard`,
-      });
-      await sendEmail({ to: settings.email, subject, html }, resendApiKey);
-    }
+    const email = settings.email_enabled
+      ? buildSslExpiryEmail({
+          siteDisplayName: site.display_name,
+          siteUrl: site.url,
+          daysLeft: ssl.days_until_expiry,
+          dashboardUrl: `${appUrl}/dashboard`,
+        })
+      : null;
 
-    if (settings.telegram_enabled && settings.telegram_chat_id) {
-      const text = buildSslExpiryTelegram({
-        siteDisplayName: site.display_name,
-        siteUrl: site.url,
-        daysLeft: ssl.days_until_expiry,
-        dashboardUrl: `${appUrl}/dashboard`,
-      });
-      await sendTelegramMessage(settings.telegram_chat_id, text, telegramBotToken);
-    }
+    const telegramText = settings.telegram_enabled && settings.telegram_chat_id
+      ? buildSslExpiryTelegram({
+          siteDisplayName: site.display_name,
+          siteUrl: site.url,
+          daysLeft: ssl.days_until_expiry,
+          dashboardUrl: `${appUrl}/dashboard`,
+        })
+      : null;
+
+    await dispatchAlert(settings, email, telegramText, resendApiKey, telegramBotToken);
 
     await updateRows(
       "ssl_certificates",
@@ -685,19 +699,7 @@ export async function sendTrialEmails(
   resendApiKey: string,
   appUrl: string
 ): Promise<{ reminders: number; expired: number }> {
-  // Знаходимо всі активні тріали
-  const resp = await fetch(
-    `${supabaseUrl}/rest/v1/subscriptions?select=organization_id,trial_ends_at,status&status=in.(trialing,canceled)&plans=plans(code).eq.trial`,
-    {
-      headers: {
-        apikey: serviceRoleKey,
-        Authorization: `Bearer ${serviceRoleKey}`,
-        "Content-Type": "application/json",
-      },
-    }
-  );
-
-  // Простіший запит — всі підписки з trial планом
+  // Знаходимо всі активні тріали (підписки з trial_ends_at)
   const subResp = await fetch(
     `${supabaseUrl}/rest/v1/subscriptions?select=organization_id,trial_ends_at,status&trial_ends_at=not.is.null`,
     {
@@ -708,8 +710,6 @@ export async function sendTrialEmails(
       },
     }
   );
-
-  void resp; // перший запит не використовуємо
 
   if (!subResp.ok) {
     console.error("sendTrialEmails: failed to fetch subscriptions");
@@ -1069,8 +1069,8 @@ export async function checkSpeedDegradation(
   const fmtMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}с` : `${ms}мс`;
   const dashboardUrl = `${appUrl}/dashboard/sites/${siteId}`;
 
-  if (settings.email_enabled) {
-    const html = `<!DOCTYPE html>
+  const subject = `⚡ ${site.display_name} — швидкість впала до ${fmtMs(currentSpeedMs)} (норма ${fmtMs(Math.round(avg))})`;
+  const html = `<!DOCTYPE html>
 <html lang="uk">
 <head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
@@ -1098,20 +1098,15 @@ export async function checkSpeedDegradation(
   </div>
 </body>
 </html>`;
-    await sendEmail({
-      to: settings.email,
-      subject: `⚡ ${site.display_name} — швидкість впала до ${fmtMs(currentSpeedMs)} (норма ${fmtMs(Math.round(avg))})`,
-      html,
-    }, resendApiKey);
-  }
+  const telegramText = `⚡ *Швидкість впала* — ${site.display_name}\n\nПоточна: *${fmtMs(currentSpeedMs)}*\nНорма (7 днів): ${fmtMs(Math.round(avg))}\n\n[Відкрити дашборд](${dashboardUrl})`;
 
-  if (settings.telegram_enabled && settings.telegram_chat_id) {
-    await sendTelegramMessage(
-      settings.telegram_chat_id,
-      `⚡ *Швидкість впала* — ${site.display_name}\n\nПоточна: *${fmtMs(currentSpeedMs)}*\nНорма (7 днів): ${fmtMs(Math.round(avg))}\n\n[Відкрити дашборд](${dashboardUrl})`,
-      telegramBotToken
-    );
-  }
+  await dispatchAlert(
+    settings,
+    settings.email_enabled ? { subject, html } : null,
+    settings.telegram_enabled && settings.telegram_chat_id ? telegramText : null,
+    resendApiKey,
+    telegramBotToken
+  );
 
   // Записуємо алерт щоб не спамити
   await fetch(`${supabaseUrl}/rest/v1/speed_degradation_alerts`, {
