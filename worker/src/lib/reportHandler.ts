@@ -173,17 +173,24 @@ export async function handleReportRequest(
     totalEstimatedLossUsd: Math.round(totalEstimatedLoss),
   };
 
-  // White-label: якщо org_type = agency → замінюємо брендинг
-  const orgResult = await selectRows<{ org_type: string; name: string }>(
+  // White-label: якщо агентство увімкнуло білий лейбл → замінюємо брендинг
+  const orgResult = await selectRows<{
+    org_type: string;
+    name: string;
+    white_label_enabled: boolean;
+    white_label_logo_url: string | null;
+    white_label_company_name: string | null;
+  }>(
     "organizations",
-    `select=org_type,name&id=eq.${encodeURIComponent(site.organization_id ?? "")}`,
+    `select=org_type,name,white_label_enabled,white_label_logo_url,white_label_company_name&id=eq.${encodeURIComponent(site.organization_id ?? "")}`,
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   const org = orgResult.data?.[0];
-  if (org?.org_type === "agency") {
+  if (org?.org_type === "agency" && org.white_label_enabled) {
     reportData.whiteLabel = {
-      agencyName: org.name,
+      agencyName: org.white_label_company_name || org.name,
+      logoUrl: org.white_label_logo_url ?? undefined,
     };
   }
 

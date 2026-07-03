@@ -31,6 +31,7 @@ import { runUrlSpeedChecks } from "./lib/urlSpeedChecker";
 import { runFormChecks } from "./lib/formChecker";
 import { runBrokenLinksChecks } from "./lib/brokenLinksChecker";
 import { requireAdmin } from "./lib/adminAuth";
+import { checkRateLimit, getClientIp } from "./lib/rateLimit";
 import { corsHeaders } from "./lib/cors";
 
 function json(data: unknown, status: number, origin: string | null): Response {
@@ -463,12 +464,12 @@ const worker = {
 
       // Знаходимо сайт за slug
       const siteResp = await fetch(
-        `${env.SUPABASE_URL}/rest/v1/sites?select=id,url,display_name,status_page_enabled&status_page_slug=eq.${encodeURIComponent(slug)}&limit=1`,
+        `${env.SUPABASE_URL}/rest/v1/sites?select=id,url,display_name,status_page_enabled,organization_id&status_page_slug=eq.${encodeURIComponent(slug)}&limit=1`,
         { headers: h }
       );
       if (!siteResp.ok) return json({ error: "Server error" }, 500, origin);
       const sites = await siteResp.json() as Array<{
-        id: string; url: string; display_name: string; status_page_enabled: boolean;
+        id: string; url: string; display_name: string; status_page_enabled: boolean; organization_id: string;
       }>;
       const site = sites[0];
       if (!site || !site.status_page_enabled) {
@@ -480,17 +481,25 @@ const worker = {
       const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
-      const [checksResp, incidentsResp, speedResp, sslResp] = await Promise.all([
+      const [checksResp, incidentsResp, speedResp, sslResp, orgResp] = await Promise.all([
         fetch(`${env.SUPABASE_URL}/rest/v1/uptime_checks?select=status,checked_at&site_id=eq.${siteId}&checked_at=gte.${weekAgo}&order=checked_at.desc`, { headers: h }),
         fetch(`${env.SUPABASE_URL}/rest/v1/uptime_incidents?select=id,started_at,resolved_at,duration_seconds&site_id=eq.${siteId}&started_at=gte.${monthAgo}&order=started_at.desc&limit=20`, { headers: h }),
         fetch(`${env.SUPABASE_URL}/rest/v1/speed_checks?select=load_time_ms,checked_at&site_id=eq.${siteId}&checked_at=gte.${weekAgo}&order=checked_at.desc&limit=50`, { headers: h }),
         fetch(`${env.SUPABASE_URL}/rest/v1/ssl_certificates?select=days_until_expiry,valid_until&site_id=eq.${siteId}&limit=1`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/organizations?select=org_type,white_label_enabled,white_label_logo_url,white_label_company_name&id=eq.${site.organization_id}&limit=1`, { headers: h }),
       ]);
 
       const checks = checksResp.ok ? await checksResp.json() as Array<{ status: string; checked_at: string }> : [];
       const incidents = incidentsResp.ok ? await incidentsResp.json() as Array<{ id: string; started_at: string; resolved_at: string | null; duration_seconds: number | null }> : [];
       const speeds = speedResp.ok ? await speedResp.json() as Array<{ load_time_ms: number; checked_at: string }> : [];
       const sslArr = sslResp.ok ? await sslResp.json() as Array<{ days_until_expiry: number | null; valid_until: string | null }> : [];
+      const orgArr = orgResp.ok ? await orgResp.json() as Array<{
+        org_type: string; white_label_enabled: boolean; white_label_logo_url: string | null; white_label_company_name: string | null;
+      }> : [];
+      const org = orgArr[0];
+      const whiteLabel = org?.org_type === "agency" && org.white_label_enabled
+        ? { companyName: org.white_label_company_name, logoUrl: org.white_label_logo_url }
+        : null;
 
       // Uptime % за 7 днів
       const totalChecks = checks.length;
@@ -540,6 +549,7 @@ const worker = {
         dailyUptime,
         incidents: incidents.slice(0, 10),
         ssl: ssl ? { daysLeft: ssl.days_until_expiry, validUntil: ssl.valid_until } : null,
+        whiteLabel,
         generatedAt: new Date().toISOString(),
       }, 200, origin);
     }
@@ -850,6 +860,19 @@ async function handleAuditRequest(
   origin: string | null,
   ctx: ExecutionContext
 ): Promise<Response> {
+  // Rate limiting: захищаємо безкоштовний lead-magnet від зловживань —
+  // ендпоінт без авторизації, кожен виклик коштує грошей (PageSpeed + Gemini).
+  // Ліміт: 3 аудити на IP за 10 хвилин.
+  const clientIp = getClientIp(request);
+  const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, `audit:${clientIp}`, 3, 600);
+  if (!rateLimit.allowed) {
+    return json(
+      { error: "Забагато запитів. Спробуйте ще раз через кілька хвилин." },
+      429,
+      origin
+    );
+  }
+
   let body: AuditRequestBody;
   try {
     body = await request.json();

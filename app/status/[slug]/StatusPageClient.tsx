@@ -21,6 +21,7 @@ interface StatusData {
   dailyUptime: Array<{ date: string; pct: number; checks: number }>;
   incidents: Incident[];
   ssl: { daysLeft: number | null; validUntil: string | null } | null;
+  whiteLabel: { companyName: string | null; logoUrl: string | null } | null;
   generatedAt: string;
 }
 
@@ -202,8 +203,11 @@ function IncidentRow({ incident }: { incident: Incident }) {
 export function StatusPageClient({ data }: { data: StatusData }) {
   const {
     site, currentStatus, uptimePct7d, avgSpeedMs,
-    dailyUptime, incidents, ssl, generatedAt,
+    dailyUptime, incidents, ssl, whiteLabel, generatedAt,
   } = data;
+
+  const brandName = whiteLabel?.companyName || "Qorax";
+  const brandLogoUrl = whiteLabel?.logoUrl ?? null;
 
   const uptimeColor = uptimePct7d >= 99.5 ? "#d6ff3f" : uptimePct7d >= 98 ? "#F5A623" : "#F5675A";
   const openIncident = incidents.find(i => !i.resolved_at);
@@ -227,11 +231,18 @@ export function StatusPageClient({ data }: { data: StatusData }) {
         maxWidth: 720,
         margin: "0 auto",
       }}>
-        <a href="https://qorax.app" target="_blank" rel="noopener" style={{
+        <a href={whiteLabel ? undefined : "https://qorax.app"} target={whiteLabel ? undefined : "_blank"} rel={whiteLabel ? undefined : "noopener"} style={{
           fontSize: 13, fontWeight: 700, color: "#f5f5f7",
           textDecoration: "none", letterSpacing: "-0.02em",
+          display: "flex", alignItems: "center", gap: 8,
+          cursor: whiteLabel ? "default" : "pointer",
         }}>
-          Qorax
+          {brandLogoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={brandLogoUrl} alt={brandName} style={{ height: 22, maxWidth: 140, objectFit: "contain" }} />
+          ) : (
+            brandName
+          )}
         </a>
         <span style={{ fontSize: 12, color: "#6e6e73" }}>
           Сторінка статусу
@@ -363,10 +374,16 @@ export function StatusPageClient({ data }: { data: StatusData }) {
             Дані оновлюються кожну хвилину
           </p>
           <p style={{ margin: 0, fontSize: 12, color: "#444" }}>
-            Моніторинг забезпечується{" "}
-            <a href="https://qorax.app" target="_blank" rel="noopener" style={{ color: "#d6ff3f", textDecoration: "none" }}>
-              Qorax
-            </a>
+            {whiteLabel ? (
+              <>Моніторинг забезпечується <span style={{ color: "#8cf6ff" }}>{brandName}</span></>
+            ) : (
+              <>
+                Моніторинг забезпечується{" "}
+                <a href="https://qorax.app" target="_blank" rel="noopener" style={{ color: "#d6ff3f", textDecoration: "none" }}>
+                  Qorax
+                </a>
+              </>
+            )}
             {" "}· Оновлено {new Date(generatedAt).toLocaleString("uk-UA", { hour: "2-digit", minute: "2-digit" })}
           </p>
         </div>

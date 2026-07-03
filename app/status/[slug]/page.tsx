@@ -16,6 +16,7 @@ interface StatusData {
   dailyUptime: Array<{ date: string; pct: number; checks: number }>;
   incidents: Array<{ id: string; started_at: string; resolved_at: string | null; duration_seconds: number | null }>;
   ssl: { daysLeft: number | null; validUntil: string | null } | null;
+  whiteLabel: { companyName: string | null; logoUrl: string | null } | null;
   generatedAt: string;
 }
 
