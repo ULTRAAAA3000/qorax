@@ -109,7 +109,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             height: "calc(100vh - 56px)",
             background: "rgba(255,255,255,0.015)",
             borderRight: "1px solid rgba(255,255,255,0.06)",
-            overflowY: "auto",
+            overflow: "hidden",
           }}>
 
           {/* Site identity */}
@@ -141,7 +141,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           </div>
 
           {/* Nav */}
-          <nav className="px-2 py-3 flex-1">
+          <nav className="px-2 py-3 shrink-0 overflow-y-auto" style={{ maxHeight: "45%" }}>
             <p className="text-[10px] font-medium uppercase tracking-widest px-2 mb-2"
               style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}>Моніторинг</p>
             {navItems.slice(0, 4).map(item => (
@@ -163,6 +163,9 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                 badge={item.badge} badgeRed={item.badgeRed} />
             ))}
           </nav>
+
+          {/* AI Chat — заповнює решту сайдбару */}
+          <QoraxusChat siteId={site.id} siteName={site.display_name} accessToken={accessToken} />
         </aside>
 
         {/* ── Main content ── */}
@@ -452,8 +455,6 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
         </main>
       </div>
-
-      <QoraxusChat siteId={site.id} siteName={site.display_name} accessToken={accessToken} />
     </div>
   );
 }
