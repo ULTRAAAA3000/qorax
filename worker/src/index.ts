@@ -774,6 +774,41 @@ const worker = {
       return json({ ok: true, maintenanceUntil: updated[0]?.maintenance_until ?? null }, 200, origin);
     }
 
+    // PATCH /api/sites/:id/monitoring — призупинити/відновити моніторинг сайту
+    const monitoringMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/monitoring$/);
+    if (monitoringMatch && request.method === "PATCH") {
+      const siteId = monitoringMatch[1];
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      const body = await request.json() as { enabled?: boolean };
+      if (typeof body.enabled !== "boolean") {
+        return json({ error: "Поле enabled має бути true/false" }, 400, origin);
+      }
+
+      const h = {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      };
+
+      const patchResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/sites?id=eq.${siteId}`,
+        { method: "PATCH", headers: h, body: JSON.stringify({ monitoring_enabled: body.enabled }) }
+      );
+      if (!patchResp.ok) {
+        const err = await patchResp.text();
+        return json({ error: err }, 400, origin);
+      }
+      const updated = await patchResp.json() as Array<{ monitoring_enabled: boolean }>;
+      return json({ ok: true, enabled: updated[0]?.monitoring_enabled ?? body.enabled }, 200, origin);
+    }
+
     // ── Multi-URL speed monitoring ────────────────────────────────────────────
     const monitoredUrlsMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/monitored-urls$/);
     if (monitoredUrlsMatch) {

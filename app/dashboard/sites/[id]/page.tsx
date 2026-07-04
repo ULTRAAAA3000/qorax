@@ -17,6 +17,7 @@ import { SpeedHeatmap } from "./SpeedHeatmap";
 import { StatusPageSection } from "./StatusPageSection";
 import { AlertThresholdSettings } from "./AlertThresholdSettings";
 import { MaintenanceModeToggle } from "./MaintenanceModeToggle";
+import { MonitoringPauseToggle } from "./MonitoringPauseToggle";
 import { UptimeBadgeSection } from "./UptimeBadgeSection";
 import { SidebarNavLink } from "./SidebarNavLink";
 import { IncidentTimeline } from "./IncidentTimeline";
@@ -193,6 +194,14 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                 siteId={site.id}
                 accessToken={accessToken}
                 initialThresholdMs={alertThresholdMs}
+                workerUrl={workerUrl}
+              />
+            </div>
+            <div style={{ marginTop: 20 }}>
+              <MonitoringPauseToggle
+                siteId={site.id}
+                accessToken={accessToken}
+                initialEnabled={site.monitoring_enabled}
                 workerUrl={workerUrl}
               />
             </div>
