@@ -38,6 +38,7 @@ interface SiteRow {
   url: string;
   display_name: string;
   monitoring_enabled: boolean;
+  response_time_alert_threshold_ms: number | null;
 }
 
 interface OpenIncidentRow {
@@ -87,7 +88,7 @@ export async function runUptimeChecks(
 
   const sitesResult = await selectRows<SiteRow>(
     "sites",
-    "select=id,url,display_name,monitoring_enabled&monitoring_enabled=eq.true",
+    "select=id,url,display_name,monitoring_enabled,response_time_alert_threshold_ms&monitoring_enabled=eq.true",
     supabaseUrl,
     serviceRoleKey
   );
@@ -189,6 +190,27 @@ async function checkSingleSite(
     telegramBotToken,
     summary
   );
+
+  // 4. Custom поріг часу відповіді (миттєвий, на кожній перевірці).
+  // Спрацьовує лише якщо сайт "up" (для "down" вже є окремий алерт)
+  // і власник задав власний поріг у налаштуваннях сайту.
+  if (
+    status === "up" &&
+    site.response_time_alert_threshold_ms != null &&
+    check.responseTimeMs != null &&
+    check.responseTimeMs > site.response_time_alert_threshold_ms
+  ) {
+    await checkResponseTimeThreshold(
+      site,
+      check.responseTimeMs,
+      site.response_time_alert_threshold_ms,
+      supabaseUrl,
+      serviceRoleKey,
+      resendApiKey,
+      telegramBotToken,
+      appUrl
+    );
+  }
 }
 
 async function reconcileIncident(
@@ -263,6 +285,85 @@ async function reconcileIncident(
       summary.errors.push(updateResult.error ?? "uptime_incidents update failed");
     }
   }
+}
+
+// ─── Custom response-time threshold алерти ─────────────────────
+// На відміну від checkSpeedDegradation (порівнює з 7-денним середнім
+// раз на добу), цей алерт — миттєвий поріг, який власник сайту задає
+// сам у налаштуваннях (наприклад "повідом якщо відповідь > 2000мс").
+// Rate limit: не частіше одного разу на годину на сайт.
+async function checkResponseTimeThreshold(
+  site: SiteRow,
+  responseMs: number,
+  thresholdMs: number,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  resendApiKey: string,
+  telegramBotToken: string,
+  appUrl: string
+): Promise<void> {
+  const hourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+  const recentAlertResult = await selectRows<{ id: string }>(
+    "response_time_alerts",
+    `select=id&site_id=eq.${site.id}&alerted_at=gte.${hourAgo}&limit=1`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (recentAlertResult.ok && recentAlertResult.data.length > 0) return; // вже слали цю годину
+
+  const settings = await getOrgNotifSettings(site.id, supabaseUrl, serviceRoleKey);
+  if (!settings) return;
+
+  const fmtMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}с` : `${ms}мс`;
+  const dashboardUrl = `${appUrl}/dashboard/sites/${site.id}`;
+
+  const subject = `⚠️ ${site.display_name} — час відповіді ${fmtMs(responseMs)} перевищує поріг ${fmtMs(thresholdMs)}`;
+  const html = `<!DOCTYPE html>
+<html lang="uk">
+<head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+    <div style="margin-bottom:28px;"><span style="font-size:18px;font-weight:700;color:#f5f5f7;letter-spacing:-0.02em;">Qorax</span></div>
+    <div style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.3);border-radius:16px;padding:24px;margin-bottom:20px;">
+      <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#F5A623;text-transform:uppercase;letter-spacing:0.05em;">⚠️ Перевищено поріг часу відповіді</p>
+      <h1 style="margin:0 0 6px;font-size:20px;font-weight:600;color:#f5f5f7;">${site.display_name}</h1>
+      <p style="margin:0;font-size:13px;color:#6e6e73;font-family:'Courier New',monospace;">${site.url}</p>
+    </div>
+    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;margin-bottom:20px;">
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <span style="font-size:13px;color:#6e6e73;">Час відповіді</span>
+        <span style="font-size:13px;font-weight:600;color:#F5A623;">${fmtMs(responseMs)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;">
+        <span style="font-size:13px;color:#6e6e73;">Ваш поріг</span>
+        <span style="font-size:13px;font-weight:600;color:#d6ff3f;">${fmtMs(thresholdMs)}</span>
+      </div>
+    </div>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${dashboardUrl}" style="display:inline-block;background:#d6ff3f;color:#0a0a0a;font-size:14px;font-weight:600;padding:12px 28px;border-radius:12px;text-decoration:none;">Перевірити в дашборді →</a>
+    </div>
+    <p style="font-size:12px;color:#6e6e73;text-align:center;margin:0;">Qorax · Моніторинг сайтів</p>
+  </div>
+</body>
+</html>`;
+  const telegramText = `⚠️ *Повільна відповідь* — ${site.display_name}\n\nВідповідь: *${fmtMs(responseMs)}*\nВаш поріг: ${fmtMs(thresholdMs)}\n\n[Відкрити дашборд](${dashboardUrl})`;
+  const slackText = `:warning: *Повільна відповідь* — ${site.display_name}\n\nВідповідь: *${fmtMs(responseMs)}*\nВаш поріг: ${fmtMs(thresholdMs)}\n\n<${dashboardUrl}|Відкрити дашборд>`;
+
+  await dispatchAlert(
+    settings,
+    settings.email_enabled ? { subject, html } : null,
+    settings.telegram_enabled && settings.telegram_chat_id ? telegramText : null,
+    settings.slack_enabled && settings.slack_webhook_url ? slackText : null,
+    resendApiKey,
+    telegramBotToken
+  );
+
+  await insertRow(
+    "response_time_alerts",
+    { site_id: site.id, response_ms: responseMs, threshold_ms: thresholdMs },
+    supabaseUrl,
+    serviceRoleKey
+  );
 }
 
 export async function getOrgNotifSettings(

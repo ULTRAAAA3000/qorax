@@ -15,6 +15,7 @@ import { MultiUrlPanel } from "./MultiUrlPanel";
 import { FormMonitorPanel } from "./FormMonitorPanel";
 import { SpeedHeatmap } from "./SpeedHeatmap";
 import { StatusPageSection } from "./StatusPageSection";
+import { AlertThresholdSettings } from "./AlertThresholdSettings";
 import { UptimeBadgeSection } from "./UptimeBadgeSection";
 import { SidebarNavLink } from "./SidebarNavLink";
 import { IncidentTimeline } from "./IncidentTimeline";
@@ -40,7 +41,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   if ("notFound" in data) notFound();
 
   const {
-    site, hostname, accessToken, canUseGsc, statusPageData,
+    site, hostname, accessToken, canUseGsc, statusPageData, alertThresholdMs,
     uptimeChecks, speedChecks, ssl,
     aiInsights, reports, seoAudit, sitemapAudit, competitors,
     competitorChanges, brokenLinks, historyIncidents,
@@ -177,6 +178,14 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
               supabaseUrl={supabaseUrl}
               supabaseAnonKey={supabaseAnonKey}
             />
+            <div style={{ marginTop: 20 }}>
+              <AlertThresholdSettings
+                siteId={site.id}
+                accessToken={accessToken}
+                initialThresholdMs={alertThresholdMs}
+                workerUrl={workerUrl}
+              />
+            </div>
           </Section>
 
           {/* ── Incident Timeline ── */}
