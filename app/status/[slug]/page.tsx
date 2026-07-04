@@ -2,7 +2,15 @@
 // /status/[slug] — публічна сторінка статусу сайту (Growth)
 // Доступна без авторизації. Дані тягнуться з /api/status/:slug
 // через Qorax Worker.
+//
+// force-dynamic: сторінка рендериться на кожен запит. ISR через
+// fetch({ next: { revalidate } }) на Cloudflare Workers (OpenNext)
+// потребує окремого налаштування Cache API/KV binding — без нього
+// кеш мовчки не працює і build-time рендер може повернути 404 для
+// щойно створених/незакешованих slug'ів.
 // ============================================================
+
+export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
@@ -24,11 +32,15 @@ async function fetchStatusData(slug: string): Promise<StatusData | null> {
   const workerUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
   try {
     const res = await fetch(`${workerUrl}/api/status/${encodeURIComponent(slug)}`, {
-      next: { revalidate: 60 }, // кеш 1 хвилина
+      cache: "no-store",
     });
-    if (!res.ok) return null;
+    if (!res.ok) {
+      console.error(`[status/${slug}] worker responded ${res.status}`);
+      return null;
+    }
     return res.json();
-  } catch {
+  } catch (err) {
+    console.error(`[status/${slug}] fetch failed:`, err instanceof Error ? err.message : err);
     return null;
   }
 }
