@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/app/lib/supabase/client";
 import { Bell, Mail, Send, Lock, CheckCircle2, Loader2, MessageSquare } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { CopyButton } from "@/app/components/CopyButton";
 
 interface NotifSettings {
   email_enabled: boolean;
@@ -48,6 +49,7 @@ export function NotificationSettingsForm({
   const [slackSaving, setSlackSaving] = useState(false);
   const [slackSaved, setSlackSaved] = useState(false);
   const [slackError, setSlackError] = useState<string | null>(null);
+  const [slackTestState, setSlackTestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -236,6 +238,51 @@ export function NotificationSettingsForm({
     }
   }
 
+  async function handleTestSlack() {
+    if (!settings.slack_webhook_url) return;
+    setSlackTestState("sending");
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/notifications/test-slack`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ webhook_url: settings.slack_webhook_url }),
+      });
+      setSlackTestState(res.ok ? "sent" : "error");
+    } catch {
+      setSlackTestState("error");
+    } finally {
+      setTimeout(() => setSlackTestState("idle"), 3000);
+    }
+  }
+
+  // Формує один рядок з усіма каналами алертів — для копіювання у звіт
+  // агентства клієнту ("ось куди йдуть сповіщення про цей акаунт").
+  async function buildContactsSummary(): Promise<string> {
+    let email = "";
+    try {
+      const supabase = createClient();
+      const { data } = await supabase.auth.getUser();
+      email = data.user?.email ?? "";
+    } catch { /* ignore */ }
+
+    const parts: string[] = [];
+    parts.push(`Email: ${settings.email_enabled && email ? email : "вимкнено"}`);
+    parts.push(`Telegram: ${settings.telegram_enabled && settings.telegram_chat_id ? "підключено" : "вимкнено"}`);
+    parts.push(`Slack: ${settings.slack_enabled && settings.slack_webhook_url ? "підключено" : "вимкнено"}`);
+    return parts.join(" · ");
+  }
+
+  const [contactsCopied, setContactsCopied] = useState(false);
+
+  async function handleCopyContacts() {
+    const summary = await buildContactsSummary();
+    try {
+      await navigator.clipboard.writeText(summary);
+    } catch { /* ignore */ }
+    setContactsCopied(true);
+    setTimeout(() => setContactsCopied(false), 1800);
+  }
+
   function toggle(key: keyof NotifSettings) {
     setSettings(prev => ({ ...prev, [key]: !prev[key] }));
   }
@@ -243,9 +290,23 @@ export function NotificationSettingsForm({
   return (
     <div className="rounded-2xl p-5"
       style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <div className="flex items-center gap-2.5 mb-5">
-        <Bell size={14} className="text-[var(--text-tertiary)]" />
-        <h2 className="text-sm font-semibold">Сповіщення</h2>
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2.5">
+          <Bell size={14} className="text-[var(--text-tertiary)]" />
+          <h2 className="text-sm font-semibold">Сповіщення</h2>
+        </div>
+        <button
+          onClick={handleCopyContacts}
+          className="text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+          style={{
+            background: contactsCopied ? "rgba(214,255,63,0.08)" : "rgba(255,255,255,0.03)",
+            border: `1px solid ${contactsCopied ? "rgba(214,255,63,0.2)" : "rgba(255,255,255,0.07)"}`,
+            color: contactsCopied ? "var(--lime)" : "var(--text-tertiary)",
+          }}
+          title="Скопіювати всі канали сповіщень одним рядком — для звіту клієнту"
+        >
+          {contactsCopied ? "Скопійовано ✓" : "Копіювати контакти"}
+        </button>
       </div>
 
       {/* Email block */}
@@ -373,14 +434,32 @@ export function NotificationSettingsForm({
               <span className="text-xs font-mono text-[var(--text-tertiary)] truncate">
                 {settings.slack_webhook_url.replace(/^https:\/\//, "").slice(0, 28)}…
               </span>
+              <CopyButton value={settings.slack_webhook_url} iconSize={11} />
             </div>
-            <button
-              onClick={handleDisconnectSlack}
-              disabled={slackSaving}
-              className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 shrink-0"
-            >
-              {slackSaving ? "Відключення..." : "Відключити"}
-            </button>
+            <div className="flex items-center gap-3 shrink-0">
+              <button
+                onClick={handleTestSlack}
+                disabled={slackTestState === "sending"}
+                className="text-xs transition-colors disabled:opacity-50"
+                style={{
+                  color: slackTestState === "sent" ? "var(--lime)"
+                    : slackTestState === "error" ? "#F5675A"
+                    : "var(--text-tertiary)",
+                }}
+              >
+                {slackTestState === "sending" ? "Надсилаємо..."
+                  : slackTestState === "sent" ? "Надіслано ✓"
+                  : slackTestState === "error" ? "Помилка"
+                  : "Тестове повідомлення"}
+              </button>
+              <button
+                onClick={handleDisconnectSlack}
+                disabled={slackSaving}
+                className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50"
+              >
+                {slackSaving ? "Відключення..." : "Відключити"}
+              </button>
+            </div>
           </div>
         ) : (
           /* ── Налаштування webhook URL ── */

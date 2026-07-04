@@ -160,6 +160,16 @@ export async function getSiteDetailData(id: string) {
     } catch { return 0; }
   })();
 
+  // Індикатор "давно не перевірялось" — якщо остання uptime-перевірка
+  // старша за очікуваний інтервал (5 хв + запас), це зазвичай означає
+  // що cron/воркер впав або моніторинг для сайту зламаний.
+  const STALE_THRESHOLD_MINUTES = 20;
+  const lastCheckedAt = uptimeChecks[0]?.checked_at ?? null;
+  const staleCheckMinutes = lastCheckedAt
+    ? Math.floor((Date.now() - new Date(lastCheckedAt).getTime()) / 60_000)
+    : null;
+  const isStale = site.monitoring_enabled && staleCheckMinutes !== null && staleCheckMinutes > STALE_THRESHOLD_MINUTES;
+
   return {
     site, hostname, accessToken, canUseGsc, statusPageData, alertThresholdMs, maintenanceUntil,
     uptimeChecks, openIncidents, speedChecks, cwvChecks, ssl,
@@ -168,6 +178,7 @@ export async function getSiteDetailData(id: string) {
     isUp, latestSpeed, mobileCwv, desktopCwv,
     supabaseUrl, supabaseAnonKey, workerUrl,
     uptimePct, sslOk, seoIssueCount,
+    staleCheckMinutes, isStale,
   };
 }
 

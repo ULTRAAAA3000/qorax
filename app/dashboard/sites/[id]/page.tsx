@@ -1,4 +1,5 @@
 import { QoraxLogo } from "@/app/components/QoraxLogo";
+import { CopyButton } from "@/app/components/CopyButton";
 import Link from "next/link";
 import { redirect, notFound } from "next/navigation";
 import {
@@ -11,6 +12,7 @@ import { LiveUptimePanel } from "./LiveUptimePanel";
 import { QoraxusChat } from "./QoraxusChat";
 import { GscPanel } from "./GscPanel";
 import { RefreshSpeedButton } from "./RefreshSpeedButton";
+import { RunUptimeCheckButton } from "./RunUptimeCheckButton";
 import { MultiUrlPanel } from "./MultiUrlPanel";
 import { FormMonitorPanel } from "./FormMonitorPanel";
 import { SpeedHeatmap } from "./SpeedHeatmap";
@@ -52,6 +54,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     isUp, latestSpeed, mobileCwv, desktopCwv,
     supabaseUrl, supabaseAnonKey, workerUrl,
     uptimePct, sslOk, seoIssueCount,
+    staleCheckMinutes, isStale,
   } = data;
 
   const navItems = [
@@ -95,6 +98,14 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             <span className="text-sm font-medium truncate max-w-[160px]">{site.display_name}</span>
           </div>
           <div className="flex items-center gap-2 shrink-0">
+            <CopyButton
+              value={site.url}
+              iconSize={13}
+              style={{
+                height: 32, width: 32, justifyContent: "center",
+                border: "1px solid rgba(255,255,255,0.07)", borderRadius: 8,
+              }}
+            />
             <a href={site.url} target="_blank" rel="noopener noreferrer"
               className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors"
               style={{ color: "var(--text-tertiary)", border: "1px solid rgba(255,255,255,0.07)" }}>
@@ -174,7 +185,25 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
         <main className="flex-1 min-w-0 px-5 sm:px-8 py-6 space-y-4 mx-auto" style={{ maxWidth: 880 }}>
 
           {/* ── Uptime ── */}
-          <Section id="uptime" icon={<Activity size={14} />} title="Живий моніторинг">
+          <Section id="uptime" icon={<Activity size={14} />} title="Живий моніторинг"
+            action={
+              <RunUptimeCheckButton
+                siteId={site.id}
+                accessToken={accessToken}
+                workerUrl={workerUrl}
+              />
+            }
+          >
+            {isStale && (
+              <div className="flex items-center gap-2.5 rounded-xl px-4 py-3 mb-4"
+                style={{ background: "rgba(245,166,35,0.06)", border: "1px solid rgba(245,166,35,0.2)" }}>
+                <AlertTriangle size={13} style={{ color: "#F5A623", flexShrink: 0 }} />
+                <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                  Останню перевірку виконано {staleCheckMinutes} хв тому — довше ніж очікувалось.
+                  Можливо, моніторинг тимчасово не працює. Спробуй &quot;Перевірити зараз&quot;.
+                </p>
+              </div>
+            )}
             <LiveUptimePanel
               siteId={site.id}
               initialChecks={uptimeChecks}

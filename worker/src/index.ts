@@ -11,7 +11,7 @@ import { runBasicCheck } from "./lib/basicCheck";
 import { runPageSpeedChecks } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead, selectRows } from "./lib/supabase";
-import { runUptimeChecks, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails, sendWeeklyDigests, checkSpeedDegradation } from "./lib/monitoring";
+import { runUptimeChecks, runUptimeCheckForSite, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails, sendWeeklyDigests, checkSpeedDegradation } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleFixRequest } from "./lib/fixRequestHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
@@ -34,6 +34,7 @@ import { runBrokenLinksChecks } from "./lib/brokenLinksChecker";
 import { requireAdmin } from "./lib/adminAuth";
 import { checkRateLimit, getClientIp } from "./lib/rateLimit";
 import { corsHeaders } from "./lib/cors";
+import { sendSlackMessage } from "./lib/slack";
 
 function json(data: unknown, status: number, origin: string | null): Response {
   return new Response(JSON.stringify(data), {
@@ -98,6 +99,30 @@ const worker = {
     // Фронт викликає кожні 3с поки показується "Очікуємо підключення..."
     if (url.pathname === "/api/telegram/status" && request.method === "GET") {
       return handleTelegramStatus(request, env, origin);
+    }
+
+    // POST /api/notifications/test-slack — тестове повідомлення для перевірки Slack webhook
+    if (url.pathname === "/api/notifications/test-slack" && request.method === "POST") {
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      const body = await request.json().catch(() => null) as { webhook_url?: string } | null;
+      const webhookUrl = body?.webhook_url?.trim();
+      if (!webhookUrl || !webhookUrl.startsWith("https://hooks.slack.com/")) {
+        return json({ error: "Невалідний Slack webhook URL" }, 400, origin);
+      }
+
+      const result = await sendSlackMessage(
+        webhookUrl,
+        ":wave: Тестове повідомлення від *Qorax*. Якщо ви бачите це в Slack — webhook налаштовано правильно!"
+      );
+
+      if (!result.ok) return json({ error: result.error ?? "Не вдалося надіслати повідомлення" }, 502, origin);
+      return json({ ok: true }, 200, origin);
     }
 
     // Внутренний эндпоинт для ручного запуска speed-check (защищён токеном)
@@ -469,6 +494,31 @@ const worker = {
         })
       );
       return json({ ok: true, message: "Speed check started" }, 200, origin);
+    }
+
+    // POST /api/sites/:id/run-uptime-check — ручний запуск uptime-перевірки для одного сайту
+    const uptimeMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/run-uptime-check$/);
+    if (uptimeMatch && request.method === "POST") {
+      const siteId = uptimeMatch[1];
+      // Авторизація через JWT
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      const result = await runUptimeCheckForSite(
+        siteId,
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY,
+        env.RESEND_API_KEY,
+        env.APP_URL,
+        env.TELEGRAM_BOT_TOKEN
+      );
+
+      if (!result.ok) return json({ error: result.error ?? "Перевірка не вдалась" }, 500, origin);
+      return json({ ok: true, status: result.status }, 200, origin);
     }
 
     // GET /api/badge/:siteId — публічний SVG бейдж "Monitored by Qorax"

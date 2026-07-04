@@ -8,7 +8,10 @@ export function SiteCard({
   site,
   index,
 }: {
-  site: { id: string; url: string; display_name: string; monitoring_enabled: boolean; created_at: string };
+  site: {
+    id: string; url: string; display_name: string; monitoring_enabled: boolean; created_at: string;
+    isDown?: boolean; inMaintenance?: boolean;
+  };
   index: number;
 }) {
   const [hovered, setHovered] = useState(false);
@@ -21,8 +24,18 @@ export function SiteCard({
     day: "numeric", month: "short", year: "numeric",
   });
 
-  const glowColor = site.monitoring_enabled
+  const isDown = !!site.isDown;
+  const inMaintenance = !!site.inMaintenance;
+
+  const dotColor = !site.monitoring_enabled
+    ? "var(--text-tertiary)"
+    : isDown ? "#F5675A"
+    : inMaintenance ? "#F5A623"
+    : "var(--lime)";
+
+  const glowColor = site.monitoring_enabled && !isDown && !inMaintenance
     ? index % 2 === 0 ? "rgba(214,255,63,0.35)" : "rgba(140,246,255,0.35)"
+    : isDown ? "rgba(245,103,90,0.35)"
     : "transparent";
 
   return (
@@ -62,20 +75,40 @@ export function SiteCard({
           <div
             className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full"
             style={{
-              background: site.monitoring_enabled ? "var(--lime)" : "var(--text-tertiary)",
+              background: dotColor,
               boxShadow: `0 0 6px ${glowColor}`,
               border: "2px solid var(--bg)",
             }}
           />
-          {site.monitoring_enabled && (
+          {site.monitoring_enabled && !isDown && !inMaintenance && (
             <div
               className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full animate-ping"
               style={{ background: "var(--lime)", opacity: 0.3 }}
             />
           )}
+          {isDown && (
+            <div
+              className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full animate-ping"
+              style={{ background: "#F5675A", opacity: 0.4 }}
+            />
+          )}
         </div>
         <div className="min-w-0">
-          <div className="font-medium text-[var(--text-primary)] truncate">{site.display_name}</div>
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-medium text-[var(--text-primary)] truncate">{site.display_name}</span>
+            {isDown && (
+              <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
+                style={{ background: "rgba(245,103,90,0.12)", color: "#F5675A" }}>
+                Недоступний
+              </span>
+            )}
+            {!isDown && inMaintenance && (
+              <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-md"
+                style={{ background: "rgba(245,166,35,0.12)", color: "#F5A623" }}>
+                Обслуговування
+              </span>
+            )}
+          </div>
           <div className="text-xs text-[var(--text-tertiary)] font-mono mt-0.5 truncate">{hostname}</div>
         </div>
       </div>

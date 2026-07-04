@@ -71,6 +71,44 @@ export interface UptimeCheckSummary {
   errors: string[];
 }
 
+/**
+ * Ручний запуск uptime-перевірки для одного конкретного сайту —
+ * той самий шлях що й у cron (checkSingleSite), просто для одного
+ * site_id замість усіх активних сайтів. Використовується кнопкою
+ * "Перевірити зараз" у дашборді.
+ */
+export async function runUptimeCheckForSite(
+  siteId: string,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  resendApiKey: string,
+  appUrl: string,
+  telegramBotToken: string
+): Promise<{ ok: boolean; status?: "up" | "down"; error?: string }> {
+  const siteResult = await selectRows<SiteRow>(
+    "sites",
+    `select=id,url,display_name,monitoring_enabled,response_time_alert_threshold_ms,maintenance_until&id=eq.${encodeURIComponent(siteId)}`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (!siteResult.ok || siteResult.data.length === 0) {
+    return { ok: false, error: "Сайт не знайдено" };
+  }
+
+  const site = siteResult.data[0];
+  const summary: UptimeCheckSummary = {
+    sitesChecked: 0, sitesUp: 0, sitesDown: 0,
+    incidentsOpened: 0, incidentsResolved: 0, alertsSent: 0, errors: [],
+  };
+
+  await checkSingleSite(site, supabaseUrl, serviceRoleKey, resendApiKey, appUrl, telegramBotToken, summary);
+
+  if (summary.errors.length > 0) {
+    return { ok: false, error: summary.errors.join("; ") };
+  }
+  return { ok: true, status: summary.sitesUp > 0 ? "up" : "down" };
+}
+
 export async function runUptimeChecks(
   supabaseUrl: string,
   serviceRoleKey: string,
