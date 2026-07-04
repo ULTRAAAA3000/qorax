@@ -8,6 +8,13 @@
 // потребує окремого налаштування Cache API/KV binding — без нього
 // кеш мовчки не працює і build-time рендер може повернути 404 для
 // щойно створених/незакешованих slug'ів.
+//
+// ВАЖЛИВО: Cloudflare Workers не дозволяє одному Worker'у робити
+// fetch() на публічний URL іншого Worker'а того ж акаунта — це
+// повертає Cloudflare error 1042. Тому звертаємось до qorax-api
+// через Service Binding (env.API_WORKER), а не через публічний
+// https://qorax-api.mrcru96.workers.dev. Локально (без Cloudflare
+// рантайму) фолбек на звичайний fetch за NEXT_PUBLIC_API_URL.
 // ============================================================
 
 export const dynamic = "force-dynamic";
@@ -28,20 +35,46 @@ interface StatusData {
 }
 
 async function fetchStatusData(slug: string): Promise<{ data: StatusData | null; debug: string }> {
+  const path = `/api/status/${encodeURIComponent(slug)}`;
+
+  // 1) Пробуємо Service Binding (працює на Cloudflare — обходить error 1042)
+  try {
+    const { getCloudflareContext } = await import("@opennextjs/cloudflare");
+    const ctx = await getCloudflareContext({ async: true });
+    const apiWorker = (ctx.env as Record<string, unknown>)?.API_WORKER as
+      | { fetch: (url: string, init?: RequestInit) => Promise<Response> }
+      | undefined;
+
+    if (apiWorker) {
+      const res = await apiWorker.fetch(`https://qorax-api.internal${path}`);
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        return { data: null, debug: `[binding] status=${res.status} body=${body.slice(0, 300)}` };
+      }
+      const data = (await res.json()) as StatusData;
+      return { data, debug: "" };
+    }
+  } catch (err) {
+    // Binding недоступний (локальна розробка без wrangler dev, або інша помилка) —
+    // падаємо на звичайний fetch нижче.
+    console.error(`[status/${slug}] service binding failed:`, err instanceof Error ? err.message : err);
+  }
+
+  // 2) Фолбек — звичайний fetch за публічним URL (локальна розробка)
   const workerUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
-  const fetchUrl = `${workerUrl}/api/status/${encodeURIComponent(slug)}`;
+  const fetchUrl = `${workerUrl}${path}`;
   try {
     const res = await fetch(fetchUrl, { cache: "no-store" });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      return { data: null, debug: `url=${fetchUrl} status=${res.status} body=${body.slice(0, 300)}` };
+      return { data: null, debug: `[fetch] url=${fetchUrl} status=${res.status} body=${body.slice(0, 300)}` };
     }
     const data = (await res.json()) as StatusData;
     return { data, debug: "" };
   } catch (err) {
     return {
       data: null,
-      debug: `url=${fetchUrl} EXCEPTION: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`,
+      debug: `[fetch] url=${fetchUrl} EXCEPTION: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`,
     };
   }
 }

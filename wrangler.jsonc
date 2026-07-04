@@ -9,6 +9,9 @@
     "binding": "ASSETS",
     "run_worker_first": true
   },
+  "services": [
+    { "binding": "API_WORKER", "service": "qorax-api" }
+  ],
   "observability": {
     "enabled": true
   },
