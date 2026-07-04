@@ -18,6 +18,7 @@ import { StatusPageSection } from "./StatusPageSection";
 import { AlertThresholdSettings } from "./AlertThresholdSettings";
 import { MaintenanceModeToggle } from "./MaintenanceModeToggle";
 import { MonitoringPauseToggle } from "./MonitoringPauseToggle";
+import { ExportIncidentsButton } from "./ExportIncidentsButton";
 import { UptimeBadgeSection } from "./UptimeBadgeSection";
 import { SidebarNavLink } from "./SidebarNavLink";
 import { IncidentTimeline } from "./IncidentTimeline";
@@ -210,7 +211,8 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           {/* ── Incident Timeline ── */}
           {historyIncidents.length > 0 && (
             <Section id="incidents" icon={<Clock size={14} />} title="Історія інцидентів"
-              badge={`${historyIncidents.length} за 30 днів`} badgeRed>
+              badge={`${historyIncidents.length} за 30 днів`} badgeRed
+              action={<ExportIncidentsButton incidents={historyIncidents} siteName={site.display_name} />}>
               <IncidentTimeline incidents={historyIncidents} isUp={isUp} />
             </Section>
           )}
