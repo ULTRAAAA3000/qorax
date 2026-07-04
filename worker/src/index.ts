@@ -36,6 +36,7 @@ import { runUrlSpeedChecks } from "./lib/urlSpeedChecker";
 import { runFormChecks } from "./lib/formChecker";
 import { runBrokenLinksChecks } from "./lib/brokenLinksChecker";
 import { requireAdmin } from "./lib/adminAuth";
+import { handleBusinessMetrics } from "./lib/businessMetrics";
 import { checkRateLimit, getClientIp } from "./lib/rateLimit";
 import { corsHeaders } from "./lib/cors";
 import { sendSlackMessage } from "./lib/slack";
@@ -1014,6 +1015,10 @@ const worker = {
         trials: getCount(trialsRes),
         paid: getCount(paidRes),
       }, 200, origin);
+    }
+
+    if (url.pathname === "/api/admin/business-metrics" && request.method === "GET") {
+      return handleBusinessMetrics(request, env, origin);
     }
 
     return json({ error: "Маршрут не знайдено" }, 404, origin);

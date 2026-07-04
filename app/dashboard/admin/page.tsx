@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AdminPanel } from "./AdminPanel";
 import { UsersTable } from "./UsersTable";
 import { AdminStats } from "./AdminStats";
+import { BusinessMetricsPanel } from "./BusinessMetricsPanel";
 import { FixRequestsPanel } from "./FixRequestsPanel";
 
 export const metadata = { title: "Адмін панель — Qorax" };
@@ -53,6 +54,9 @@ export default async function AdminPage() {
 
         {/* Статистика — підтягується client-side через API worker */}
         <AdminStats accessToken={accessToken} workerUrl={workerUrl} />
+
+        {/* Бізнес-метрики: MRR, churn, конверсія */}
+        <BusinessMetricsPanel accessToken={accessToken} workerUrl={workerUrl} />
 
         {/* Клієнти */}
         <UsersTable accessToken={accessToken} workerUrl={workerUrl} />
