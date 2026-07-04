@@ -15,7 +15,8 @@ interface Incident {
 
 interface StatusData {
   site: { displayName: string; url: string };
-  currentStatus: "up" | "down" | "unknown";
+  currentStatus: "up" | "down" | "unknown" | "maintenance";
+  historyDays: number;
   uptimePct7d: number;
   avgSpeedMs: number | null;
   dailyUptime: Array<{ date: string; pct: number; checks: number }>;
@@ -54,11 +55,12 @@ function fmtMs(ms: number): string {
 
 // ─── Components ───────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: "up" | "down" | "unknown" }) {
+function StatusBadge({ status }: { status: "up" | "down" | "unknown" | "maintenance" }) {
   const cfg = {
     up: { color: "#d6ff3f", bg: "rgba(214,255,63,0.08)", border: "rgba(214,255,63,0.2)", dot: "#d6ff3f", label: "Працює" },
     down: { color: "#F5675A", bg: "rgba(245,103,90,0.1)", border: "rgba(245,103,90,0.3)", dot: "#F5675A", label: "Недоступний" },
     unknown: { color: "#6e6e73", bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.08)", dot: "#6e6e73", label: "Невідомо" },
+    maintenance: { color: "#F5A623", bg: "rgba(245,166,35,0.08)", border: "rgba(245,166,35,0.25)", dot: "#F5A623", label: "На обслуговуванні" },
   }[status];
 
   return (
@@ -70,7 +72,7 @@ function StatusBadge({ status }: { status: "up" | "down" | "unknown" }) {
       <span style={{
         width: 8, height: 8, borderRadius: "50%",
         background: cfg.dot,
-        boxShadow: status === "up" ? `0 0 8px ${cfg.dot}` : status === "down" ? `0 0 8px ${cfg.dot}` : "none",
+        boxShadow: status === "up" || status === "maintenance" ? `0 0 8px ${cfg.dot}` : status === "down" ? `0 0 8px ${cfg.dot}` : "none",
         animation: status !== "unknown" ? "pulse 2s ease-in-out infinite" : "none",
       }} />
       <span style={{ fontSize: 14, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>
@@ -137,7 +139,7 @@ function UptimeBar({ days }: { days: Array<{ date: string; pct: number; checks: 
         display: "flex", justifyContent: "space-between",
         marginTop: 6,
       }}>
-        <span style={{ fontSize: 10, color: "#6e6e73" }}>7 днів тому</span>
+        <span style={{ fontSize: 10, color: "#6e6e73" }}>{days.length} днів тому</span>
         <span style={{ fontSize: 10, color: "#6e6e73" }}>Сьогодні</span>
       </div>
     </div>
@@ -202,7 +204,7 @@ function IncidentRow({ incident }: { incident: Incident }) {
 
 export function StatusPageClient({ data }: { data: StatusData }) {
   const {
-    site, currentStatus, uptimePct7d, avgSpeedMs,
+    site, currentStatus, historyDays, uptimePct7d, avgSpeedMs,
     dailyUptime, incidents, ssl, whiteLabel, generatedAt,
   } = data;
 
@@ -298,7 +300,7 @@ export function StatusPageClient({ data }: { data: StatusData }) {
             border: "1px solid rgba(255,255,255,0.07)",
           }}>
             <p style={{ margin: "0 0 6px", fontSize: 11, color: "#6e6e73", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              Uptime 7 днів
+              Uptime {historyDays} днів
             </p>
             <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: uptimeColor, letterSpacing: "-0.02em" }}>
               {uptimePct7d.toFixed(2)}%
@@ -339,7 +341,7 @@ export function StatusPageClient({ data }: { data: StatusData }) {
           border: "1px solid rgba(255,255,255,0.07)",
         }}>
           <p style={{ margin: "0 0 16px", fontSize: 13, fontWeight: 600, color: "#f5f5f7" }}>
-            Доступність за 7 днів
+            Доступність за {historyDays} днів
           </p>
           <UptimeBar days={dailyUptime} />
         </div>

@@ -51,6 +51,17 @@ export async function getSiteDetailData(id: string) {
     alertThresholdMs = atRes.data?.response_time_alert_threshold_ms ?? null;
   } catch { /* column not yet migrated */ }
 
+  // Окремий запит для режиму обслуговування (міграція 0032 може бути ще не запущена)
+  let maintenanceUntil: string | null = null;
+  try {
+    const mRes = await supabase
+      .from("sites")
+      .select("maintenance_until")
+      .eq("id", id)
+      .maybeSingle();
+    maintenanceUntil = mRes.data?.maintenance_until ?? null;
+  } catch { /* column not yet migrated */ }
+
   const { data: membership } = await supabase
     .from("organization_members")
     .select("organization_id")
@@ -149,14 +160,25 @@ export async function getSiteDetailData(id: string) {
     } catch { return 0; }
   })();
 
+  // Індикатор "давно не перевірялось" — якщо остання uptime-перевірка
+  // старша за очікуваний інтервал (5 хв + запас), це зазвичай означає
+  // що cron/воркер впав або моніторинг для сайту зламаний.
+  const STALE_THRESHOLD_MINUTES = 20;
+  const lastCheckedAt = uptimeChecks[0]?.checked_at ?? null;
+  const staleCheckMinutes = lastCheckedAt
+    ? Math.floor((Date.now() - new Date(lastCheckedAt).getTime()) / 60_000)
+    : null;
+  const isStale = site.monitoring_enabled && staleCheckMinutes !== null && staleCheckMinutes > STALE_THRESHOLD_MINUTES;
+
   return {
-    site, hostname, accessToken, canUseGsc, statusPageData, alertThresholdMs,
+    site, hostname, accessToken, canUseGsc, statusPageData, alertThresholdMs, maintenanceUntil,
     uptimeChecks, openIncidents, speedChecks, cwvChecks, ssl,
     aiInsights, reports, seoAudit, sitemapAudit, competitors,
     competitorChanges, brokenLinks, historyIncidents,
     isUp, latestSpeed, mobileCwv, desktopCwv,
     supabaseUrl, supabaseAnonKey, workerUrl,
     uptimePct, sslOk, seoIssueCount,
+    staleCheckMinutes, isStale,
   };
 }
 

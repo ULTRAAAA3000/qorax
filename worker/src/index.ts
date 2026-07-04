@@ -11,7 +11,7 @@ import { runBasicCheck } from "./lib/basicCheck";
 import { runPageSpeedChecks } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead, selectRows } from "./lib/supabase";
-import { runUptimeChecks, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails, sendWeeklyDigests, checkSpeedDegradation } from "./lib/monitoring";
+import { runUptimeChecks, runUptimeCheckForSite, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails, sendWeeklyDigests, checkSpeedDegradation } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleFixRequest } from "./lib/fixRequestHandler";
 import {
@@ -38,6 +38,7 @@ import { runBrokenLinksChecks } from "./lib/brokenLinksChecker";
 import { requireAdmin } from "./lib/adminAuth";
 import { checkRateLimit, getClientIp } from "./lib/rateLimit";
 import { corsHeaders } from "./lib/cors";
+import { sendSlackMessage } from "./lib/slack";
 
 function json(data: unknown, status: number, origin: string | null): Response {
   return new Response(JSON.stringify(data), {
@@ -129,6 +130,30 @@ const worker = {
     // Фронт викликає кожні 3с поки показується "Очікуємо підключення..."
     if (url.pathname === "/api/telegram/status" && request.method === "GET") {
       return handleTelegramStatus(request, env, origin);
+    }
+
+    // POST /api/notifications/test-slack — тестове повідомлення для перевірки Slack webhook
+    if (url.pathname === "/api/notifications/test-slack" && request.method === "POST") {
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      const body = await request.json().catch(() => null) as { webhook_url?: string } | null;
+      const webhookUrl = body?.webhook_url?.trim();
+      if (!webhookUrl || !webhookUrl.startsWith("https://hooks.slack.com/")) {
+        return json({ error: "Невалідний Slack webhook URL" }, 400, origin);
+      }
+
+      const result = await sendSlackMessage(
+        webhookUrl,
+        ":wave: Тестове повідомлення від *Qorax*. Якщо ви бачите це в Slack — webhook налаштовано правильно!"
+      );
+
+      if (!result.ok) return json({ error: result.error ?? "Не вдалося надіслати повідомлення" }, 502, origin);
+      return json({ ok: true }, 200, origin);
     }
 
     // Внутренний эндпоинт для ручного запуска speed-check (защищён токеном)
@@ -502,6 +527,31 @@ const worker = {
       return json({ ok: true, message: "Speed check started" }, 200, origin);
     }
 
+    // POST /api/sites/:id/run-uptime-check — ручний запуск uptime-перевірки для одного сайту
+    const uptimeMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/run-uptime-check$/);
+    if (uptimeMatch && request.method === "POST") {
+      const siteId = uptimeMatch[1];
+      // Авторизація через JWT
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      const result = await runUptimeCheckForSite(
+        siteId,
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY,
+        env.RESEND_API_KEY,
+        env.APP_URL,
+        env.TELEGRAM_BOT_TOKEN
+      );
+
+      if (!result.ok) return json({ error: result.error ?? "Перевірка не вдалась" }, 500, origin);
+      return json({ ok: true, status: result.status }, 200, origin);
+    }
+
     // GET /api/badge/:siteId — публічний SVG бейдж "Monitored by Qorax"
     const badgeMatch = url.pathname.match(/^\/api\/badge\/([^/]+)$/);
     if (badgeMatch && request.method === "GET") {
@@ -556,27 +606,44 @@ const worker = {
 
       // Знаходимо сайт за slug
       const siteResp = await fetch(
-        `${env.SUPABASE_URL}/rest/v1/sites?select=id,url,display_name,status_page_enabled,organization_id&status_page_slug=eq.${encodeURIComponent(slug)}&limit=1`,
+        `${env.SUPABASE_URL}/rest/v1/sites?select=id,url,display_name,status_page_enabled,organization_id,maintenance_until&status_page_slug=eq.${encodeURIComponent(slug)}&limit=1`,
         { headers: h }
       );
       if (!siteResp.ok) return json({ error: "Server error" }, 500, origin);
       const sites = await siteResp.json() as Array<{
-        id: string; url: string; display_name: string; status_page_enabled: boolean; organization_id: string;
+        id: string; url: string; display_name: string; status_page_enabled: boolean; organization_id: string; maintenance_until: string | null;
       }>;
       const site = sites[0];
       if (!site || !site.status_page_enabled) {
         return json({ error: "Сторінку статусу не знайдено" }, 404, origin);
       }
 
+      const isInMaintenance = site.maintenance_until != null &&
+        new Date(site.maintenance_until).getTime() > Date.now();
+
       const siteId = site.id;
-      const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+      // Growth/Agency/trial/admin отримують 90-денну історію uptime,
+      // Starter — базові 7 днів (як і раніше).
+      const planResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/subscriptions?select=plans(code)&organization_id=eq.${encodeURIComponent(site.organization_id)}&status=in.(trialing,active)&order=created_at.desc&limit=1`,
+        { headers: h }
+      );
+      const planArr = planResp.ok
+        ? await planResp.json() as Array<{ plans: { code: string } | null }>
+        : [];
+      const planCode = planArr[0]?.plans?.code ?? "free";
+      const hasExtendedHistory = ["growth", "agency", "admin", "trial"].includes(planCode);
+      const historyDays = hasExtendedHistory ? 90 : 7;
+
+      const historyAgo = new Date(Date.now() - historyDays * 24 * 60 * 60 * 1000).toISOString();
       const monthAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
 
       const [checksResp, incidentsResp, speedResp, sslResp, orgResp] = await Promise.all([
-        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_checks?select=status,checked_at&site_id=eq.${siteId}&checked_at=gte.${weekAgo}&order=checked_at.desc`, { headers: h }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_incidents?select=id,started_at,resolved_at,duration_seconds&site_id=eq.${siteId}&started_at=gte.${monthAgo}&order=started_at.desc&limit=20`, { headers: h }),
-        fetch(`${env.SUPABASE_URL}/rest/v1/speed_checks?select=load_time_ms,checked_at&site_id=eq.${siteId}&checked_at=gte.${weekAgo}&order=checked_at.desc&limit=50`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_checks?select=status,checked_at&site_id=eq.${siteId}&checked_at=gte.${historyAgo}&order=checked_at.desc`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/uptime_incidents?select=id,started_at,resolved_at,duration_seconds&site_id=eq.${siteId}&started_at=gte.${hasExtendedHistory ? historyAgo : monthAgo}&order=started_at.desc&limit=${hasExtendedHistory ? 90 : 20}`, { headers: h }),
+        fetch(`${env.SUPABASE_URL}/rest/v1/speed_checks?select=load_time_ms,checked_at&site_id=eq.${siteId}&checked_at=gte.${historyAgo}&order=checked_at.desc&limit=50`, { headers: h }),
         fetch(`${env.SUPABASE_URL}/rest/v1/ssl_certificates?select=days_until_expiry,valid_until&site_id=eq.${siteId}&limit=1`, { headers: h }),
         fetch(`${env.SUPABASE_URL}/rest/v1/organizations?select=org_type,white_label_enabled,white_label_logo_url,white_label_company_name&id=eq.${site.organization_id}&limit=1`, { headers: h }),
       ]);
@@ -593,20 +660,23 @@ const worker = {
         ? { companyName: org.white_label_company_name, logoUrl: org.white_label_logo_url }
         : null;
 
-      // Uptime % за 7 днів
+      // Uptime % за весь доступний період (7 або 90 днів залежно від плану)
       const totalChecks = checks.length;
       const upChecks = checks.filter(c => c.status === "up").length;
-      const uptimePct7d = totalChecks > 0 ? (upChecks / totalChecks) * 100 : 100;
+      const uptimePctPeriod = totalChecks > 0 ? (upChecks / totalChecks) * 100 : 100;
 
-      // Поточний статус (останні 2 перевірки)
+      // Поточний статус (останні 2 перевірки). Якщо активне обслуговування —
+      // показуємо його незалежно від фактичного стану сайту.
       const recentChecks = checks.slice(0, 2);
-      const currentStatus = recentChecks.length === 0
+      const currentStatus: "up" | "down" | "unknown" | "maintenance" = isInMaintenance
+        ? "maintenance"
+        : recentChecks.length === 0
         ? "unknown"
         : recentChecks[0].status === "up" ? "up" : "down";
 
-      // Uptime по днях за 7 днів (для графіка)
+      // Uptime по днях за весь доступний період (для графіка)
       const dailyUptime: Array<{ date: string; pct: number; checks: number }> = [];
-      for (let i = 6; i >= 0; i--) {
+      for (let i = historyDays - 1; i >= 0; i--) {
         const dayStart = new Date(Date.now() - i * 24 * 60 * 60 * 1000);
         dayStart.setHours(0, 0, 0, 0);
         const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
@@ -636,10 +706,11 @@ const worker = {
           url: site.url,
         },
         currentStatus,
-        uptimePct7d: Math.round(uptimePct7d * 100) / 100,
+        historyDays,
+        uptimePct7d: Math.round(uptimePctPeriod * 100) / 100,
         avgSpeedMs,
         dailyUptime,
-        incidents: incidents.slice(0, 10),
+        incidents: incidents.slice(0, hasExtendedHistory ? 30 : 10),
         ssl: ssl ? { daysLeft: ssl.days_until_expiry, validUntil: ssl.valid_until } : null,
         whiteLabel,
         generatedAt: new Date().toISOString(),
@@ -741,6 +812,82 @@ const worker = {
       }
       const updated = await patchResp.json() as Array<{ response_time_alert_threshold_ms: number | null }>;
       return json({ ok: true, thresholdMs: updated[0]?.response_time_alert_threshold_ms ?? null }, 200, origin);
+    }
+
+    // PATCH /api/sites/:id/maintenance — увімкнути/вимкнути режим обслуговування
+    const maintenanceMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/maintenance$/);
+    if (maintenanceMatch && request.method === "PATCH") {
+      const siteId = maintenanceMatch[1];
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      // body.durationMinutes: увімкнути на N хвилин від зараз (null/0 = вимкнути одразу)
+      const body = await request.json() as { durationMinutes?: number | null };
+
+      let maintenanceUntil: string | null = null;
+      if (body.durationMinutes != null && body.durationMinutes > 0) {
+        if (body.durationMinutes > 24 * 60) {
+          return json({ error: "Максимум 24 години обслуговування за раз" }, 400, origin);
+        }
+        maintenanceUntil = new Date(Date.now() + body.durationMinutes * 60 * 1000).toISOString();
+      }
+
+      const h = {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      };
+
+      const patchResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/sites?id=eq.${siteId}`,
+        { method: "PATCH", headers: h, body: JSON.stringify({ maintenance_until: maintenanceUntil }) }
+      );
+      if (!patchResp.ok) {
+        const err = await patchResp.text();
+        return json({ error: err }, 400, origin);
+      }
+      const updated = await patchResp.json() as Array<{ maintenance_until: string | null }>;
+      return json({ ok: true, maintenanceUntil: updated[0]?.maintenance_until ?? null }, 200, origin);
+    }
+
+    // PATCH /api/sites/:id/monitoring — призупинити/відновити моніторинг сайту
+    const monitoringMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/monitoring$/);
+    if (monitoringMatch && request.method === "PATCH") {
+      const siteId = monitoringMatch[1];
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      const body = await request.json() as { enabled?: boolean };
+      if (typeof body.enabled !== "boolean") {
+        return json({ error: "Поле enabled має бути true/false" }, 400, origin);
+      }
+
+      const h = {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      };
+
+      const patchResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/sites?id=eq.${siteId}`,
+        { method: "PATCH", headers: h, body: JSON.stringify({ monitoring_enabled: body.enabled }) }
+      );
+      if (!patchResp.ok) {
+        const err = await patchResp.text();
+        return json({ error: err }, 400, origin);
+      }
+      const updated = await patchResp.json() as Array<{ monitoring_enabled: boolean }>;
+      return json({ ok: true, enabled: updated[0]?.monitoring_enabled ?? body.enabled }, 200, origin);
     }
 
     // ── Multi-URL speed monitoring ────────────────────────────────────────────

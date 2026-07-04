@@ -5,6 +5,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Clock, Zap, Settings, LogOut, Plus } from "lucide-react";
 import { SiteCard } from "./SiteCard";
+import { SitesListControls } from "./SitesListControls";
 
 export const metadata = { title: "Дашборд — Qorax" };
 
@@ -45,11 +46,32 @@ export default async function DashboardPage({
           .single()
       : Promise.resolve({ data: null }),
     supabase.from("sites")
-      .select("id, url, display_name, monitoring_enabled, created_at")
+      .select("id, url, display_name, monitoring_enabled, created_at, maintenance_until")
       .eq("organization_id", membership?.organization_id ?? "")
       .order("created_at", { ascending: false }),
     supabase.from("profiles").select("full_name, platform_role").eq("id", user.id).single(),
   ]);
+
+  // Відкриті інциденти для всіх сайтів організації одним запитом —
+  // потрібно для статусу up/down у списку (сортування, груповий badge).
+  const siteIds = (sites ?? []).map(s => s.id);
+  const { data: openIncidents } = siteIds.length
+    ? await supabase
+        .from("uptime_incidents")
+        .select("site_id")
+        .in("site_id", siteIds)
+        .is("resolved_at", null)
+    : { data: [] as { site_id: string }[] };
+
+  const downSiteIds = new Set((openIncidents ?? []).map(i => i.site_id));
+
+  const now = Date.now();
+  const sitesWithStatus = (sites ?? []).map(site => {
+    const inMaintenance = !!site.maintenance_until && new Date(site.maintenance_until).getTime() > now;
+    const isDown = !inMaintenance && downSiteIds.has(site.id);
+    return { ...site, isDown, inMaintenance };
+  });
+  const downCount = sitesWithStatus.filter(s => s.isDown).length;
 
   const firstName = profile.data?.full_name?.split(" ")[0] || user.email?.split("@")[0] || "друже";
 
@@ -223,7 +245,16 @@ export default async function DashboardPage({
         {/* ── Page header ── */}
         <div className="flex items-center justify-between pt-2">
           <div>
-            <h1 className="font-display text-xl font-semibold">Ваші сайти</h1>
+            <div className="flex items-center gap-2.5">
+              <h1 className="font-display text-xl font-semibold">Ваші сайти</h1>
+              {downCount > 0 && (
+                <span className="inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-lg"
+                  style={{ background: "rgba(245,103,90,0.1)", color: "#F5675A", border: "1px solid rgba(245,103,90,0.25)" }}>
+                  <span className="h-1.5 w-1.5 rounded-full animate-pulse" style={{ background: "#F5675A" }} />
+                  {downCount} {downCount === 1 ? "сайт" : "сайтів"} недоступн{downCount === 1 ? "ий" : "і"}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-[var(--text-tertiary)] mt-0.5">
               {sites?.length ?? 0} / {org?.site_limit ?? 1} сайтів
             </p>
@@ -240,9 +271,7 @@ export default async function DashboardPage({
         {!sites || sites.length === 0 ? (
           <EmptyState />
         ) : (
-          <div className="space-y-3">
-            {sites.map((site, i) => <SiteCard key={site.id} site={site} index={i} />)}
-          </div>
+          <SitesListControls sites={sitesWithStatus} />
         )}
 
         {/* ── Upgrade nudge for late-trial ── */}

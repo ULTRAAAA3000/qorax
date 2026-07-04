@@ -13,6 +13,7 @@
 // ============================================================
 
 import { selectRows, insertRow, upsertRow } from "./supabase";
+import { fetchWithTimeout as sharedFetchWithTimeout, normalizeToOrigin } from "./httpUtils";
 
 const FETCH_TIMEOUT_MS = 10_000;
 const USER_AGENT = "Mozilla/5.0 (compatible; QoraxBot/1.0; +https://qorax.com/bot)";
@@ -316,12 +317,7 @@ async function fetchRobots(baseUrl: string): Promise<RobotsData> {
 // ─── Utils ────────────────────────────────────────────────────
 
 function normalizeBaseUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    return `${parsed.protocol}//${parsed.host}`;
-  } catch {
-    return url;
-  }
+  return normalizeToOrigin(url);
 }
 
 function extractTag(html: string, regex: RegExp): string | null {
@@ -347,14 +343,5 @@ function extractMeta(html: string, name: string): string | null {
 }
 
 async function fetchWithTimeout(url: string): Promise<Response> {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    return await fetch(url, {
-      signal: controller.signal,
-      headers: { "User-Agent": USER_AGENT },
-    });
-  } finally {
-    clearTimeout(t);
-  }
+  return sharedFetchWithTimeout(url, FETCH_TIMEOUT_MS, USER_AGENT);
 }

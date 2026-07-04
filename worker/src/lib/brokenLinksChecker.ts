@@ -16,6 +16,7 @@
 
 import { selectRows, insertRow, updateRows } from "./supabase";
 import { sendEmail } from "./email";
+import { fetchTextWithTimeout, normalizeToOrigin } from "./httpUtils";
 
 const FETCH_TIMEOUT_MS = 10_000;
 const BATCH_SIZE = 10;
@@ -351,23 +352,9 @@ async function sendBrokenLinksAlert(
 // ─── Utils ────────────────────────────────────────────────────
 
 function normalizeBase(url: string): string {
-  try {
-    const p = new URL(url);
-    return `${p.protocol}//${p.host}`;
-  } catch { return url; }
+  return normalizeToOrigin(url);
 }
 
 async function fetchHtml(url: string): Promise<string> {
-  const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  try {
-    const resp = await fetch(url, {
-      signal: controller.signal,
-      headers: { "User-Agent": USER_AGENT },
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    return await resp.text();
-  } finally {
-    clearTimeout(t);
-  }
+  return fetchTextWithTimeout(url, FETCH_TIMEOUT_MS, USER_AGENT);
 }
