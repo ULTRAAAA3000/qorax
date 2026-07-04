@@ -16,6 +16,7 @@ import { FormMonitorPanel } from "./FormMonitorPanel";
 import { SpeedHeatmap } from "./SpeedHeatmap";
 import { StatusPageSection } from "./StatusPageSection";
 import { AlertThresholdSettings } from "./AlertThresholdSettings";
+import { MaintenanceModeToggle } from "./MaintenanceModeToggle";
 import { UptimeBadgeSection } from "./UptimeBadgeSection";
 import { SidebarNavLink } from "./SidebarNavLink";
 import { IncidentTimeline } from "./IncidentTimeline";
@@ -42,7 +43,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   if ("notFound" in data) notFound();
 
   const {
-    site, hostname, accessToken, canUseGsc, statusPageData, alertThresholdMs,
+    site, hostname, accessToken, canUseGsc, statusPageData, alertThresholdMs, maintenanceUntil,
     uptimeChecks, speedChecks, ssl,
     aiInsights, reports, seoAudit, sitemapAudit, competitors,
     competitorChanges, brokenLinks, historyIncidents,
@@ -179,6 +180,14 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
               supabaseUrl={supabaseUrl}
               supabaseAnonKey={supabaseAnonKey}
             />
+            <div style={{ marginTop: 20 }}>
+              <MaintenanceModeToggle
+                siteId={site.id}
+                accessToken={accessToken}
+                initialMaintenanceUntil={maintenanceUntil}
+                workerUrl={workerUrl}
+              />
+            </div>
             <div style={{ marginTop: 20 }}>
               <AlertThresholdSettings
                 siteId={site.id}

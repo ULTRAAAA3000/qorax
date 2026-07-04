@@ -39,6 +39,7 @@ interface SiteRow {
   display_name: string;
   monitoring_enabled: boolean;
   response_time_alert_threshold_ms: number | null;
+  maintenance_until: string | null;
 }
 
 interface OpenIncidentRow {
@@ -63,6 +64,7 @@ export interface UptimeCheckSummary {
   sitesChecked: number;
   sitesUp: number;
   sitesDown: number;
+  sitesInMaintenance?: number;
   incidentsOpened: number;
   incidentsResolved: number;
   alertsSent: number;
@@ -88,7 +90,7 @@ export async function runUptimeChecks(
 
   const sitesResult = await selectRows<SiteRow>(
     "sites",
-    "select=id,url,display_name,monitoring_enabled,response_time_alert_threshold_ms&monitoring_enabled=eq.true",
+    "select=id,url,display_name,monitoring_enabled,response_time_alert_threshold_ms,maintenance_until&monitoring_enabled=eq.true",
     supabaseUrl,
     serviceRoleKey
   );
@@ -179,7 +181,21 @@ async function checkSingleSite(
   );
   if (!sslResult.ok) summary.errors.push(sslResult.error ?? "ssl_certificates upsert failed");
 
-  // 3. Управление инцидентами + email алерты
+  // 3. Перевіряємо режим обслуговування — якщо активний, не створюємо
+  // інциденти і не шлємо алерти (дані вище вже записані як завжди,
+  // щоб не втрачати історію перевірок).
+  const inMaintenance = site.maintenance_until != null &&
+    new Date(site.maintenance_until).getTime() > Date.now();
+
+  if (inMaintenance) {
+    summary.sitesInMaintenance = (summary.sitesInMaintenance ?? 0) + 1;
+    // Якщо є відкритий інцидент з ДО початку обслуговування — закриваємо
+    // його мовчки (без алерту "відновлено"), щоб він не висів вічно.
+    await silentlyCloseIncidentIfMaintenance(site, status, supabaseUrl, serviceRoleKey, summary);
+    return;
+  }
+
+  // 4. Управление инцидентами + email алерты
   await reconcileIncident(
     site,
     status,
@@ -191,7 +207,7 @@ async function checkSingleSite(
     summary
   );
 
-  // 4. Custom поріг часу відповіді (миттєвий, на кожній перевірці).
+  // 5. Custom поріг часу відповіді (миттєвий, на кожній перевірці).
   // Спрацьовує лише якщо сайт "up" (для "down" вже є окремий алерт)
   // і власник задав власний поріг у налаштуваннях сайту.
   if (
@@ -211,6 +227,41 @@ async function checkSingleSite(
       appUrl
     );
   }
+}
+
+// Якщо перед початком обслуговування був відкритий інцидент — закриваємо
+// його без алерту (щоб не рахувати весь час обслуговування як simulated
+// downtime у звітах). Викликається на кожній перевірці поки maintenance
+// активний, тому status тут не використовується для рішення — просто
+// закриваємо будь-який відкритий інцидент одразу, як тільки помічаємо
+// що ввімкнено обслуговування.
+async function silentlyCloseIncidentIfMaintenance(
+  site: SiteRow,
+  _status: "up" | "down",
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  summary: UptimeCheckSummary
+): Promise<void> {
+  const openIncidentResult = await selectRows<OpenIncidentRow>(
+    "uptime_incidents",
+    `select=id,site_id,started_at&site_id=eq.${site.id}&resolved_at=is.null`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (!openIncidentResult.ok || openIncidentResult.data.length === 0) return;
+
+  const openIncident = openIncidentResult.data[0];
+  const resolvedAt = Date.now();
+  const durationSeconds = Math.round((resolvedAt - new Date(openIncident.started_at).getTime()) / 1000);
+
+  const updateResult = await updateRows(
+    "uptime_incidents",
+    `id=eq.${openIncident.id}`,
+    { resolved_at: new Date(resolvedAt).toISOString(), duration_seconds: durationSeconds },
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (updateResult.ok) summary.incidentsResolved++;
 }
 
 async function reconcileIncident(

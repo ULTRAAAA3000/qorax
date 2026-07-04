@@ -15,7 +15,7 @@ interface Incident {
 
 interface StatusData {
   site: { displayName: string; url: string };
-  currentStatus: "up" | "down" | "unknown";
+  currentStatus: "up" | "down" | "unknown" | "maintenance";
   historyDays: number;
   uptimePct7d: number;
   avgSpeedMs: number | null;
@@ -55,11 +55,12 @@ function fmtMs(ms: number): string {
 
 // ─── Components ───────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: "up" | "down" | "unknown" }) {
+function StatusBadge({ status }: { status: "up" | "down" | "unknown" | "maintenance" }) {
   const cfg = {
     up: { color: "#d6ff3f", bg: "rgba(214,255,63,0.08)", border: "rgba(214,255,63,0.2)", dot: "#d6ff3f", label: "Працює" },
     down: { color: "#F5675A", bg: "rgba(245,103,90,0.1)", border: "rgba(245,103,90,0.3)", dot: "#F5675A", label: "Недоступний" },
     unknown: { color: "#6e6e73", bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.08)", dot: "#6e6e73", label: "Невідомо" },
+    maintenance: { color: "#F5A623", bg: "rgba(245,166,35,0.08)", border: "rgba(245,166,35,0.25)", dot: "#F5A623", label: "На обслуговуванні" },
   }[status];
 
   return (
@@ -71,7 +72,7 @@ function StatusBadge({ status }: { status: "up" | "down" | "unknown" }) {
       <span style={{
         width: 8, height: 8, borderRadius: "50%",
         background: cfg.dot,
-        boxShadow: status === "up" ? `0 0 8px ${cfg.dot}` : status === "down" ? `0 0 8px ${cfg.dot}` : "none",
+        boxShadow: status === "up" || status === "maintenance" ? `0 0 8px ${cfg.dot}` : status === "down" ? `0 0 8px ${cfg.dot}` : "none",
         animation: status !== "unknown" ? "pulse 2s ease-in-out infinite" : "none",
       }} />
       <span style={{ fontSize: 14, fontWeight: 600, color: cfg.color }}>{cfg.label}</span>

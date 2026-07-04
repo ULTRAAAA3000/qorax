@@ -525,17 +525,20 @@ const worker = {
 
       // Знаходимо сайт за slug
       const siteResp = await fetch(
-        `${env.SUPABASE_URL}/rest/v1/sites?select=id,url,display_name,status_page_enabled,organization_id&status_page_slug=eq.${encodeURIComponent(slug)}&limit=1`,
+        `${env.SUPABASE_URL}/rest/v1/sites?select=id,url,display_name,status_page_enabled,organization_id,maintenance_until&status_page_slug=eq.${encodeURIComponent(slug)}&limit=1`,
         { headers: h }
       );
       if (!siteResp.ok) return json({ error: "Server error" }, 500, origin);
       const sites = await siteResp.json() as Array<{
-        id: string; url: string; display_name: string; status_page_enabled: boolean; organization_id: string;
+        id: string; url: string; display_name: string; status_page_enabled: boolean; organization_id: string; maintenance_until: string | null;
       }>;
       const site = sites[0];
       if (!site || !site.status_page_enabled) {
         return json({ error: "Сторінку статусу не знайдено" }, 404, origin);
       }
+
+      const isInMaintenance = site.maintenance_until != null &&
+        new Date(site.maintenance_until).getTime() > Date.now();
 
       const siteId = site.id;
 
@@ -581,9 +584,12 @@ const worker = {
       const upChecks = checks.filter(c => c.status === "up").length;
       const uptimePctPeriod = totalChecks > 0 ? (upChecks / totalChecks) * 100 : 100;
 
-      // Поточний статус (останні 2 перевірки)
+      // Поточний статус (останні 2 перевірки). Якщо активне обслуговування —
+      // показуємо його незалежно від фактичного стану сайту.
       const recentChecks = checks.slice(0, 2);
-      const currentStatus = recentChecks.length === 0
+      const currentStatus: "up" | "down" | "unknown" | "maintenance" = isInMaintenance
+        ? "maintenance"
+        : recentChecks.length === 0
         ? "unknown"
         : recentChecks[0].status === "up" ? "up" : "down";
 
@@ -725,6 +731,47 @@ const worker = {
       }
       const updated = await patchResp.json() as Array<{ response_time_alert_threshold_ms: number | null }>;
       return json({ ok: true, thresholdMs: updated[0]?.response_time_alert_threshold_ms ?? null }, 200, origin);
+    }
+
+    // PATCH /api/sites/:id/maintenance — увімкнути/вимкнути режим обслуговування
+    const maintenanceMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/maintenance$/);
+    if (maintenanceMatch && request.method === "PATCH") {
+      const siteId = maintenanceMatch[1];
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      // body.durationMinutes: увімкнути на N хвилин від зараз (null/0 = вимкнути одразу)
+      const body = await request.json() as { durationMinutes?: number | null };
+
+      let maintenanceUntil: string | null = null;
+      if (body.durationMinutes != null && body.durationMinutes > 0) {
+        if (body.durationMinutes > 24 * 60) {
+          return json({ error: "Максимум 24 години обслуговування за раз" }, 400, origin);
+        }
+        maintenanceUntil = new Date(Date.now() + body.durationMinutes * 60 * 1000).toISOString();
+      }
+
+      const h = {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      };
+
+      const patchResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/sites?id=eq.${siteId}`,
+        { method: "PATCH", headers: h, body: JSON.stringify({ maintenance_until: maintenanceUntil }) }
+      );
+      if (!patchResp.ok) {
+        const err = await patchResp.text();
+        return json({ error: err }, 400, origin);
+      }
+      const updated = await patchResp.json() as Array<{ maintenance_until: string | null }>;
+      return json({ ok: true, maintenanceUntil: updated[0]?.maintenance_until ?? null }, 200, origin);
     }
 
     // ── Multi-URL speed monitoring ────────────────────────────────────────────
