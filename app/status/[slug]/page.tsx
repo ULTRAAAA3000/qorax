@@ -20,6 +20,7 @@
 export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { StatusPageClient } from "./StatusPageClient";
 
 interface StatusData {
@@ -34,10 +35,10 @@ interface StatusData {
   generatedAt: string;
 }
 
-async function fetchStatusData(slug: string): Promise<{ data: StatusData | null; debug: string }> {
+async function fetchStatusData(slug: string): Promise<StatusData | null> {
   const path = `/api/status/${encodeURIComponent(slug)}`;
 
-  // 1) Пробуємо Service Binding (працює на Cloudflare — обходить error 1042)
+  // 1) Service Binding (працює на Cloudflare — обходить error 1042)
   try {
     const { getCloudflareContext } = await import("@opennextjs/cloudflare");
     const ctx = await getCloudflareContext({ async: true });
@@ -48,34 +49,29 @@ async function fetchStatusData(slug: string): Promise<{ data: StatusData | null;
     if (apiWorker) {
       const res = await apiWorker.fetch(`https://qorax-api.internal${path}`);
       if (!res.ok) {
-        const body = await res.text().catch(() => "");
-        return { data: null, debug: `[binding] status=${res.status} body=${body.slice(0, 300)}` };
+        console.error(`[status/${slug}] binding responded ${res.status}`);
+        return null;
       }
-      const data = (await res.json()) as StatusData;
-      return { data, debug: "" };
+      return (await res.json()) as StatusData;
     }
   } catch (err) {
-    // Binding недоступний (локальна розробка без wrangler dev, або інша помилка) —
+    // Binding недоступний (локальна розробка без wrangler dev) —
     // падаємо на звичайний fetch нижче.
     console.error(`[status/${slug}] service binding failed:`, err instanceof Error ? err.message : err);
   }
 
   // 2) Фолбек — звичайний fetch за публічним URL (локальна розробка)
   const workerUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
-  const fetchUrl = `${workerUrl}${path}`;
   try {
-    const res = await fetch(fetchUrl, { cache: "no-store" });
+    const res = await fetch(`${workerUrl}${path}`, { cache: "no-store" });
     if (!res.ok) {
-      const body = await res.text().catch(() => "");
-      return { data: null, debug: `[fetch] url=${fetchUrl} status=${res.status} body=${body.slice(0, 300)}` };
+      console.error(`[status/${slug}] fetch responded ${res.status}`);
+      return null;
     }
-    const data = (await res.json()) as StatusData;
-    return { data, debug: "" };
+    return (await res.json()) as StatusData;
   } catch (err) {
-    return {
-      data: null,
-      debug: `[fetch] url=${fetchUrl} EXCEPTION: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`,
-    };
+    console.error(`[status/${slug}] fetch failed:`, err instanceof Error ? err.message : err);
+    return null;
   }
 }
 
@@ -83,7 +79,7 @@ export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
   const { slug } = await params;
-  const { data } = await fetchStatusData(slug);
+  const data = await fetchStatusData(slug);
   if (!data) return { title: "Сторінка статусу — Qorax" };
   return {
     title: `Статус ${data.site.displayName} — Qorax`,
@@ -95,18 +91,7 @@ export default async function StatusPage(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const { data, debug } = await fetchStatusData(slug);
-  if (!data) {
-    // ТИМЧАСОВИЙ debug-вивід замість notFound() — щоб побачити точну
-    // причину помилки на проді без доступу до Cloudflare логів.
-    // TODO: прибрати після діагностики і повернути notFound().
-    return (
-      <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#f5f5f7", padding: 40, fontFamily: "monospace", fontSize: 13 }}>
-        <p style={{ color: "#F5675A", fontWeight: 700, marginBottom: 12 }}>DEBUG: не вдалося завантажити дані статус-сторінки</p>
-        <p>slug: {slug}</p>
-        <p style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{debug}</p>
-      </div>
-    );
-  }
+  const data = await fetchStatusData(slug);
+  if (!data) notFound();
   return <StatusPageClient data={data} />;
 }
