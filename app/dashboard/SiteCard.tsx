@@ -12,6 +12,7 @@ export function SiteCard({
   index: number;
 }) {
   const [hovered, setHovered] = useState(false);
+  const [faviconFailed, setFaviconFailed] = useState(false);
 
   let hostname = site.url;
   try { hostname = new URL(site.url).hostname; } catch { /* keep */ }
@@ -36,17 +37,40 @@ export function SiteCard({
     >
       <div className="flex items-center gap-4 min-w-0">
         <div className="relative shrink-0">
+          {!faviconFailed ? (
+            <div
+              className="h-9 w-9 rounded-lg flex items-center justify-center overflow-hidden"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)" }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element -- зовнішній favicon, не потребує оптимізації next/image */}
+              <img
+                src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(hostname)}&sz=64`}
+                alt=""
+                width={20}
+                height={20}
+                onError={() => setFaviconFailed(true)}
+              />
+            </div>
+          ) : (
+            <div
+              className="h-9 w-9 rounded-lg flex items-center justify-center text-xs font-semibold"
+              style={{ background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-tertiary)" }}
+            >
+              {site.display_name.charAt(0).toUpperCase()}
+            </div>
+          )}
           <div
-            className="h-2.5 w-2.5 rounded-full"
+            className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full"
             style={{
               background: site.monitoring_enabled ? "var(--lime)" : "var(--text-tertiary)",
-              boxShadow: `0 0 8px ${glowColor}`,
+              boxShadow: `0 0 6px ${glowColor}`,
+              border: "2px solid var(--bg)",
             }}
           />
           {site.monitoring_enabled && (
             <div
-              className="absolute inset-0 rounded-full animate-ping"
-              style={{ background: "var(--lime)", opacity: 0.2 }}
+              className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full animate-ping"
+              style={{ background: "var(--lime)", opacity: 0.3 }}
             />
           )}
         </div>
