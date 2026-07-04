@@ -13,7 +13,6 @@
 export const dynamic = "force-dynamic";
 
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
 import { StatusPageClient } from "./StatusPageClient";
 
 interface StatusData {
@@ -28,20 +27,22 @@ interface StatusData {
   generatedAt: string;
 }
 
-async function fetchStatusData(slug: string): Promise<StatusData | null> {
+async function fetchStatusData(slug: string): Promise<{ data: StatusData | null; debug: string }> {
   const workerUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
+  const fetchUrl = `${workerUrl}/api/status/${encodeURIComponent(slug)}`;
   try {
-    const res = await fetch(`${workerUrl}/api/status/${encodeURIComponent(slug)}`, {
-      cache: "no-store",
-    });
+    const res = await fetch(fetchUrl, { cache: "no-store" });
     if (!res.ok) {
-      console.error(`[status/${slug}] worker responded ${res.status}`);
-      return null;
+      const body = await res.text().catch(() => "");
+      return { data: null, debug: `url=${fetchUrl} status=${res.status} body=${body.slice(0, 300)}` };
     }
-    return res.json();
+    const data = (await res.json()) as StatusData;
+    return { data, debug: "" };
   } catch (err) {
-    console.error(`[status/${slug}] fetch failed:`, err instanceof Error ? err.message : err);
-    return null;
+    return {
+      data: null,
+      debug: `url=${fetchUrl} EXCEPTION: ${err instanceof Error ? `${err.name}: ${err.message}` : String(err)}`,
+    };
   }
 }
 
@@ -49,7 +50,7 @@ export async function generateMetadata(
   { params }: { params: Promise<{ slug: string }> }
 ): Promise<Metadata> {
   const { slug } = await params;
-  const data = await fetchStatusData(slug);
+  const { data } = await fetchStatusData(slug);
   if (!data) return { title: "Сторінка статусу — Qorax" };
   return {
     title: `Статус ${data.site.displayName} — Qorax`,
@@ -61,7 +62,18 @@ export default async function StatusPage(
   { params }: { params: Promise<{ slug: string }> }
 ) {
   const { slug } = await params;
-  const data = await fetchStatusData(slug);
-  if (!data) notFound();
+  const { data, debug } = await fetchStatusData(slug);
+  if (!data) {
+    // ТИМЧАСОВИЙ debug-вивід замість notFound() — щоб побачити точну
+    // причину помилки на проді без доступу до Cloudflare логів.
+    // TODO: прибрати після діагностики і повернути notFound().
+    return (
+      <div style={{ minHeight: "100vh", background: "#0a0a0a", color: "#f5f5f7", padding: 40, fontFamily: "monospace", fontSize: 13 }}>
+        <p style={{ color: "#F5675A", fontWeight: 700, marginBottom: 12 }}>DEBUG: не вдалося завантажити дані статус-сторінки</p>
+        <p>slug: {slug}</p>
+        <p style={{ whiteSpace: "pre-wrap", wordBreak: "break-all" }}>{debug}</p>
+      </div>
+    );
+  }
   return <StatusPageClient data={data} />;
 }
