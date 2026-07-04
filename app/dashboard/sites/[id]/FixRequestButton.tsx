@@ -110,7 +110,7 @@ export function FixRequestButton({ siteId, insightId, prefillDescription, varian
         >
           <div
             className="w-full max-w-md rounded-2xl p-6"
-            style={{ background: "var(--bg-raised)", border: "1px solid var(--border-hairline)" }}
+            style={{ background: "#0F1420", border: "1px solid var(--border-hairline)" }}
             onClick={e => e.stopPropagation()}
           >
             {success ? (

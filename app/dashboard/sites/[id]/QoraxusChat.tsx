@@ -376,7 +376,7 @@ export function QoraxusChat({
             <div
               className="fixed inset-0 z-50 flex flex-col sm:inset-auto sm:bottom-5 sm:right-5"
               style={{
-                background: "var(--bg-raised)",
+                background: "#0F1420",
                 border: "1px solid var(--border-hairline)",
                 boxShadow: "0 0 0 1px rgba(255,255,255,0.04), 0 24px 64px rgba(0,0,0,0.5)",
               }}
