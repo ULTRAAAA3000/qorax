@@ -40,6 +40,17 @@ export async function getSiteDetailData(id: string) {
     statusPageData = spRes.data ?? null;
   } catch { /* columns not yet migrated */ }
 
+  // Окремий запит для порогу алертів (міграція 0030 може бути ще не запущена)
+  let alertThresholdMs: number | null = null;
+  try {
+    const atRes = await supabase
+      .from("sites")
+      .select("response_time_alert_threshold_ms")
+      .eq("id", id)
+      .maybeSingle();
+    alertThresholdMs = atRes.data?.response_time_alert_threshold_ms ?? null;
+  } catch { /* column not yet migrated */ }
+
   const { data: membership } = await supabase
     .from("organization_members")
     .select("organization_id")
@@ -139,7 +150,7 @@ export async function getSiteDetailData(id: string) {
   })();
 
   return {
-    site, hostname, accessToken, canUseGsc, statusPageData,
+    site, hostname, accessToken, canUseGsc, statusPageData, alertThresholdMs,
     uptimeChecks, openIncidents, speedChecks, cwvChecks, ssl,
     aiInsights, reports, seoAudit, sitemapAudit, competitors,
     competitorChanges, brokenLinks, historyIncidents,

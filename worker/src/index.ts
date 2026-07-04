@@ -669,6 +669,49 @@ const worker = {
       return json({ ok: true, slug: updated[0]?.status_page_slug, enabled: updated[0]?.status_page_enabled }, 200, origin);
     }
 
+    // PATCH /api/sites/:id/alert-threshold — власний поріг часу відповіді
+    const thresholdMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/alert-threshold$/);
+    if (thresholdMatch && request.method === "PATCH") {
+      const siteId = thresholdMatch[1];
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      const body = await request.json() as { thresholdMs?: number | null };
+
+      // Валідація: null (вимкнено) або число від 500мс до 60000мс (60с)
+      if (body.thresholdMs !== null && body.thresholdMs !== undefined) {
+        if (typeof body.thresholdMs !== "number" || body.thresholdMs < 500 || body.thresholdMs > 60000) {
+          return json({ error: "Поріг має бути від 500 до 60000 мс" }, 400, origin);
+        }
+      }
+
+      const h = {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      };
+
+      const patchResp = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/sites?id=eq.${siteId}`,
+        {
+          method: "PATCH",
+          headers: h,
+          body: JSON.stringify({ response_time_alert_threshold_ms: body.thresholdMs ?? null }),
+        }
+      );
+      if (!patchResp.ok) {
+        const err = await patchResp.text();
+        return json({ error: err }, 400, origin);
+      }
+      const updated = await patchResp.json() as Array<{ response_time_alert_threshold_ms: number | null }>;
+      return json({ ok: true, thresholdMs: updated[0]?.response_time_alert_threshold_ms ?? null }, 200, origin);
+    }
+
     // ── Multi-URL speed monitoring ────────────────────────────────────────────
     const monitoredUrlsMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/monitored-urls$/);
     if (monitoredUrlsMatch) {

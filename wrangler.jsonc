@@ -9,11 +9,15 @@
     "binding": "ASSETS",
     "run_worker_first": true
   },
+  "services": [
+    { "binding": "API_WORKER", "service": "qorax-api" }
+  ],
   "observability": {
     "enabled": true
   },
   "vars": {
     "NEXT_PUBLIC_API_URL": "https://qorax-api.mrcru96.workers.dev",
+    "NEXT_PUBLIC_APP_URL": "https://qorax.mrcru96.workers.dev",
     "NEXT_PUBLIC_SUPABASE_URL": "https://hfyetlipxjqogbpntoif.supabase.co",
     "NEXT_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_JFQRmmeToz6mhGtXmFQgAw_QCai1-Ge",
     "LS_STORE_SUBDOMAIN": "qoraxus",

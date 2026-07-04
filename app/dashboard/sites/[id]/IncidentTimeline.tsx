@@ -141,10 +141,12 @@ export function IncidentTimeline({ incidents, isUp }: Props) {
         <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
           {incidents.map((incident, idx) => {
             const isOpen = !incident.resolved_at;
-            const duration = incident.duration_seconds
+            const duration = incident.duration_seconds != null
               ? fmtDuration(incident.duration_seconds)
               : isOpen
               ? `${Math.round((Date.now() - new Date(incident.started_at).getTime()) / 60000)} хв (триває)`
+              : incident.resolved_at
+              ? fmtDuration(Math.round((new Date(incident.resolved_at).getTime() - new Date(incident.started_at).getTime()) / 1000))
               : "—";
 
             const dotColor = isOpen ? "#F5675A" : "rgba(255,255,255,0.2)";

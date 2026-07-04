@@ -15,6 +15,7 @@ import { MultiUrlPanel } from "./MultiUrlPanel";
 import { FormMonitorPanel } from "./FormMonitorPanel";
 import { SpeedHeatmap } from "./SpeedHeatmap";
 import { StatusPageSection } from "./StatusPageSection";
+import { AlertThresholdSettings } from "./AlertThresholdSettings";
 import { UptimeBadgeSection } from "./UptimeBadgeSection";
 import { SidebarNavLink } from "./SidebarNavLink";
 import { IncidentTimeline } from "./IncidentTimeline";
@@ -41,7 +42,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
   if ("notFound" in data) notFound();
 
   const {
-    site, hostname, accessToken, canUseGsc, statusPageData,
+    site, hostname, accessToken, canUseGsc, statusPageData, alertThresholdMs,
     uptimeChecks, speedChecks, ssl,
     aiInsights, reports, seoAudit, sitemapAudit, competitors,
     competitorChanges, brokenLinks, historyIncidents,
@@ -167,7 +168,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
         </aside>
 
         {/* ── Main content ── */}
-        <main className="flex-1 min-w-0 px-5 sm:px-8 py-6 space-y-4" style={{ maxWidth: 880 }}>
+        <main className="flex-1 min-w-0 px-5 sm:px-8 py-6 space-y-4 mx-auto" style={{ maxWidth: 880 }}>
 
           {/* ── Uptime ── */}
           <Section id="uptime" icon={<Activity size={14} />} title="Живий моніторинг">
@@ -178,6 +179,14 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
               supabaseUrl={supabaseUrl}
               supabaseAnonKey={supabaseAnonKey}
             />
+            <div style={{ marginTop: 20 }}>
+              <AlertThresholdSettings
+                siteId={site.id}
+                accessToken={accessToken}
+                initialThresholdMs={alertThresholdMs}
+                workerUrl={workerUrl}
+              />
+            </div>
           </Section>
 
           {/* ── Incident Timeline ── */}
@@ -449,7 +458,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
               initialEnabled={!!(statusPageData?.status_page_enabled)}
               initialSlug={statusPageData?.status_page_slug ?? null}
               workerUrl={workerUrl}
-              appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.app"}
+              appUrl={process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev"}
             />
           </Section>
 
@@ -459,9 +468,21 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           </Section>
 
         </main>
+
+        {/* ── AI Chat panel (right, desktop only) ── */}
+        <aside className="hidden xl:flex flex-col shrink-0 sticky top-14"
+          style={{
+            width: 340,
+            height: "calc(100vh - 56px)",
+            background: "rgba(255,255,255,0.015)",
+            borderLeft: "1px solid rgba(255,255,255,0.06)",
+          }}>
+          <QoraxusChat siteId={site.id} siteName={site.display_name} accessToken={accessToken} mode="desktop" />
+        </aside>
       </div>
 
-      <QoraxusChat siteId={site.id} siteName={site.display_name} accessToken={accessToken} />
+      {/* ── AI Chat floating button + popup (mobile/tablet only) ── */}
+      <QoraxusChat siteId={site.id} siteName={site.display_name} accessToken={accessToken} mode="mobile" />
     </div>
   );
 }
