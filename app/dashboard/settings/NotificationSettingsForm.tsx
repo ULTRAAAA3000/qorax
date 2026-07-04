@@ -2,13 +2,15 @@
 
 import { useState, useEffect, useRef } from "react";
 import { createClient } from "@/app/lib/supabase/client";
-import { Bell, Mail, Send, Lock, CheckCircle2, Loader2 } from "lucide-react";
+import { Bell, Mail, Send, Lock, CheckCircle2, Loader2, MessageSquare } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 
 interface NotifSettings {
   email_enabled: boolean;
   telegram_enabled: boolean;
   telegram_chat_id: string | null;
+  slack_enabled: boolean;
+  slack_webhook_url: string | null;
   notify_site_down: boolean;
   notify_ssl_domain_expiry: boolean;
   notify_broken_links: boolean;
@@ -34,11 +36,18 @@ export function NotificationSettingsForm({
     email_enabled: initialSettings?.email_enabled ?? true,
     telegram_enabled: initialSettings?.telegram_enabled ?? false,
     telegram_chat_id: initialSettings?.telegram_chat_id ?? null,
+    slack_enabled: initialSettings?.slack_enabled ?? false,
+    slack_webhook_url: initialSettings?.slack_webhook_url ?? null,
     notify_site_down: initialSettings?.notify_site_down ?? true,
     notify_ssl_domain_expiry: initialSettings?.notify_ssl_domain_expiry ?? true,
     notify_broken_links: initialSettings?.notify_broken_links ?? true,
     notify_speed_degraded: initialSettings?.notify_speed_degraded ?? true,
   });
+
+  const [slackUrlInput, setSlackUrlInput] = useState(initialSettings?.slack_webhook_url ?? "");
+  const [slackSaving, setSlackSaving] = useState(false);
+  const [slackSaved, setSlackSaved] = useState(false);
+  const [slackError, setSlackError] = useState<string | null>(null);
 
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -150,6 +159,8 @@ export function NotificationSettingsForm({
             email_enabled: settings.email_enabled,
             telegram_enabled: isTelegramAvailable ? settings.telegram_enabled : false,
             telegram_chat_id: isTelegramAvailable ? settings.telegram_chat_id : null,
+            slack_enabled: isTelegramAvailable ? settings.slack_enabled : false,
+            slack_webhook_url: isTelegramAvailable ? settings.slack_webhook_url : null,
             notify_site_down: settings.notify_site_down,
             notify_ssl_domain_expiry: settings.notify_ssl_domain_expiry,
             notify_broken_links: settings.notify_broken_links,
@@ -167,6 +178,61 @@ export function NotificationSettingsForm({
       setError("Щось пішло не так, спробуйте ще раз.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function handleSaveSlackWebhook() {
+    setSlackSaving(true);
+    setSlackError(null);
+    setSlackSaved(false);
+    const trimmed = slackUrlInput.trim();
+
+    if (trimmed && !trimmed.startsWith("https://hooks.slack.com/")) {
+      setSlackError("Це не схоже на Slack Incoming Webhook URL");
+      setSlackSaving(false);
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+      const { error: upsertError } = await supabase
+        .from("notification_settings")
+        .upsert(
+          {
+            organization_id: organizationId,
+            slack_enabled: !!trimmed,
+            slack_webhook_url: trimmed || null,
+          },
+          { onConflict: "organization_id" }
+        );
+      if (upsertError) {
+        setSlackError("Помилка збереження: " + upsertError.message);
+      } else {
+        setSettings(prev => ({ ...prev, slack_enabled: !!trimmed, slack_webhook_url: trimmed || null }));
+        setSlackSaved(true);
+        setTimeout(() => setSlackSaved(false), 3000);
+      }
+    } catch {
+      setSlackError("Щось пішло не так, спробуйте ще раз.");
+    } finally {
+      setSlackSaving(false);
+    }
+  }
+
+  async function handleDisconnectSlack() {
+    setSlackSaving(true);
+    try {
+      const supabase = createClient();
+      await supabase
+        .from("notification_settings")
+        .upsert(
+          { organization_id: organizationId, slack_enabled: false, slack_webhook_url: null },
+          { onConflict: "organization_id" }
+        );
+      setSettings(prev => ({ ...prev, slack_enabled: false, slack_webhook_url: null }));
+      setSlackUrlInput("");
+    } finally {
+      setSlackSaving(false);
     }
   }
 
@@ -275,6 +341,74 @@ export function NotificationSettingsForm({
               <span className="font-mono" style={{ color: "var(--cyan)" }}>@{telegramBotName}</span>.
               Натисніть START — і алерти налаштуються автоматично, без зайвих кроків.
             </p>
+          </div>
+        )}
+      </div>
+
+      {/* Slack block */}
+      <div className="mb-6">
+        <div className="flex items-center gap-2 mb-3">
+          <MessageSquare size={15} className="text-[var(--text-tertiary)]" />
+          <span className="text-sm font-medium">Slack сповіщення</span>
+          {!isTelegramAvailable && (
+            <span
+              className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-md"
+              style={{ background: "var(--bg)", border: "1px solid var(--border-hairline)", color: "var(--text-tertiary)" }}
+            >
+              <Lock size={10} /> Growth
+            </span>
+          )}
+        </div>
+
+        {!isTelegramAvailable ? (
+          <p className="text-xs text-[var(--text-tertiary)] pl-6">
+            Slack алерти доступні з тарифу Growth. Зараз: {planName}.
+          </p>
+        ) : settings.slack_enabled && settings.slack_webhook_url ? (
+          /* ── Підключено ── */
+          <div className="pl-6 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <CheckCircle2 size={15} style={{ color: "var(--lime)" }} className="shrink-0" />
+              <span className="text-sm" style={{ color: "var(--lime)" }}>Slack підключено</span>
+              <span className="text-xs font-mono text-[var(--text-tertiary)] truncate">
+                {settings.slack_webhook_url.replace(/^https:\/\//, "").slice(0, 28)}…
+              </span>
+            </div>
+            <button
+              onClick={handleDisconnectSlack}
+              disabled={slackSaving}
+              className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors disabled:opacity-50 shrink-0"
+            >
+              {slackSaving ? "Відключення..." : "Відключити"}
+            </button>
+          </div>
+        ) : (
+          /* ── Налаштування webhook URL ── */
+          <div className="pl-6 space-y-2.5">
+            <p className="text-xs text-[var(--text-tertiary)]">
+              Створіть Incoming Webhook у налаштуваннях вашого Slack workspace
+              і вставте URL сюди.
+            </p>
+            <div className="flex items-center gap-2">
+              <input
+                type="text"
+                value={slackUrlInput}
+                onChange={(e) => setSlackUrlInput(e.target.value)}
+                placeholder="https://hooks.slack.com/services/..."
+                className="flex-1 min-w-0 text-sm rounded-lg px-3 py-2 bg-transparent outline-none"
+                style={{ border: "1px solid var(--border-hairline)", color: "var(--text-primary)" }}
+              />
+              <button
+                onClick={handleSaveSlackWebhook}
+                disabled={slackSaving || !slackUrlInput.trim()}
+                className="shrink-0 text-sm font-medium px-3.5 py-2 rounded-lg transition-opacity hover:opacity-80 disabled:opacity-40"
+                style={{ background: "rgba(140,246,255,0.1)", border: "1px solid rgba(140,246,255,0.2)", color: "var(--cyan)" }}
+              >
+                {slackSaving ? "Збереження..." : "Підключити"}
+              </button>
+            </div>
+            {slackError && <p className="text-xs" style={{ color: "#F5675A" }}>{slackError}</p>}
+            {slackSaved && <p className="text-xs" style={{ color: "var(--lime)" }}>✓ Slack підключено</p>}
           </div>
         )}
       </div>

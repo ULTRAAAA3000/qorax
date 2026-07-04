@@ -25,6 +25,12 @@ import {
   buildSiteRecoveredTelegram,
   buildSslExpiryTelegram,
 } from "./telegram";
+import {
+  sendSlackMessage,
+  buildSiteDownSlack,
+  buildSiteRecoveredSlack,
+  buildSslExpirySlack,
+} from "./slack";
 import { generateSiteInsights } from "./aiInsights";
 
 interface SiteRow {
@@ -47,6 +53,8 @@ interface OrgEmailRow {
   email_enabled: boolean;
   telegram_enabled: boolean;
   telegram_chat_id: string | null;
+  slack_enabled: boolean;
+  slack_webhook_url: string | null;
 }
 
 export interface UptimeCheckSummary {
@@ -274,11 +282,13 @@ async function getOrgNotifSettings(
     email_enabled: boolean;
     telegram_enabled: boolean;
     telegram_chat_id: string | null;
+    slack_enabled: boolean;
+    slack_webhook_url: string | null;
     notify_site_down: boolean;
     notify_ssl_domain_expiry: boolean;
   }>(
     "notification_settings",
-    `select=email_enabled,telegram_enabled,telegram_chat_id,notify_site_down,notify_ssl_domain_expiry&organization_id=eq.${orgId}`,
+    `select=email_enabled,telegram_enabled,telegram_chat_id,slack_enabled,slack_webhook_url,notify_site_down,notify_ssl_domain_expiry&organization_id=eq.${orgId}`,
     supabaseUrl,
     serviceRoleKey
   );
@@ -311,6 +321,8 @@ async function getOrgNotifSettings(
       email_enabled: s?.email_enabled ?? true,
       telegram_enabled: s?.telegram_enabled ?? false,
       telegram_chat_id: s?.telegram_chat_id ?? null,
+      slack_enabled: s?.slack_enabled ?? false,
+      slack_webhook_url: s?.slack_webhook_url ?? null,
       notify_site_down: s?.notify_site_down ?? true,
       notify_ssl_domain_expiry: s?.notify_ssl_domain_expiry ?? true,
     };
@@ -327,6 +339,7 @@ async function dispatchAlert(
   settings: OrgEmailRow,
   email: { subject: string; html: string } | null,
   telegramText: string | null,
+  slackText: string | null,
   resendApiKey: string,
   telegramBotToken: string
 ): Promise<boolean> {
@@ -342,6 +355,12 @@ async function dispatchAlert(
     const r = await sendTelegramMessage(settings.telegram_chat_id, telegramText, telegramBotToken);
     if (r.ok) sent = true;
     else console.error("Telegram alert failed:", r.error);
+  }
+
+  if (settings.slack_enabled && settings.slack_webhook_url && slackText) {
+    const r = await sendSlackMessage(settings.slack_webhook_url, slackText);
+    if (r.ok) sent = true;
+    else console.error("Slack alert failed:", r.error);
   }
 
   return sent;
@@ -375,7 +394,15 @@ async function sendDownAlert(
       })
     : null;
 
-  return dispatchAlert(settings, email, telegramText, resendApiKey, telegramBotToken);
+  const slackText = settings.slack_enabled && settings.slack_webhook_url
+    ? buildSiteDownSlack({
+        siteDisplayName: site.display_name,
+        siteUrl: site.url,
+        dashboardUrl: `${appUrl}/dashboard`,
+      })
+    : null;
+
+  return dispatchAlert(settings, email, telegramText, slackText, resendApiKey, telegramBotToken);
 }
 
 async function sendRecoveredAlert(
@@ -408,7 +435,16 @@ async function sendRecoveredAlert(
       })
     : null;
 
-  return dispatchAlert(settings, email, telegramText, resendApiKey, telegramBotToken);
+  const slackText = settings.slack_enabled && settings.slack_webhook_url
+    ? buildSiteRecoveredSlack({
+        siteDisplayName: site.display_name,
+        siteUrl: site.url,
+        downtimeDurationMinutes: durationMinutes,
+        dashboardUrl: `${appUrl}/dashboard`,
+      })
+    : null;
+
+  return dispatchAlert(settings, email, telegramText, slackText, resendApiKey, telegramBotToken);
 }
 
 // SSL expiry checks — вызывается из runUptimeChecks раз в сутки
@@ -470,7 +506,16 @@ export async function checkSslExpiry(
         })
       : null;
 
-    await dispatchAlert(settings, email, telegramText, resendApiKey, telegramBotToken);
+    const slackText = settings.slack_enabled && settings.slack_webhook_url
+      ? buildSslExpirySlack({
+          siteDisplayName: site.display_name,
+          siteUrl: site.url,
+          daysLeft: ssl.days_until_expiry,
+          dashboardUrl: `${appUrl}/dashboard`,
+        })
+      : null;
+
+    await dispatchAlert(settings, email, telegramText, slackText, resendApiKey, telegramBotToken);
 
     await updateRows(
       "ssl_certificates",
@@ -1099,11 +1144,13 @@ export async function checkSpeedDegradation(
 </body>
 </html>`;
   const telegramText = `⚡ *Швидкість впала* — ${site.display_name}\n\nПоточна: *${fmtMs(currentSpeedMs)}*\nНорма (7 днів): ${fmtMs(Math.round(avg))}\n\n[Відкрити дашборд](${dashboardUrl})`;
+  const slackText = `:zap: *Швидкість впала* — ${site.display_name}\n\nПоточна: *${fmtMs(currentSpeedMs)}*\nНорма (7 днів): ${fmtMs(Math.round(avg))}\n\n<${dashboardUrl}|Відкрити дашборд>`;
 
   await dispatchAlert(
     settings,
     settings.email_enabled ? { subject, html } : null,
     settings.telegram_enabled && settings.telegram_chat_id ? telegramText : null,
+    settings.slack_enabled && settings.slack_webhook_url ? slackText : null,
     resendApiKey,
     telegramBotToken
   );
