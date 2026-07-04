@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { AdminPanel } from "./AdminPanel";
 import { UsersTable } from "./UsersTable";
 import { AdminStats } from "./AdminStats";
+import { FixRequestsPanel } from "./FixRequestsPanel";
 
 export const metadata = { title: "Адмін панель — Qorax" };
 
@@ -55,6 +56,9 @@ export default async function AdminPage() {
 
         {/* Клієнти */}
         <UsersTable accessToken={accessToken} workerUrl={workerUrl} />
+
+        {/* Заявки на виправлення */}
+        <FixRequestsPanel accessToken={accessToken} workerUrl={workerUrl} />
 
         {/* Ручний запуск */}
         <AdminPanel />

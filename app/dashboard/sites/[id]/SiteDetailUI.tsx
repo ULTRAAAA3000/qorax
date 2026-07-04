@@ -1,4 +1,5 @@
 import { AlertTriangle, CheckCircle, Clock, ChevronRight, FileText } from "lucide-react";
+import { FixRequestButton } from "./FixRequestButton";
 
 function scoreColor(score: number | null): string {
   if (score === null) return "var(--text-tertiary)";
@@ -216,11 +217,13 @@ export function SitemapCell({ label, found, value, danger }: { label: string; fo
 
 // ─── AI Insight ────────────────────────────────────────────────
 
-export function InsightCard({ insight }: {
+export function InsightCard({ insight, siteId, canOrderFix }: {
   insight: {
-    severity: string; problem_summary: string; plain_explanation: string;
+    id?: string; severity: string; problem_summary: string; plain_explanation: string;
     estimated_monthly_loss_usd: number | null; recommendation: string;
   };
+  siteId?: string;
+  canOrderFix?: boolean;
 }) {
   const crit = insight.severity === "critical";
   const warn = insight.severity === "warning";
@@ -245,6 +248,16 @@ export function InsightCard({ insight }: {
       <p className="text-xs mt-3 flex items-center gap-1" style={{ color: "var(--text-tertiary)" }}>
         <ChevronRight size={11} />{insight.recommendation}
       </p>
+      {canOrderFix && siteId && (
+        <div className="mt-3">
+          <FixRequestButton
+            siteId={siteId}
+            insightId={insight.id}
+            prefillDescription={`${insight.problem_summary}\n\n${insight.recommendation}`}
+            variant="compact"
+          />
+        </div>
+      )}
     </div>
   );
 }

@@ -101,7 +101,7 @@ export async function getSiteDetailData(id: string) {
     safe(supabase.from("speed_checks").select("load_time_ms, checked_at").eq("site_id", id).order("checked_at", { ascending: false }).limit(30)),
     safe(supabase.from("core_web_vitals_checks").select("strategy, lcp_ms, inp_ms, cls_score, performance_score, checked_at").eq("site_id", id).order("checked_at", { ascending: false }).limit(4)),
     safe(supabase.from("ssl_certificates").select("days_until_expiry, last_checked_at").eq("site_id", id).limit(1)),
-    safe(supabase.from("ai_insights").select("severity, problem_summary, plain_explanation, estimated_monthly_loss_usd, recommendation, generated_at").eq("site_id", id).eq("is_resolved", false).order("generated_at", { ascending: false }).limit(5)),
+    safe(supabase.from("ai_insights").select("id, severity, problem_summary, plain_explanation, estimated_monthly_loss_usd, recommendation, generated_at").eq("site_id", id).eq("is_resolved", false).order("generated_at", { ascending: false }).limit(5)),
     safe(supabase.from("reports").select("id, report_type, period_start, pdf_url, created_at").eq("site_id", id).eq("status", "ready").order("created_at", { ascending: false }).limit(6)),
     safe(supabase.from("page_seo_audits").select("title, title_length, meta_description, meta_description_length, has_h1, h1_count, has_schema_markup, schema_types, issues, checked_at").eq("site_id", id).order("checked_at", { ascending: false }).limit(1)),
     safe(supabase.from("sitemap_audits").select("sitemap_found, urls_in_sitemap, robots_found, robots_blocks_important_pages, checked_at").eq("site_id", id).order("checked_at", { ascending: false }).limit(1)),

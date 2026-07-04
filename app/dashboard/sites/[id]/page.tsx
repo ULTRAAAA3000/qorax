@@ -19,6 +19,7 @@ import { UptimeBadgeSection } from "./UptimeBadgeSection";
 import { SidebarNavLink } from "./SidebarNavLink";
 import { IncidentTimeline } from "./IncidentTimeline";
 import { getSiteDetailData } from "./getSiteDetailData";
+import { FixRequestButton } from "./FixRequestButton";
 import {
   KpiTile, Section, SpeedLineChart, CwvBlock, SeoCell, SeoCheckCell,
   SitemapCell, InsightCard, ReportRow, EmptySlot, fmtDate,
@@ -236,10 +237,17 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           <Section id="ai" icon={<Sparkles size={14} />} title="AI Revenue Impact" accent="lime">
             {aiInsights.length > 0 ? (
               <div className="space-y-3">
-                {aiInsights.map((insight, i) => <InsightCard key={i} insight={insight} />)}
+                {aiInsights.map((insight, i) => (
+                  <InsightCard key={insight.id ?? i} insight={insight} siteId={site.id} canOrderFix={canUseGsc} />
+                ))}
               </div>
             ) : (
               <EmptySlot text="AI-інсайти з'являться після першого повного сканування" />
+            )}
+            {canUseGsc && (
+              <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border-hairline)" }}>
+                <FixRequestButton siteId={site.id} variant="full" />
+              </div>
             )}
           </Section>
 

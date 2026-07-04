@@ -13,6 +13,7 @@ import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead, selectRows } from "./lib/supabase";
 import { runUptimeChecks, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails, sendWeeklyDigests, checkSpeedDegradation } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
+import { handleFixRequest } from "./lib/fixRequestHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
 import { handleChatRequest } from "./lib/chatHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
@@ -81,6 +82,10 @@ const worker = {
 
     if (url.pathname === "/api/report" && request.method === "GET") {
       return handleReportRequest(request, env, origin);
+    }
+
+    if (url.pathname === "/api/fix-request" && request.method === "POST") {
+      return handleFixRequest(request, env, origin);
     }
 
     // Webhook від Telegram — приймає update коли користувач пише /start <org_id> боту.
@@ -152,6 +157,62 @@ const worker = {
       }));
 
       return json({ orgs: orgsWithPlans, plans }, 200, origin);
+    }
+
+    // GET /api/admin/fix-requests — список заявок на виправлення (захищено JWT + platform_role=admin)
+    if (url.pathname === "/api/admin/fix-requests" && request.method === "GET") {
+      const auth = await requireAdmin(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+      if (!auth.ok) return json({ error: auth.status === 401 ? "Unauthorized" : "Forbidden" }, auth.status!, origin);
+
+      const res = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/fix_requests?select=*,sites(display_name,url),organizations(name)&order=created_at.desc&limit=200`,
+        { headers: supabaseHeaders(env) }
+      );
+      if (!res.ok) return json({ error: "Не вдалося завантажити заявки" }, 500, origin);
+      const requests = await res.json();
+      return json({ requests }, 200, origin);
+    }
+
+    // PATCH /api/admin/fix-requests/:id — оновлення статусу заявки (захищено JWT + platform_role=admin)
+    if (url.pathname.startsWith("/api/admin/fix-requests/") && request.method === "PATCH") {
+      const auth = await requireAdmin(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+      if (!auth.ok) return json({ error: auth.status === 401 ? "Unauthorized" : "Forbidden" }, auth.status!, origin);
+
+      const requestId = url.pathname.split("/api/admin/fix-requests/")[1];
+      if (!requestId) return json({ error: "ID заявки обов'язковий" }, 400, origin);
+
+      let patchBody: { status?: string; admin_notes?: string };
+      try {
+        patchBody = await request.json();
+      } catch {
+        return json({ error: "Невірний формат запиту" }, 400, origin);
+      }
+
+      const allowedStatuses = ["new", "in_progress", "done", "declined"];
+      const update: Record<string, unknown> = {};
+      if (patchBody.status !== undefined) {
+        if (!allowedStatuses.includes(patchBody.status)) {
+          return json({ error: "Невірний статус" }, 400, origin);
+        }
+        update.status = patchBody.status;
+      }
+      if (patchBody.admin_notes !== undefined) {
+        update.admin_notes = patchBody.admin_notes;
+      }
+      if (Object.keys(update).length === 0) {
+        return json({ error: "Немає що оновлювати" }, 400, origin);
+      }
+
+      const res = await fetch(
+        `${env.SUPABASE_URL}/rest/v1/fix_requests?id=eq.${encodeURIComponent(requestId)}`,
+        {
+          method: "PATCH",
+          headers: { ...supabaseHeaders(env), Prefer: "return=minimal" },
+          body: JSON.stringify(update),
+        }
+      );
+      if (!res.ok) return json({ error: "Не вдалося оновити заявку" }, 500, origin);
+      return json({ ok: true }, 200, origin);
     }
 
     if (url.pathname.startsWith("/api/admin/") && request.method === "POST") {

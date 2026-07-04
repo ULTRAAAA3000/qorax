@@ -23,6 +23,12 @@ export interface Env {
   // Необов'язковий секрет для верифікації webhook-запитів від Telegram
   // (задається при `wrangler secret put TELEGRAM_WEBHOOK_SECRET` і при setWebhook)
   TELEGRAM_WEBHOOK_SECRET?: string;
+  // Особисті контакти власника студії — для сповіщень про нові
+  // "Замовити виправлення" заявки (fixRequestHandler.ts). Не плутати
+  // з клієнтськими notification_settings — це фіксовані контакти
+  // власника Qorax, задаються один раз через wrangler secret put.
+  OWNER_EMAIL?: string;
+  OWNER_TELEGRAM_CHAT_ID?: string;
   // LemonSqueezy
   LS_WEBHOOK_SECRET: string;     // Signing secret з LS Dashboard → Webhooks
   LS_API_KEY: string;            // API key для server-side операцій (portal URL etc.)
