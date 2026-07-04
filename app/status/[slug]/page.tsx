@@ -26,6 +26,7 @@ import { StatusPageClient } from "./StatusPageClient";
 interface StatusData {
   site: { displayName: string; url: string };
   currentStatus: "up" | "down" | "unknown";
+  historyDays: number;
   uptimePct7d: number;
   avgSpeedMs: number | null;
   dailyUptime: Array<{ date: string; pct: number; checks: number }>;
@@ -83,7 +84,7 @@ export async function generateMetadata(
   if (!data) return { title: "Сторінка статусу — Qorax" };
   return {
     title: `Статус ${data.site.displayName} — Qorax`,
-    description: `Uptime ${data.uptimePct7d.toFixed(2)}% за 7 днів. Поточний статус: ${data.currentStatus === "up" ? "працює" : "недоступний"}.`,
+    description: `Uptime ${data.uptimePct7d.toFixed(2)}% за ${data.historyDays} днів. Поточний статус: ${data.currentStatus === "up" ? "працює" : "недоступний"}.`,
   };
 }
 

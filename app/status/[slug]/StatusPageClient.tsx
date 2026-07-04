@@ -16,6 +16,7 @@ interface Incident {
 interface StatusData {
   site: { displayName: string; url: string };
   currentStatus: "up" | "down" | "unknown";
+  historyDays: number;
   uptimePct7d: number;
   avgSpeedMs: number | null;
   dailyUptime: Array<{ date: string; pct: number; checks: number }>;
@@ -137,7 +138,7 @@ function UptimeBar({ days }: { days: Array<{ date: string; pct: number; checks: 
         display: "flex", justifyContent: "space-between",
         marginTop: 6,
       }}>
-        <span style={{ fontSize: 10, color: "#6e6e73" }}>7 днів тому</span>
+        <span style={{ fontSize: 10, color: "#6e6e73" }}>{days.length} днів тому</span>
         <span style={{ fontSize: 10, color: "#6e6e73" }}>Сьогодні</span>
       </div>
     </div>
@@ -202,7 +203,7 @@ function IncidentRow({ incident }: { incident: Incident }) {
 
 export function StatusPageClient({ data }: { data: StatusData }) {
   const {
-    site, currentStatus, uptimePct7d, avgSpeedMs,
+    site, currentStatus, historyDays, uptimePct7d, avgSpeedMs,
     dailyUptime, incidents, ssl, whiteLabel, generatedAt,
   } = data;
 
@@ -298,7 +299,7 @@ export function StatusPageClient({ data }: { data: StatusData }) {
             border: "1px solid rgba(255,255,255,0.07)",
           }}>
             <p style={{ margin: "0 0 6px", fontSize: 11, color: "#6e6e73", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-              Uptime 7 днів
+              Uptime {historyDays} днів
             </p>
             <p style={{ margin: 0, fontSize: 28, fontWeight: 700, color: uptimeColor, letterSpacing: "-0.02em" }}>
               {uptimePct7d.toFixed(2)}%
@@ -339,7 +340,7 @@ export function StatusPageClient({ data }: { data: StatusData }) {
           border: "1px solid rgba(255,255,255,0.07)",
         }}>
           <p style={{ margin: "0 0 16px", fontSize: 13, fontWeight: 600, color: "#f5f5f7" }}>
-            Доступність за 7 днів
+            Доступність за {historyDays} днів
           </p>
           <UptimeBar days={dailyUptime} />
         </div>
