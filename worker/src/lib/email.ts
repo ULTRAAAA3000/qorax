@@ -509,3 +509,55 @@ export function buildWeeklyDigestEmail(params: {
 
   return { subject, html };
 }
+
+const ROLE_LABELS_UK: Record<string, string> = {
+  owner: "Власник",
+  admin: "Адміністратор",
+  editor: "Редактор",
+  viewer: "Тільки перегляд",
+  member: "Учасник",
+};
+
+export function buildInviteEmail(params: {
+  organizationName: string;
+  inviterName: string;
+  role: string;
+  acceptUrl: string;
+}): { subject: string; html: string } {
+  const roleLabel = ROLE_LABELS_UK[params.role] ?? params.role;
+  const subject = `${params.inviterName} запрошує вас до команди ${params.organizationName} у Qorax`;
+  const html = `<!DOCTYPE html>
+<html lang="uk">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#0C111D;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
+    <div style="margin-bottom:32px;">
+      <span style="font-size:18px;font-weight:700;color:#f5f5f7;letter-spacing:-0.02em;">Qorax</span>
+    </div>
+
+    <div style="background:rgba(140,246,255,0.06);border:1px solid rgba(140,246,255,0.25);border-radius:16px;padding:28px;margin-bottom:24px;">
+      <p style="margin:0 0 8px;font-size:20px;font-weight:600;color:#f5f5f7;">
+        Запрошення до команди
+      </p>
+      <p style="margin:0;font-size:15px;color:#8a9bb0;line-height:1.6;">
+        <strong style="color:#f5f5f7;">${params.inviterName}</strong> запрошує вас приєднатись до
+        <strong style="color:#f5f5f7;">${params.organizationName}</strong> у Qorax з роллю
+        <strong style="color:#8CF6FF;">${roleLabel}</strong>.
+      </p>
+    </div>
+
+    <div style="text-align:center;margin-bottom:32px;">
+      <a href="${params.acceptUrl}" style="display:inline-block;background:#D6FF3F;color:#0C111D;font-size:14px;font-weight:600;padding:14px 32px;border-radius:12px;text-decoration:none;">
+        Прийняти запрошення →
+      </a>
+    </div>
+
+    <p style="font-size:13px;color:#5a7090;text-align:center;margin:0;line-height:1.6;">
+      Посилання дійсне 14 днів.<br>
+      Qorax · Моніторинг сайтів для бізнесу
+    </p>
+  </div>
+</body>
+</html>`;
+  return { subject, html };
+}

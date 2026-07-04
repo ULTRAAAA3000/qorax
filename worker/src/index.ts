@@ -14,6 +14,10 @@ import { saveAuditLead, selectRows } from "./lib/supabase";
 import { runUptimeChecks, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails, sendWeeklyDigests, checkSpeedDegradation } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleFixRequest } from "./lib/fixRequestHandler";
+import {
+  handleGetTeam, handlePostInvite, handleRevokeInvite, handleAcceptInvite,
+  handleUpdateMemberRole, handleRemoveMember, handleGetInvitePreview,
+} from "./lib/teamHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
 import { handleChatRequest } from "./lib/chatHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
@@ -86,6 +90,33 @@ const worker = {
 
     if (url.pathname === "/api/fix-request" && request.method === "POST") {
       return handleFixRequest(request, env, origin);
+    }
+
+    // ── Team / invites ──────────────────────────────────────────
+    if (url.pathname === "/api/team" && request.method === "GET") {
+      return handleGetTeam(request, env, origin);
+    }
+    if (url.pathname === "/api/team/invite" && request.method === "POST") {
+      return handlePostInvite(request, env, origin);
+    }
+    if (url.pathname.startsWith("/api/team/invite/") && request.method === "DELETE") {
+      const inviteId = url.pathname.split("/api/team/invite/")[1];
+      return handleRevokeInvite(request, env, origin, inviteId);
+    }
+    if (url.pathname === "/api/team/accept" && request.method === "POST") {
+      return handleAcceptInvite(request, env, origin);
+    }
+    if (url.pathname.startsWith("/api/team/member/") && request.method === "PATCH") {
+      const memberId = url.pathname.split("/api/team/member/")[1];
+      return handleUpdateMemberRole(request, env, origin, memberId);
+    }
+    if (url.pathname.startsWith("/api/team/member/") && request.method === "DELETE") {
+      const memberId = url.pathname.split("/api/team/member/")[1];
+      return handleRemoveMember(request, env, origin, memberId);
+    }
+    if (url.pathname.startsWith("/api/invite/") && request.method === "GET") {
+      const token = url.pathname.split("/api/invite/")[1];
+      return handleGetInvitePreview(env, origin, token);
     }
 
     // Webhook від Telegram — приймає update коли користувач пише /start <org_id> боту.

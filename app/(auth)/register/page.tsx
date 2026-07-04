@@ -9,9 +9,9 @@ export const metadata = {
 export default async function RegisterPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; plan?: string }>;
+  searchParams: Promise<{ error?: string; plan?: string; invite_email?: string }>;
 }) {
-  const { error, plan } = await searchParams;
+  const { error, plan, invite_email: inviteEmail } = await searchParams;
   const errorMsg = error && typeof error === "string" && error !== "{}" ? error : null;
 
   return (
@@ -34,7 +34,15 @@ export default async function RegisterPage({
             Безкоштовно. Без карти.
           </p>
 
-          {plan && (
+          {inviteEmail && (
+            <div className="rounded-xl px-4 py-3 mb-5 text-sm"
+              style={{ background: "rgba(140,246,255,0.08)", border: "1px solid rgba(140,246,255,0.3)" }}>
+              <span style={{ color: "var(--cyan)" }} className="font-medium">Запрошення до команди</span>
+              {" "}— створіть акаунт на {inviteEmail}, щоб приєднатись.
+            </div>
+          )}
+
+          {plan && !inviteEmail && (
             <div className="rounded-xl px-4 py-3 mb-5 text-sm"
               style={{ background: "rgba(214,255,63,0.08)", border: "1px solid rgba(214,255,63,0.25)" }}>
               <span style={{ color: "var(--lime)" }} className="font-medium">
@@ -80,9 +88,11 @@ export default async function RegisterPage({
                 name="email"
                 type="email"
                 required
+                defaultValue={inviteEmail ?? undefined}
+                readOnly={!!inviteEmail}
                 placeholder="you@example.com"
-                className="w-full rounded-xl border hairline bg-[var(--bg)] px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--cyan)] transition-colors"
-                style={{ transitionDuration: "180ms" }}
+                className="w-full rounded-xl border hairline bg-[var(--bg)] px-4 py-3 text-sm text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none focus:border-[var(--cyan)] transition-colors disabled:opacity-70"
+                style={{ transitionDuration: "180ms", opacity: inviteEmail ? 0.7 : 1 }}
               />
             </div>
 

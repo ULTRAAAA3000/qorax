@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { ArrowLeft, User, CreditCard } from "lucide-react";
 import { NotificationSettingsForm } from "./NotificationSettingsForm";
 import { WhiteLabelSettingsForm } from "./WhiteLabelSettingsForm";
+import { TeamSettingsForm } from "./TeamSettingsForm";
 
 export const metadata = { title: "Налаштування — Qorax" };
 
@@ -131,6 +132,9 @@ export default async function SettingsPage() {
             orgName={org.name}
           />
         )}
+
+        {/* Team / invites */}
+        <TeamSettingsForm hasAccess={["growth", "agency", "admin", "trial"].includes(planCode)} />
 
         {/* Notifications */}
         <NotificationSettingsForm

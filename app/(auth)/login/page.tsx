@@ -9,9 +9,9 @@ export const metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; info?: string }>;
+  searchParams: Promise<{ error?: string; info?: string; redirect?: string }>;
 }) {
-  const { error, info } = await searchParams;
+  const { error, info, redirect } = await searchParams;
 
   return (
     <div
@@ -60,6 +60,7 @@ export default async function LoginPage({
           )}
 
           <form action={signIn} className="space-y-4">
+            {redirect && <input type="hidden" name="redirect" value={redirect} />}
             <div>
               <label className="block text-xs text-[var(--text-tertiary)] mb-1.5 font-mono tracking-wide">
                 EMAIL
@@ -103,7 +104,7 @@ export default async function LoginPage({
         <p className="text-center text-sm text-[var(--text-tertiary)] mt-5">
           Ще немає акаунту?{" "}
           <Link
-            href="/register"
+            href={redirect ? `/register?redirect=${encodeURIComponent(redirect)}` : "/register"}
             className="text-[var(--cyan)] hover:opacity-80 transition-opacity"
           >
             Зареєструватись

@@ -126,17 +126,23 @@ export async function signIn(formData: FormData) {
 
   const email = formData.get("email") as string;
   const password = formData.get("password") as string;
+  const redirectTo = formData.get("redirect") as string | null;
+  // Дозволяємо редірект тільки на внутрішні шляхи (захист від open redirect)
+  const safeRedirect = redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//")
+    ? redirectTo
+    : "/dashboard";
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 
   if (error) {
+    const back = redirectTo ? `&redirect=${encodeURIComponent(redirectTo)}` : "";
     if (error.message.includes("Invalid login credentials")) {
-      redirect(`/login?error=${encodeURIComponent("Невірний email або пароль")}`);
+      redirect(`/login?error=${encodeURIComponent("Невірний email або пароль")}${back}`);
     }
-    redirect(`/login?error=${encodeURIComponent(error.message)}`);
+    redirect(`/login?error=${encodeURIComponent(error.message)}${back}`);
   }
 
-  redirect("/dashboard");
+  redirect(safeRedirect);
 }
 
 export async function signOut() {
