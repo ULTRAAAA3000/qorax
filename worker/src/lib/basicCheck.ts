@@ -28,6 +28,24 @@ const USER_AGENT =
   "Mozilla/5.0 (compatible; QoraxAuditBot/1.0; +https://qorax.app/bot)";
 
 export async function runBasicCheck(url: string): Promise<BasicCheckResult> {
+  const first = await attemptCheck(url);
+  if (first.reachable) return first;
+
+  // Не оголошуємо сайт "down" одразу після одного невдалого запиту —
+  // це раніше було причиною хибних алертів: тимчасовий мережевий глюк на
+  // edge Cloudflare Workers (DNS-затримка, TLS handshake timeout,
+  // короткочасний rate-limit/challenge від хостингу сайту) виглядав
+  // ідентично реальному падінню, і алерт "сайт лежить" відправлявся
+  // навіть коли сайт насправді був доступний увесь час.
+  //
+  // Робимо коротку паузу і одну повторну спробу: якщо другий запит теж
+  // невдалий — це вже значно вірогідніше реальна проблема, а не шум.
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+  const second = await attemptCheck(url);
+  return second;
+}
+
+async function attemptCheck(url: string): Promise<BasicCheckResult> {
   const startedAt = Date.now();
 
   const result: BasicCheckResult = {
@@ -59,7 +77,15 @@ export async function runBasicCheck(url: string): Promise<BasicCheckResult> {
 
     result.responseTimeMs = Date.now() - startedAt;
     result.httpStatus = response.status;
-    result.reachable = response.ok;
+    // "Доступний" означає, що сервер відповів взагалі — включно з 3xx, що
+    // не було підхоплено redirect (рідко, але буває на деяких CDN), і
+    // навіть 4xx (401/403 за паролем, 404 на конкретній сторінці, тимчасовий
+    // Cloudflare/WAF challenge на боці сайту клієнта). Це все ще означає
+    // "сайт живий, сервер працює" — просто не 200 на цей конкретний запит.
+    // Справжній "down" — це коли сервер взагалі не відповів (мережева
+    // помилка/таймаут, обробляється в catch) або відповів 5xx (сервер
+    // впав/перевантажений на своєму боці).
+    result.reachable = response.status < 500;
     // Якщо fetch пройшов через https без помилки TLS — сертифікат валідний.
     // Cloudflare Workers сам відхилить запит при поламаному сертифікаті.
     result.sslValid = url.startsWith("https://");
