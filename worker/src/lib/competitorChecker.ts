@@ -13,8 +13,9 @@
 // ============================================================
 
 import { selectRows, insertRow, updateRows } from "./supabase";
-import { sendEmail } from "./email";
-import { sendTelegramMessage } from "./telegram";
+import { dispatchAlert, getOrgNotifSettings } from "./monitoring";
+import { buildCompetitorChangeTelegram } from "./telegram";
+import { buildCompetitorChangeSlack } from "./slack";
 
 const FETCH_TIMEOUT_MS = 15_000;
 const USER_AGENT = "Mozilla/5.0 (compatible; QoraxBot/1.0; +https://qorax.com/bot)";
@@ -45,21 +46,6 @@ interface PlanRow {
 
 interface SubscriptionRow {
   plans: PlanRow | null;
-}
-
-interface OrgMemberRow {
-  user_id: string;
-}
-
-interface ProfileRow {
-  id: string;
-  full_name: string | null;
-}
-
-interface NotificationRow {
-  email_alerts: boolean;
-  telegram_alerts: boolean;
-  telegram_chat_id: string | null;
 }
 
 // ─── Main ────────────────────────────────────────────────────
@@ -237,96 +223,43 @@ async function sendCompetitorAlerts(
   telegramBotToken: string,
   appUrl: string
 ): Promise<void> {
-  // Отримуємо налаштування сповіщень власника
-  const memberResult = await selectRows<OrgMemberRow>(
-    "organization_members",
-    `select=user_id&organization_id=eq.${encodeURIComponent(site.organization_id)}&role=eq.owner&limit=1`,
-    supabaseUrl,
-    serviceRoleKey
-  );
-  const ownerId = memberResult.data[0]?.user_id;
-  if (!ownerId) return;
-
-  const [profileResult, notifResult] = await Promise.all([
-    selectRows<ProfileRow>(
-      "profiles",
-      `select=id,full_name&id=eq.${encodeURIComponent(ownerId)}`,
-      supabaseUrl,
-      serviceRoleKey
-    ),
-    selectRows<NotificationRow>(
-      "notification_settings",
-      `select=email_alerts,telegram_alerts,telegram_chat_id&user_id=eq.${encodeURIComponent(ownerId)}&site_id=eq.${encodeURIComponent(site.id)}`,
-      supabaseUrl,
-      serviceRoleKey
-    ),
-  ]);
-
-  const notif = notifResult.data[0];
-  const profile = profileResult.data[0];
+  const settings = await getOrgNotifSettings(site.id, supabaseUrl, serviceRoleKey);
+  if (!settings || !settings.notify_competitor_changes) return;
 
   const competitorName = competitor.display_name ?? new URL(competitor.url).hostname;
-  const siteUrl = `${appUrl}/dashboard/sites/${site.id}/competitor`;
+  const dashboardUrl = `${appUrl}/dashboard/sites/${site.id}/competitor`;
 
-  // Email
-  if (notif?.email_alerts !== false && ownerId) {
-    // Отримуємо email з auth.users через service role
-    const userResult = await selectRows<{ email: string }>(
-      "profiles",
-      `select=id&id=eq.${encodeURIComponent(ownerId)}`,
-      supabaseUrl,
-      serviceRoleKey
-    );
-
-    // Беремо email напряму з Supabase auth API
-    try {
-      const authResp = await fetch(
-        `${supabaseUrl}/auth/v1/admin/users/${ownerId}`,
-        {
-          headers: {
-            apikey: serviceRoleKey,
-            Authorization: `Bearer ${serviceRoleKey}`,
-          },
-        }
-      );
-      if (authResp.ok) {
-        const authUser = (await authResp.json()) as { email?: string };
-        if (authUser.email) {
-          await sendEmail(
-            {
-              to: authUser.email,
-              subject: `🔔 Зміни на сайті конкурента: ${competitorName}`,
-              html: buildCompetitorEmailHtml(
-                profile?.full_name ?? "Привіт",
-                site.display_name,
-                competitorName,
-                competitor.url,
-                changeSummary,
-                siteUrl
-              ),
-            },
-            resendApiKey
-          );
-        }
+  const email = settings.email_enabled
+    ? {
+        subject: `🔔 Зміни на сайті конкурента: ${competitorName}`,
+        html: buildCompetitorEmailHtml(
+          "Привіт",
+          site.display_name,
+          competitorName,
+          competitor.url,
+          changeSummary,
+          dashboardUrl
+        ),
       }
-    } catch { /* email не критичний — ігноруємо помилку */ }
+    : null;
 
-    // Позбавляємось попередження про невикористану змінну
-    void userResult;
-  }
+  const telegramText = settings.telegram_enabled && settings.telegram_chat_id
+    ? buildCompetitorChangeTelegram({
+        siteDisplayName: site.display_name,
+        competitorUrl: competitor.url,
+        dashboardUrl,
+      })
+    : null;
 
-  // Telegram
-  if (notif?.telegram_alerts && notif?.telegram_chat_id) {
-    const msg =
-      `🔔 *Зміни у конкурента*\n\n` +
-      `Сайт: *${site.display_name}*\n` +
-      `Конкурент: ${competitorName}\n` +
-      `URL: ${competitor.url}\n\n` +
-      `${changeSummary}\n\n` +
-      `[Переглянути деталі](${siteUrl})`;
+  const slackText = settings.slack_enabled && settings.slack_webhook_url
+    ? buildCompetitorChangeSlack({
+        siteDisplayName: site.display_name,
+        competitorUrl: competitor.url,
+        dashboardUrl,
+      })
+    : null;
 
-    await sendTelegramMessage(notif.telegram_chat_id, msg, telegramBotToken);
-  }
+  await dispatchAlert(settings, email, telegramText, slackText, resendApiKey, telegramBotToken);
 }
 
 // ─── Допоміжні функції ────────────────────────────────────────

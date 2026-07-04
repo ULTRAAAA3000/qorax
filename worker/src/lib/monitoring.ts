@@ -46,10 +46,11 @@ interface OpenIncidentRow {
   started_at: string;
 }
 
-interface OrgEmailRow {
+export interface OrgEmailRow {
   email: string;
   notify_site_down: boolean;
   notify_ssl_domain_expiry: boolean;
+  notify_competitor_changes: boolean;
   email_enabled: boolean;
   telegram_enabled: boolean;
   telegram_chat_id: string | null;
@@ -264,7 +265,7 @@ async function reconcileIncident(
   }
 }
 
-async function getOrgNotifSettings(
+export async function getOrgNotifSettings(
   siteId: string,
   supabaseUrl: string,
   serviceRoleKey: string
@@ -286,9 +287,10 @@ async function getOrgNotifSettings(
     slack_webhook_url: string | null;
     notify_site_down: boolean;
     notify_ssl_domain_expiry: boolean;
+    notify_competitor_changes: boolean;
   }>(
     "notification_settings",
-    `select=email_enabled,telegram_enabled,telegram_chat_id,slack_enabled,slack_webhook_url,notify_site_down,notify_ssl_domain_expiry&organization_id=eq.${orgId}`,
+    `select=email_enabled,telegram_enabled,telegram_chat_id,slack_enabled,slack_webhook_url,notify_site_down,notify_ssl_domain_expiry,notify_competitor_changes&organization_id=eq.${orgId}`,
     supabaseUrl,
     serviceRoleKey
   );
@@ -325,6 +327,7 @@ async function getOrgNotifSettings(
       slack_webhook_url: s?.slack_webhook_url ?? null,
       notify_site_down: s?.notify_site_down ?? true,
       notify_ssl_domain_expiry: s?.notify_ssl_domain_expiry ?? true,
+      notify_competitor_changes: s?.notify_competitor_changes ?? true,
     };
   } catch {
     return null;
@@ -335,7 +338,7 @@ async function getOrgNotifSettings(
 // налаштуваннях організації). Раніше цей паттерн (email якщо enabled,
 // telegram якщо enabled+chat_id, трекати sent) був продубльований
 // в sendDownAlert, sendRecoveredAlert і checkSslExpiry.
-async function dispatchAlert(
+export async function dispatchAlert(
   settings: OrgEmailRow,
   email: { subject: string; html: string } | null,
   telegramText: string | null,
