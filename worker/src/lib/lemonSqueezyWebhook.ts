@@ -93,21 +93,34 @@ export async function handleLSWebhook(
   const eventName = payload.meta?.event_name;
   console.log("[ls-webhook] event:", eventName);
 
+  let handled = true;
+
   switch (eventName) {
     case "subscription_created":
     case "subscription_updated":
     case "subscription_resumed":
-      await handleSubscriptionActive(payload, supabaseUrl, serviceRoleKey);
+      handled = await handleSubscriptionActive(payload, supabaseUrl, serviceRoleKey);
       break;
 
     case "subscription_cancelled":
     case "subscription_expired":
     case "subscription_paused":
-      await handleSubscriptionCancelled(payload, supabaseUrl, serviceRoleKey);
+      handled = await handleSubscriptionCancelled(payload, supabaseUrl, serviceRoleKey);
       break;
 
     default:
       console.log("[ls-webhook] unhandled event:", eventName);
+  }
+
+  if (!handled) {
+    // Транзієнтна помилка (БД тимчасово недоступна тощо) — повертаємо 5xx,
+    // щоб LemonSqueezy сприйняв доставку як невдалу і повторив webhook
+    // пізніше за власним retry-розкладом. Раніше тут завжди повертався
+    // 200 OK незалежно від результату обробки — якщо upsert підписки
+    // падав, LS вважав webhook доставленим і НЕ повторював його, тобто
+    // клієнт міг заплатити, а підписка так і не активувалась в БД.
+    console.error("[ls-webhook] Processing failed, returning 500 so LemonSqueezy retries:", eventName);
+    return new Response("Processing failed, please retry", { status: 500 });
   }
 
   return new Response("OK", { status: 200 });
@@ -119,7 +132,7 @@ async function handleSubscriptionActive(
   payload: LSWebhookPayload,
   supabaseUrl: string,
   serviceRoleKey: string
-): Promise<void> {
+): Promise<boolean> {
   const { data, meta } = payload;
   const attrs = data.attributes;
   const orgId = meta.custom_data?.org_id;
@@ -130,7 +143,10 @@ async function handleSubscriptionActive(
 
   if (!orgId) {
     console.error("[ls-webhook] No org_id in custom_data");
-    return;
+    // Це не транзієнтна помилка (немає org_id — і повторна спроба LS
+    // цього не змінить), тому повертаємо true щоб LS не ретраїв даремно.
+    // Проблема лишається залогованою для ручного розбору.
+    return true;
   }
 
   // Знаходимо план за variant_id
@@ -141,6 +157,11 @@ async function handleSubscriptionActive(
     supabaseUrl,
     serviceRoleKey
   );
+
+  if (!allPlansResult.ok) {
+    console.error("[ls-webhook] Failed to fetch plans:", allPlansResult.error);
+    return false; // транзієнтна помилка БД — хай LS повторить webhook
+  }
 
   console.log("[ls-webhook] all plans:", {
     ok: allPlansResult.ok,
@@ -160,15 +181,18 @@ async function handleSubscriptionActive(
 
   console.log("[ls-webhook] plan match:", { lsVariantId, matchedCode: matchedPlan?.code ?? null, planId });
 
-  // Якщо variant_id не знайдений — логуємо але не падаємо
+  // Якщо variant_id не знайдений — це помилка конфігурації (новий план
+  // без прив'язки ls_variant_id), не транзієнтна. Повторна спроба LS
+  // нічого не виправить, тому не ретраїмо — але гучно логуємо, бо це
+  // означає що клієнт заплатив, а підписка не активувалась.
   if (!planId) {
-    console.error("[ls-webhook] Plan not found for variant_id:", lsVariantId);
-    return;
+    console.error("[ls-webhook] CRITICAL: Plan not found for variant_id, subscription NOT activated:", lsVariantId, "org:", orgId);
+    return true;
   }
 
   const status = mapStatus(attrs.status);
 
-  await upsertRow(
+  const upsertResult = await upsertRow(
     "subscriptions",
     {
       organization_id: orgId,
@@ -187,12 +211,17 @@ async function handleSubscriptionActive(
     serviceRoleKey
   );
 
+  if (!upsertResult.ok) {
+    console.error("[ls-webhook] Failed to upsert subscription:", upsertResult.error, "org:", orgId);
+    return false; // транзієнтна помилка БД — LS повторить webhook пізніше
+  }
+
   // Sync org_type + site_limit based on plan
   const planCode = matchedPlan?.code ?? "";
   const orgType = planCode === "agency" ? "agency" : "client";
   const siteLimit = planCode === "agency" ? 5 : 1;
 
-  await updateRows(
+  const orgUpdateResult = await updateRows(
     "organizations",
     `id=eq.${encodeURIComponent(orgId)}`,
     { org_type: orgType, site_limit: siteLimit },
@@ -200,7 +229,15 @@ async function handleSubscriptionActive(
     serviceRoleKey
   );
 
+  if (!orgUpdateResult.ok) {
+    // Підписка вже активована — це другорядне поле (site_limit/org_type),
+    // тому не блокуємо весь webhook через це, але гучно логуємо для
+    // ручної перевірки.
+    console.error("[ls-webhook] Subscription activated but failed to sync org_type/site_limit:", orgUpdateResult.error, "org:", orgId);
+  }
+
   console.log("[ls-webhook] subscription upserted:", { orgId, status, lsSubscriptionId, orgType, siteLimit });
+  return true;
 }
 
 
@@ -210,11 +247,11 @@ async function handleSubscriptionCancelled(
   payload: LSWebhookPayload,
   supabaseUrl: string,
   serviceRoleKey: string
-): Promise<void> {
+): Promise<boolean> {
   const { data, meta } = payload;
   const orgId = meta.custom_data?.org_id;
 
-  if (!orgId) return;
+  if (!orgId) return true; // не транзієнтна помилка, ретрай не допоможе
 
   // Знаходимо free план
   const freePlanResult = await selectRows<{ id: string }>(
@@ -223,6 +260,10 @@ async function handleSubscriptionCancelled(
     supabaseUrl,
     serviceRoleKey
   );
+  if (!freePlanResult.ok) {
+    console.error("[ls-webhook] Failed to fetch free plan:", freePlanResult.error);
+    return false;
+  }
   const freePlanId = freePlanResult.data[0]?.id;
 
   const attrs = data.attributes;
@@ -230,35 +271,38 @@ async function handleSubscriptionCancelled(
   // Якщо вже expired — переводимо на free
   const isFullyExpired = attrs.status === "expired";
 
-  if (isFullyExpired && freePlanId) {
-    await updateRows(
-      "subscriptions",
-      `organization_id=eq.${encodeURIComponent(orgId)}`,
-      {
-        plan_id: freePlanId,
-        status: "canceled",
-        ls_subscription_id: data.id,
-        updated_at: new Date().toISOString(),
-      },
-      supabaseUrl,
-      serviceRoleKey
-    );
-  } else {
-    // Cancelled але ще активна — залишаємо план, міняємо статус
-    await updateRows(
-      "subscriptions",
-      `organization_id=eq.${encodeURIComponent(orgId)}`,
-      {
-        status: "canceled",
-        current_period_end: attrs.ends_at ?? null,
-        updated_at: new Date().toISOString(),
-      },
-      supabaseUrl,
-      serviceRoleKey
-    );
+  const updateResult = isFullyExpired && freePlanId
+    ? await updateRows(
+        "subscriptions",
+        `organization_id=eq.${encodeURIComponent(orgId)}`,
+        {
+          plan_id: freePlanId,
+          status: "canceled",
+          ls_subscription_id: data.id,
+          updated_at: new Date().toISOString(),
+        },
+        supabaseUrl,
+        serviceRoleKey
+      )
+    : await updateRows(
+        "subscriptions",
+        `organization_id=eq.${encodeURIComponent(orgId)}`,
+        {
+          status: "canceled",
+          current_period_end: attrs.ends_at ?? null,
+          updated_at: new Date().toISOString(),
+        },
+        supabaseUrl,
+        serviceRoleKey
+      );
+
+  if (!updateResult.ok) {
+    console.error("[ls-webhook] Failed to update cancelled subscription:", updateResult.error, "org:", orgId);
+    return false; // транзієнтна помилка БД — LS повторить webhook пізніше
   }
 
   console.log("[ls-webhook] subscription cancelled:", { orgId, status: attrs.status });
+  return true;
 }
 
 // ─── HMAC-SHA256 signature verification ──────────────────────
