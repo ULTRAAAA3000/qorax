@@ -18,6 +18,8 @@ import {
   buildSiteRecoveredEmail,
   buildSslExpiryEmail,
   buildWeeklyDigestEmail,
+  buildResponseTimeAlertEmail,
+  buildSpeedDegradedEmail,
 } from "./email";
 import {
   sendTelegramMessage,
@@ -406,35 +408,13 @@ async function checkResponseTimeThreshold(
   const fmtMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}с` : `${ms}мс`;
   const dashboardUrl = `${appUrl}/dashboard/sites/${site.id}`;
 
-  const subject = `⚠️ ${site.display_name} — час відповіді ${fmtMs(responseMs)} перевищує поріг ${fmtMs(thresholdMs)}`;
-  const html = `<!DOCTYPE html>
-<html lang="uk">
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
-    <div style="margin-bottom:28px;"><span style="font-size:18px;font-weight:700;color:#f5f5f7;letter-spacing:-0.02em;">Qorax</span></div>
-    <div style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.3);border-radius:16px;padding:24px;margin-bottom:20px;">
-      <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#F5A623;text-transform:uppercase;letter-spacing:0.05em;">⚠️ Перевищено поріг часу відповіді</p>
-      <h1 style="margin:0 0 6px;font-size:20px;font-weight:600;color:#f5f5f7;">${site.display_name}</h1>
-      <p style="margin:0;font-size:13px;color:#6e6e73;font-family:'Courier New',monospace;">${site.url}</p>
-    </div>
-    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;margin-bottom:20px;">
-      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
-        <span style="font-size:13px;color:#6e6e73;">Час відповіді</span>
-        <span style="font-size:13px;font-weight:600;color:#F5A623;">${fmtMs(responseMs)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:10px 0;">
-        <span style="font-size:13px;color:#6e6e73;">Ваш поріг</span>
-        <span style="font-size:13px;font-weight:600;color:#d6ff3f;">${fmtMs(thresholdMs)}</span>
-      </div>
-    </div>
-    <div style="text-align:center;margin:24px 0;">
-      <a href="${dashboardUrl}" style="display:inline-block;background:#d6ff3f;color:#0a0a0a;font-size:14px;font-weight:600;padding:12px 28px;border-radius:12px;text-decoration:none;">Перевірити в дашборді →</a>
-    </div>
-    <p style="font-size:12px;color:#6e6e73;text-align:center;margin:0;">Qorax · Моніторинг сайтів</p>
-  </div>
-</body>
-</html>`;
+  const { subject, html } = buildResponseTimeAlertEmail({
+    siteDisplayName: site.display_name,
+    siteUrl: site.url,
+    responseMs,
+    thresholdMs,
+    dashboardUrl,
+  });
   const telegramText = `⚠️ *Повільна відповідь* — ${site.display_name}\n\nВідповідь: *${fmtMs(responseMs)}*\nВаш поріг: ${fmtMs(thresholdMs)}\n\n[Відкрити дашборд](${dashboardUrl})`;
   const slackText = `:warning: *Повільна відповідь* — ${site.display_name}\n\nВідповідь: *${fmtMs(responseMs)}*\nВаш поріг: ${fmtMs(thresholdMs)}\n\n<${dashboardUrl}|Відкрити дашборд>`;
 
@@ -1374,35 +1354,13 @@ export async function checkSpeedDegradation(
   const fmtMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}с` : `${ms}мс`;
   const dashboardUrl = `${appUrl}/dashboard/sites/${siteId}`;
 
-  const subject = `⚡ ${site.display_name} — швидкість впала до ${fmtMs(currentSpeedMs)} (норма ${fmtMs(Math.round(avg))})`;
-  const html = `<!DOCTYPE html>
-<html lang="uk">
-<head><meta charset="utf-8"></head>
-<body style="margin:0;padding:0;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
-  <div style="max-width:560px;margin:0 auto;padding:40px 24px;">
-    <div style="margin-bottom:28px;"><span style="font-size:18px;font-weight:700;color:#f5f5f7;letter-spacing:-0.02em;">Qorax</span></div>
-    <div style="background:rgba(245,166,35,0.08);border:1px solid rgba(245,166,35,0.3);border-radius:16px;padding:24px;margin-bottom:20px;">
-      <p style="margin:0 0 8px;font-size:13px;font-weight:600;color:#F5A623;text-transform:uppercase;letter-spacing:0.05em;">⚡ Швидкість впала</p>
-      <h1 style="margin:0 0 6px;font-size:20px;font-weight:600;color:#f5f5f7;">${site.display_name}</h1>
-      <p style="margin:0;font-size:13px;color:#6e6e73;font-family:'Courier New',monospace;">${site.url}</p>
-    </div>
-    <div style="background:rgba(255,255,255,0.04);border:1px solid rgba(255,255,255,0.08);border-radius:12px;padding:20px;margin-bottom:20px;">
-      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
-        <span style="font-size:13px;color:#6e6e73;">Поточна швидкість</span>
-        <span style="font-size:13px;font-weight:600;color:#F5A623;">${fmtMs(currentSpeedMs)}</span>
-      </div>
-      <div style="display:flex;justify-content:space-between;padding:10px 0;">
-        <span style="font-size:13px;color:#6e6e73;">Середня за 7 днів</span>
-        <span style="font-size:13px;font-weight:600;color:#d6ff3f;">${fmtMs(Math.round(avg))}</span>
-      </div>
-    </div>
-    <div style="text-align:center;margin:24px 0;">
-      <a href="${dashboardUrl}" style="display:inline-block;background:#d6ff3f;color:#0a0a0a;font-size:14px;font-weight:600;padding:12px 28px;border-radius:12px;text-decoration:none;">Перевірити в дашборді →</a>
-    </div>
-    <p style="font-size:12px;color:#6e6e73;text-align:center;margin:0;">Qorax · Моніторинг сайтів</p>
-  </div>
-</body>
-</html>`;
+  const { subject, html } = buildSpeedDegradedEmail({
+    siteDisplayName: site.display_name,
+    siteUrl: site.url,
+    currentSpeedMs,
+    avgSpeedMs: Math.round(avg),
+    dashboardUrl,
+  });
   const telegramText = `⚡ *Швидкість впала* — ${site.display_name}\n\nПоточна: *${fmtMs(currentSpeedMs)}*\nНорма (7 днів): ${fmtMs(Math.round(avg))}\n\n[Відкрити дашборд](${dashboardUrl})`;
   const slackText = `:zap: *Швидкість впала* — ${site.display_name}\n\nПоточна: *${fmtMs(currentSpeedMs)}*\nНорма (7 днів): ${fmtMs(Math.round(avg))}\n\n<${dashboardUrl}|Відкрити дашборд>`;
 

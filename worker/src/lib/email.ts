@@ -196,6 +196,70 @@ export function buildSslExpiryEmail(params: {
 
 // ─── Onboarding email templates ──────────────────────────────
 
+export function buildResponseTimeAlertEmail(params: {
+  siteDisplayName: string;
+  siteUrl: string;
+  responseMs: number;
+  thresholdMs: number;
+  dashboardUrl: string;
+}): { subject: string; html: string } {
+  const fmtMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}с` : `${ms}мс`;
+  const subject = `⚠️ ${params.siteDisplayName} — час відповіді ${fmtMs(params.responseMs)} перевищує поріг ${fmtMs(params.thresholdMs)}`;
+
+  const html = renderAlertEmailShell({
+    accentColor: "#F5A623",
+    accentBg: "rgba(245,166,35,0.08)",
+    accentBorder: "rgba(245,166,35,0.3)",
+    badgeText: "Перевищено поріг часу відповіді",
+    siteDisplayName: params.siteDisplayName,
+    siteUrl: params.siteUrl,
+    detailsHtml: `
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <span style="font-size:13px;color:#6e6e73;">Час відповіді</span>
+        <span style="font-size:13px;font-weight:600;color:#F5A623;">${fmtMs(params.responseMs)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;">
+        <span style="font-size:13px;color:#6e6e73;">Ваш поріг</span>
+        <span style="font-size:13px;font-weight:600;color:#d6ff3f;">${fmtMs(params.thresholdMs)}</span>
+      </div>`,
+    dashboardUrl: params.dashboardUrl,
+    footerHtml: `Qorax · Моніторинг сайтів`,
+  });
+  return { subject, html };
+}
+
+export function buildSpeedDegradedEmail(params: {
+  siteDisplayName: string;
+  siteUrl: string;
+  currentSpeedMs: number;
+  avgSpeedMs: number;
+  dashboardUrl: string;
+}): { subject: string; html: string } {
+  const fmtMs = (ms: number) => ms >= 1000 ? `${(ms / 1000).toFixed(1)}с` : `${ms}мс`;
+  const subject = `⚡ ${params.siteDisplayName} — швидкість впала до ${fmtMs(params.currentSpeedMs)} (норма ${fmtMs(params.avgSpeedMs)})`;
+
+  const html = renderAlertEmailShell({
+    accentColor: "#F5A623",
+    accentBg: "rgba(245,166,35,0.08)",
+    accentBorder: "rgba(245,166,35,0.3)",
+    badgeText: "⚡ Швидкість впала",
+    siteDisplayName: params.siteDisplayName,
+    siteUrl: params.siteUrl,
+    detailsHtml: `
+      <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(255,255,255,0.06);">
+        <span style="font-size:13px;color:#6e6e73;">Поточна швидкість</span>
+        <span style="font-size:13px;font-weight:600;color:#F5A623;">${fmtMs(params.currentSpeedMs)}</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding:10px 0;">
+        <span style="font-size:13px;color:#6e6e73;">Середня за 7 днів</span>
+        <span style="font-size:13px;font-weight:600;color:#d6ff3f;">${fmtMs(params.avgSpeedMs)}</span>
+      </div>`,
+    dashboardUrl: params.dashboardUrl,
+    footerHtml: `Qorax · Моніторинг сайтів`,
+  });
+  return { subject, html };
+}
+
 export function buildWelcomeEmail(params: {
   firstName: string;
   email: string;
