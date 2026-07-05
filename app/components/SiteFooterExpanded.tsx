@@ -28,6 +28,7 @@ const COLUMNS = [
     title: "Компанія",
     links: [
       { label: "Про нас", href: "/about" },
+      { label: "Партнерська програма", href: "/partners" },
       { label: "Контакти", href: "/about#contact" },
     ],
   },
