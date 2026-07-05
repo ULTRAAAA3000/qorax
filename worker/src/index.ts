@@ -10,7 +10,7 @@ import { normalizeAndValidateUrl } from "./lib/url";
 import { runBasicCheck } from "./lib/basicCheck";
 import { runPageSpeedChecks } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
-import { saveAuditLead, selectRows } from "./lib/supabase";
+import { saveAuditLead, selectRows, serviceRoleHeaders } from "./lib/supabase";
 import { runUptimeChecks, runUptimeCheckForSite, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails, sendWeeklyDigests, checkSpeedDegradation } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleFixRequest } from "./lib/fixRequestHandler";
@@ -59,11 +59,10 @@ function json(data: unknown, status: number, origin: string | null): Response {
 // Authorization: \`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}\` }` було
 // продубльовано 11 разів у цьому файлі — виклики просто спредять
 // додаткові поля (Prefer, Accept, Content-Type) поверх базових.
+// Делегує до lib/supabase.ts, щоб інші файли (teamHandler, etc.)
+// використовували ту саму реалізацію без залежності від index.ts.
 function supabaseHeaders(env: Env): Record<string, string> {
-  return {
-    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-    Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-  };
+  return serviceRoleHeaders(env.SUPABASE_SERVICE_ROLE_KEY);
 }
 
 const worker = {

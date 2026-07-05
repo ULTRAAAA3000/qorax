@@ -7,6 +7,7 @@ import { Clock, Zap, Settings, LogOut, Plus, Gift } from "lucide-react";
 import { SiteCard } from "./SiteCard";
 import { SitesListControls } from "./SitesListControls";
 import { OnboardingChecklist } from "./OnboardingChecklist";
+import { PortfolioHealthCard } from "./PortfolioHealthCard";
 
 export const metadata = { title: "Дашборд — Qorax" };
 
@@ -103,6 +104,89 @@ export default async function DashboardPage({
   };
   const onboardingDone = onboardingSteps.hasSite && onboardingSteps.hasFirstCheck && onboardingSteps.hasEmailAlert;
   const showOnboarding = !org?.onboarding_dismissed && !onboardingDone;
+
+  // ── Portfolio health (7 днів) ──
+  // Показуємо тільки коли є 2+ сайти — для одного сайту це дублює
+  // детальну сторінку сайту без нової інформації.
+  let portfolioHealth: {
+    uptimePct: number | null;
+    incidentsCount: number;
+    avgSpeedMs: number | null;
+    prevAvgSpeedMs: number | null;
+    bestSite: { name: string; uptimePct: number } | null;
+    worstSite: { name: string; uptimePct: number } | null;
+  } | null = null;
+
+  if (siteIds.length >= 2) {
+    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [{ data: uptimeChecks }, { data: incidents }, { data: speedChecks }, { data: prevSpeedChecks }] = await Promise.all([
+      supabase
+        .from("uptime_checks")
+        .select("site_id, status")
+        .in("site_id", siteIds)
+        .gte("checked_at", weekAgo),
+      supabase
+        .from("uptime_incidents")
+        .select("id")
+        .in("site_id", siteIds)
+        .gte("started_at", weekAgo),
+      supabase
+        .from("speed_checks")
+        .select("load_time_ms")
+        .in("site_id", siteIds)
+        .gte("checked_at", weekAgo),
+      supabase
+        .from("speed_checks")
+        .select("load_time_ms")
+        .in("site_id", siteIds)
+        .gte("checked_at", twoWeeksAgo)
+        .lt("checked_at", weekAgo),
+    ]);
+
+    const checks = uptimeChecks ?? [];
+    const totalChecks = checks.length;
+    const upChecks = checks.filter(c => c.status === "up").length;
+    const uptimePct = totalChecks > 0 ? (upChecks / totalChecks) * 100 : null;
+
+    const speeds = (speedChecks ?? []).map(c => c.load_time_ms);
+    const avgSpeedMs = speeds.length ? Math.round(speeds.reduce((a, b) => a + b, 0) / speeds.length) : null;
+    const prevSpeeds = (prevSpeedChecks ?? []).map(c => c.load_time_ms);
+    const prevAvgSpeedMs = prevSpeeds.length ? Math.round(prevSpeeds.reduce((a, b) => a + b, 0) / prevSpeeds.length) : null;
+
+    // Найкращий/найгірший сайт за uptime — рахуємо тільки якщо >2 сайти,
+    // на 2 сайтах "найкращий і найгірший" — це просто перерахування обох.
+    let bestSite: { name: string; uptimePct: number } | null = null;
+    let worstSite: { name: string; uptimePct: number } | null = null;
+    if (siteIds.length > 2) {
+      const perSite = new Map<string, { up: number; total: number }>();
+      for (const c of checks) {
+        const entry = perSite.get(c.site_id) ?? { up: 0, total: 0 };
+        entry.total++;
+        if (c.status === "up") entry.up++;
+        perSite.set(c.site_id, entry);
+      }
+      const nameById = new Map(sitesWithStatus.map(s => [s.id, s.display_name]));
+      const ranked = [...perSite.entries()]
+        .filter(([, v]) => v.total >= 5) // достатньо даних для чесного порівняння
+        .map(([siteId, v]) => ({ name: nameById.get(siteId) ?? siteId, uptimePct: (v.up / v.total) * 100 }))
+        .sort((a, b) => a.uptimePct - b.uptimePct);
+      if (ranked.length >= 2) {
+        worstSite = ranked[0];
+        bestSite = ranked[ranked.length - 1];
+      }
+    }
+
+    portfolioHealth = {
+      uptimePct,
+      incidentsCount: (incidents ?? []).length,
+      avgSpeedMs,
+      prevAvgSpeedMs,
+      bestSite,
+      worstSite,
+    };
+  }
 
   const firstName = profile.data?.full_name?.split(" ")[0] || user.email?.split("@")[0] || "друже";
 
@@ -281,6 +365,18 @@ export default async function DashboardPage({
         {/* ── Onboarding checklist ── */}
         {showOnboarding && membership && (
           <OnboardingChecklist organizationId={membership.organization_id} steps={onboardingSteps} />
+        )}
+
+        {/* ── Portfolio health (2+ сайти) ── */}
+        {portfolioHealth && (
+          <PortfolioHealthCard
+            uptimePct={portfolioHealth.uptimePct}
+            incidentsCount={portfolioHealth.incidentsCount}
+            avgSpeedMs={portfolioHealth.avgSpeedMs}
+            prevAvgSpeedMs={portfolioHealth.prevAvgSpeedMs}
+            bestSite={portfolioHealth.bestSite}
+            worstSite={portfolioHealth.worstSite}
+          />
         )}
 
         {/* ── Page header ── */}

@@ -7,7 +7,7 @@
 // ============================================================
 
 import type { Env } from "../types";
-import { selectRows, insertRow, updateRows } from "./supabase";
+import { selectRows, insertRow, updateRows, serviceRoleHeaders } from "./supabase";
 import { corsHeaders } from "./cors";
 import { sendEmail, buildInviteEmail } from "./email";
 
@@ -91,7 +91,7 @@ export async function handleGetTeam(request: Request, env: Env, origin: string |
   const members = await Promise.all(
     (membersResult.data ?? []).map(async (m) => {
       const userResp = await fetch(`${env.SUPABASE_URL}/auth/v1/admin/users/${m.user_id}`, {
-        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+        headers: serviceRoleHeaders(env.SUPABASE_SERVICE_ROLE_KEY),
       });
       const authUser = userResp.ok ? await userResp.json() as { email?: string } : null;
       return {
@@ -147,7 +147,7 @@ export async function handlePostInvite(request: Request, env: Env, origin: strin
   // Чи вже є учасник з таким email в цій організації?
   const existingUserResp = await fetch(
     `${env.SUPABASE_URL}/auth/v1/admin/users?email=${encodeURIComponent(email)}`,
-    { headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` } }
+    { headers: serviceRoleHeaders(env.SUPABASE_SERVICE_ROLE_KEY) }
   );
   if (existingUserResp.ok) {
     const existingData = await existingUserResp.json() as { users?: Array<{ id: string }> };
@@ -184,7 +184,7 @@ export async function handlePostInvite(request: Request, env: Env, origin: strin
       `${env.SUPABASE_URL}/rest/v1/organization_invites?id=eq.${existingInvite.id}`,
       {
         method: "DELETE",
-        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+        headers: serviceRoleHeaders(env.SUPABASE_SERVICE_ROLE_KEY),
       }
     );
   }
@@ -378,7 +378,7 @@ export async function handleRemoveMember(request: Request, env: Env, origin: str
     `${env.SUPABASE_URL}/rest/v1/organization_members?id=eq.${memberId}&organization_id=eq.${membership.organizationId}`,
     {
       method: "DELETE",
-      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}` },
+      headers: serviceRoleHeaders(env.SUPABASE_SERVICE_ROLE_KEY),
     }
   );
   if (!resp.ok) return json({ error: "Не вдалося видалити учасника" }, 500, origin);

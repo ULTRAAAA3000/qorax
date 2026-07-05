@@ -4,6 +4,21 @@
 // (тяжёлый для Workers bundle size, нам нужен только insert/upsert/select).
 // ============================================================
 
+/**
+ * Базові заголовки для прямих fetch-запитів до Supabase REST API з
+ * service role key (apikey + Authorization). index.ts має власний
+ * supabaseHeaders(env: Env) з тим самим змістом — цей варіант приймає
+ * url/key окремо, щоб відповідати сигнатурі решти функцій цього модуля
+ * (selectRows/insertRow/updateRows) і не створювати залежність lib-файлів
+ * від index.ts.
+ */
+export function serviceRoleHeaders(serviceRoleKey: string): Record<string, string> {
+  return {
+    apikey: serviceRoleKey,
+    Authorization: `Bearer ${serviceRoleKey}`,
+  };
+}
+
 export interface SaveLeadParams {
   email: string | null;
   siteUrl: string;
