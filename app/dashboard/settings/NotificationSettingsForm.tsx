@@ -16,6 +16,7 @@ interface NotifSettings {
   notify_ssl_domain_expiry: boolean;
   notify_broken_links: boolean;
   notify_speed_degraded: boolean;
+  digest_frequency: "weekly" | "biweekly" | "monthly" | "off";
 }
 
 interface Props {
@@ -25,6 +26,13 @@ interface Props {
   planName: string;
   telegramBotName: string; // ім'я бота без @ — для генерації deep link
 }
+
+const DIGEST_OPTIONS: Array<{ value: NotifSettings["digest_frequency"]; label: string }> = [
+  { value: "weekly", label: "Щотижня" },
+  { value: "biweekly", label: "Раз на 2 тижні" },
+  { value: "monthly", label: "Раз на місяць" },
+  { value: "off", label: "Вимкнено" },
+];
 
 export function NotificationSettingsForm({
   organizationId,
@@ -43,6 +51,7 @@ export function NotificationSettingsForm({
     notify_ssl_domain_expiry: initialSettings?.notify_ssl_domain_expiry ?? true,
     notify_broken_links: initialSettings?.notify_broken_links ?? true,
     notify_speed_degraded: initialSettings?.notify_speed_degraded ?? true,
+    digest_frequency: initialSettings?.digest_frequency ?? "weekly",
   });
 
   const [slackUrlInput, setSlackUrlInput] = useState(initialSettings?.slack_webhook_url ?? "");
@@ -167,6 +176,7 @@ export function NotificationSettingsForm({
             notify_ssl_domain_expiry: settings.notify_ssl_domain_expiry,
             notify_broken_links: settings.notify_broken_links,
             notify_speed_degraded: settings.notify_speed_degraded,
+            digest_frequency: settings.digest_frequency,
           },
           { onConflict: "organization_id" }
         );
@@ -325,6 +335,26 @@ export function NotificationSettingsForm({
             <NotifRow label="SSL закінчується (30д і 7д)" value={settings.notify_ssl_domain_expiry} onChange={() => toggle("notify_ssl_domain_expiry")} />
             <NotifRow label="Знайдено биті посилання" value={settings.notify_broken_links} onChange={() => toggle("notify_broken_links")} />
             <NotifRow label="Падіння швидкості" value={settings.notify_speed_degraded} onChange={() => toggle("notify_speed_degraded")} />
+
+            <div className="pt-3 mt-1" style={{ borderTop: "1px solid var(--border-hairline)" }}>
+              <p className="text-sm mb-2.5">Тижневий дайджест</p>
+              <div className="flex flex-wrap gap-1.5">
+                {DIGEST_OPTIONS.map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setSettings(prev => ({ ...prev, digest_frequency: opt.value }))}
+                    className="text-xs px-2.5 py-1.5 rounded-lg transition-colors"
+                    style={{
+                      background: settings.digest_frequency === opt.value ? "rgba(214,255,63,0.12)" : "rgba(255,255,255,0.03)",
+                      border: `1px solid ${settings.digest_frequency === opt.value ? "rgba(214,255,63,0.4)" : "rgba(255,255,255,0.08)"}`,
+                      color: settings.digest_frequency === opt.value ? "var(--lime)" : "var(--text-secondary)",
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>

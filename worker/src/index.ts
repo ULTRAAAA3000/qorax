@@ -337,7 +337,7 @@ const worker = {
 
       if (url.pathname === "/api/admin/run-weekly-digest") {
         const r = await sendWeeklyDigests(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.RESEND_API_KEY, env.APP_URL);
-        return json({ ok: true, sent: r.sent, errors: r.errors }, 200, origin);
+        return json({ ok: true, sent: r.sent, skipped: r.skipped, errors: r.errors }, 200, origin);
       }
 
       if (url.pathname === "/api/admin/run-url-speeds") {
@@ -1107,7 +1107,7 @@ const worker = {
           env.RESEND_API_KEY,
           env.APP_URL
         );
-        console.log(`Weekly digests: sent=${digestResult.sent}, errors=${digestResult.errors.length}`);
+        console.log(`Weekly digests: sent=${digestResult.sent}, skipped=${digestResult.skipped}, errors=${digestResult.errors.length}`);
         if (digestResult.errors.length) console.warn("Digest errors:", digestResult.errors);
       }
       return;

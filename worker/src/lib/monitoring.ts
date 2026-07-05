@@ -1126,52 +1126,122 @@ export async function sendWeeklyDigests(
   serviceRoleKey: string,
   resendApiKey: string,
   appUrl: string
-): Promise<{ sent: number; errors: string[] }> {
-  const summary = { sent: 0, errors: [] as string[] };
+): Promise<{ sent: number; errors: string[]; skipped: number }> {
+  const summary = { sent: 0, errors: [] as string[], skipped: 0 };
   const h = { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}`, Accept: "application/json" };
-  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
-  // Всі активні орги (trial або paid)
+  // Викликається щопонеділка (перевірка day-of-week — в index.ts перед
+  // викликом цієї функції). Тут визначаємо, чи цей конкретний понеділок
+  // підходить під кожну з частот, без потреби зберігати дату останньої
+  // відправки окремо:
+  //   weekly   — кожен понеділок
+  //   biweekly — кожен ДРУГИЙ понеділок (парний номер ISO-тижня)
+  //   monthly  — перший понеділок місяця (день місяця <= 7)
+  const now = new Date();
+  const dayOfMonth = now.getUTCDate();
+  const isoWeek = getIsoWeekNumber(now);
+  const isFirstMondayOfMonth = dayOfMonth <= 7;
+  const isEvenIsoWeek = isoWeek % 2 === 0;
+
+  function frequencyMatchesToday(freq: string): boolean {
+    switch (freq) {
+      case "weekly": return true;
+      case "biweekly": return isEvenIsoWeek;
+      case "monthly": return isFirstMondayOfMonth;
+      case "off": return false;
+      default: return true; // невідоме значення — краще надіслати ніж мовчки втратити дайджест
+    }
+  }
+
+  // Всі активні орги (trial або paid) разом з їх digest_frequency.
+  // notification_settings може не існувати для організації (upsert
+  // відбувається лише коли власник щось міняв в налаштуваннях) — тому
+  // JOIN лівий, і при відсутньому запису вважаємо частоту 'weekly' (default).
   const subsResp = await fetch(
-    `${supabaseUrl}/rest/v1/subscriptions?select=organization_id,status&status=in.(trialing,active)`,
+    `${supabaseUrl}/rest/v1/subscriptions?select=organization_id,status,organizations(notification_settings(digest_frequency))&status=in.(trialing,active)`,
     { headers: h }
   );
   if (!subsResp.ok) { summary.errors.push("Failed to fetch subscriptions"); return summary; }
-  const subs = await subsResp.json() as Array<{ organization_id: string; status: string }>;
+  const subs = await subsResp.json() as Array<{
+    organization_id: string;
+    status: string;
+    organizations: { notification_settings: { digest_frequency: string }[] | { digest_frequency: string } | null } | null;
+  }>;
 
   for (const sub of subs) {
     const orgId = sub.organization_id;
 
-    // Сайти організації
-    const sitesResp = await fetch(
-      `${supabaseUrl}/rest/v1/sites?select=id,url,display_name&organization_id=eq.${orgId}&monitoring_enabled=eq.true`,
-      { headers: h }
-    );
-    if (!sitesResp.ok) continue;
-    const sites = await sitesResp.json() as Array<{ id: string; url: string; display_name: string }>;
-    if (!sites.length) continue;
+    // notification_settings приходить як масив (one-to-many на рівні
+    // PostgREST embed) або об'єкт залежно від того чи є unique constraint
+    // видимий планувальнику — обробляємо обидва варіанти для надійності.
+    const nsRaw = sub.organizations?.notification_settings;
+    const digestFrequency = Array.isArray(nsRaw) ? nsRaw[0]?.digest_frequency : nsRaw?.digest_frequency;
+    const freq = digestFrequency ?? "weekly";
 
-    // Власник орги
-    const memberResp = await fetch(
-      `${supabaseUrl}/rest/v1/organization_members?select=user_id&organization_id=eq.${orgId}&role=eq.owner&limit=1`,
-      { headers: h }
-    );
-    if (!memberResp.ok) continue;
-    const members = await memberResp.json() as Array<{ user_id: string }>;
-    const ownerId = members[0]?.user_id;
-    if (!ownerId) continue;
+    if (!frequencyMatchesToday(freq)) {
+      summary.skipped++;
+      continue;
+    }
 
-    const authResp = await fetch(`${supabaseUrl}/auth/v1/admin/users/${ownerId}`, {
-      headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
-    });
-    if (!authResp.ok) continue;
-    const authUser = await authResp.json() as { email?: string; user_metadata?: { full_name?: string } };
-    if (!authUser.email) continue;
-    const firstName = authUser.user_metadata?.full_name?.split(" ")[0] || authUser.email.split("@")[0];
+    // Період агрегації метрик відповідає частоті — щомісячний дайджест
+    // повинен показувати статистику за місяць, а не тільки останній
+    // тиждень перед відправкою.
+    const periodDays = freq === "monthly" ? 30 : freq === "biweekly" ? 14 : 7;
+    const periodAgo = new Date(Date.now() - periodDays * 24 * 60 * 60 * 1000).toISOString();
 
-    // По кожному сайту збираємо метрики
-    for (const site of sites) {
-      try {
+    await sendDigestForOrganization(orgId, periodAgo, supabaseUrl, serviceRoleKey, resendApiKey, appUrl, h, summary);
+  }
+
+  return summary;
+}
+
+function getIsoWeekNumber(date: Date): number {
+  const d = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil(((d.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+}
+
+async function sendDigestForOrganization(
+  orgId: string,
+  weekAgo: string,
+  supabaseUrl: string,
+  serviceRoleKey: string,
+  resendApiKey: string,
+  appUrl: string,
+  h: Record<string, string>,
+  summary: { sent: number; errors: string[] }
+): Promise<void> {
+  const sitesResp = await fetch(
+    `${supabaseUrl}/rest/v1/sites?select=id,url,display_name&organization_id=eq.${orgId}&monitoring_enabled=eq.true`,
+    { headers: h }
+  );
+  if (!sitesResp.ok) return;
+  const sites = await sitesResp.json() as Array<{ id: string; url: string; display_name: string }>;
+  if (!sites.length) return;
+
+  // Власник орги
+  const memberResp = await fetch(
+    `${supabaseUrl}/rest/v1/organization_members?select=user_id&organization_id=eq.${orgId}&role=eq.owner&limit=1`,
+    { headers: h }
+  );
+  if (!memberResp.ok) return;
+  const members = await memberResp.json() as Array<{ user_id: string }>;
+  const ownerId = members[0]?.user_id;
+  if (!ownerId) return;
+
+  const authResp = await fetch(`${supabaseUrl}/auth/v1/admin/users/${ownerId}`, {
+    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+  });
+  if (!authResp.ok) return;
+  const authUser = await authResp.json() as { email?: string; user_metadata?: { full_name?: string } };
+  if (!authUser.email) return;
+  const firstName = authUser.user_metadata?.full_name?.split(" ")[0] || authUser.email.split("@")[0];
+
+  // По кожному сайту збираємо метрики
+  for (const site of sites) {
+    try {
         const [uptimeResp, incidentResp, speedResp, seoResp, sslResp] = await Promise.all([
           fetch(`${supabaseUrl}/rest/v1/uptime_checks?select=status&site_id=eq.${site.id}&checked_at=gte.${weekAgo}`, { headers: h }),
           fetch(`${supabaseUrl}/rest/v1/uptime_incidents?select=started_at,resolved_at&site_id=eq.${site.id}&started_at=gte.${weekAgo}`, { headers: h }),
@@ -1247,9 +1317,6 @@ export async function sendWeeklyDigests(
         summary.errors.push(`${site.display_name}: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-  }
-
-  return summary;
 }
 
 // ─── Speed degradation alert ──────────────────────────────────
