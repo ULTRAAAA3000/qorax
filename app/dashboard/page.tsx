@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { Clock, Zap, Settings, LogOut, Plus, Gift } from "lucide-react";
 import { SiteCard } from "./SiteCard";
 import { SitesListControls } from "./SitesListControls";
+import { OnboardingChecklist } from "./OnboardingChecklist";
 
 export const metadata = { title: "Дашборд — Qorax" };
 
@@ -34,7 +35,7 @@ export default async function DashboardPage({
 
   const [{ data: org }, { data: subscription }, { data: sites }, profile] = await Promise.all([
     membership
-      ? supabase.from("organizations").select("name, org_type, site_limit").eq("id", membership.organization_id).single()
+      ? supabase.from("organizations").select("name, org_type, site_limit, onboarding_dismissed").eq("id", membership.organization_id).single()
       : Promise.resolve({ data: null }),
     membership
       ? supabase.from("subscriptions")
@@ -72,6 +73,36 @@ export default async function DashboardPage({
     return { ...site, isDown, inMaintenance };
   });
   const downCount = sitesWithStatus.filter(s => s.isDown).length;
+
+  // ── Onboarding checklist ──
+  // 3 кроки: додати сайт, дочекатись першої перевірки, email-алерт готовий.
+  // Прогрес обчислюється на льоту з існуючих таблиць — окремого
+  // сховища прогресу по кроках не потрібно, тільки прапорець "приховано".
+  let hasFirstCheck = false;
+  if (siteIds.length > 0) {
+    const { count } = await supabase
+      .from("uptime_checks")
+      .select("id", { count: "exact", head: true })
+      .in("site_id", siteIds)
+      .limit(1);
+    hasFirstCheck = (count ?? 0) > 0;
+  }
+
+  const { data: notifSettings } = membership
+    ? await supabase
+        .from("notification_settings")
+        .select("email_enabled")
+        .eq("organization_id", membership.organization_id)
+        .maybeSingle()
+    : { data: null };
+
+  const onboardingSteps = {
+    hasSite: sitesWithStatus.length > 0,
+    hasFirstCheck,
+    hasEmailAlert: notifSettings?.email_enabled ?? true, // true за замовчуванням навіть без рядка в БД
+  };
+  const onboardingDone = onboardingSteps.hasSite && onboardingSteps.hasFirstCheck && onboardingSteps.hasEmailAlert;
+  const showOnboarding = !org?.onboarding_dismissed && !onboardingDone;
 
   const firstName = profile.data?.full_name?.split(" ")[0] || user.email?.split("@")[0] || "друже";
 
@@ -245,6 +276,11 @@ export default async function DashboardPage({
               ))}
             </div>
           </div>
+        )}
+
+        {/* ── Onboarding checklist ── */}
+        {showOnboarding && membership && (
+          <OnboardingChecklist organizationId={membership.organization_id} steps={onboardingSteps} />
         )}
 
         {/* ── Page header ── */}
