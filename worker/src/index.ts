@@ -133,6 +133,14 @@ const worker = {
     }
     if (url.pathname.startsWith("/api/invite/") && request.method === "GET") {
       const token = url.pathname.split("/api/invite/")[1];
+      // Публічний ендпоінт без авторизації (юзер відкриває посилання з
+      // листа до логіну) — той самий клас ризику що й /api/status/:slug,
+      // тому такий самий щедрий, але ненульовий ліміт.
+      const clientIp = getClientIp(request);
+      const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, `invite:${clientIp}`, 20, 60);
+      if (!rateLimit.allowed) {
+        return json({ error: "Забагато запитів. Спробуйте пізніше." }, 429, origin);
+      }
       return handleGetInvitePreview(env, origin, token);
     }
 
@@ -614,6 +622,17 @@ const worker = {
     const statusMatch = url.pathname.match(/^\/api\/status\/([^/]+)$/);
     if (statusMatch && request.method === "GET") {
       const slug = statusMatch[1];
+
+      // Rate limiting: публічний ендпоінт без авторизації, 5 паралельних
+      // запитів до БД на виклик. Ліміт щедрий (сторінку можуть дивитись
+      // реальні відвідувачі часто, напр. вбудовану в iframe), але захищає
+      // від навмисного засипання запитами конкретного IP.
+      const clientIp = getClientIp(request);
+      const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, `status:${clientIp}`, 60, 60);
+      if (!rateLimit.allowed) {
+        return json({ error: "Забагато запитів. Спробуйте пізніше." }, 429, origin);
+      }
+
       const h = {
         apikey: env.SUPABASE_SERVICE_ROLE_KEY,
         Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,

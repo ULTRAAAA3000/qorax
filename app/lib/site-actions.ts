@@ -84,5 +84,26 @@ export async function addSite(formData: FormData) {
     redirect(`/dashboard/sites/new?error=${encodeURIComponent("Не вдалося додати сайт, спробуйте ще раз")}`);
   }
 
+  // Одразу запускаємо першу uptime-перевірку замість очікування cron
+  // (до 5 хв) — новий юзер бачить результат моніторингу відразу після
+  // додавання сайту, а не порожній дашборд. Чекаємо максимум 4с: якщо
+  // перевірка не встигла — не страшно, cron підхопить сайт за 5 хв.
+  // await з timeout, а не fire-and-forget без await, тому що serverless
+  // рантайм може обірвати необачений fetch одразу після redirect().
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) {
+      const workerUrl = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 4000);
+      await fetch(`${workerUrl}/api/sites/${site.id}/run-uptime-check`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        signal: controller.signal,
+      }).catch(() => { /* best-effort — cron підхопить за 5 хв в будь-якому разі */ });
+      clearTimeout(timeout);
+    }
+  } catch { /* best-effort */ }
+
   redirect(`/dashboard?site=${site.id}&new=1`);
 }
