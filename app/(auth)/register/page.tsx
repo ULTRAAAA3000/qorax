@@ -118,6 +118,17 @@ export default async function RegisterPage({
               Створити акаунт
             </button>
           </form>
+
+          <p className="text-center text-xs text-[var(--text-tertiary)] mt-4 leading-relaxed">
+            Реєструючись, ви погоджуєтесь з{" "}
+            <Link href="/terms" className="text-[var(--cyan)] hover:opacity-80 transition-opacity">
+              Умовами використання
+            </Link>{" "}
+            та{" "}
+            <Link href="/privacy" className="text-[var(--cyan)] hover:opacity-80 transition-opacity">
+              Політикою конфіденційності
+            </Link>
+          </p>
         </div>
 
         <p className="text-center text-sm text-[var(--text-tertiary)] mt-5">
