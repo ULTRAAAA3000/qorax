@@ -3,7 +3,7 @@ import { signOut } from "@/app/lib/auth-actions";
 import { QoraxLogo } from "@/app/components/QoraxLogo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { Clock, Zap, Settings, LogOut, Plus } from "lucide-react";
+import { Clock, Zap, Settings, LogOut, Plus, Gift } from "lucide-react";
 import { SiteCard } from "./SiteCard";
 import { SitesListControls } from "./SitesListControls";
 
@@ -133,6 +133,11 @@ export default async function DashboardPage({
                 ADMIN
               </Link>
             )}
+            <Link href="/dashboard/referrals"
+              className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5"
+              title="Партнерська програма">
+              <Gift size={15} />
+            </Link>
             <Link href="/dashboard/settings"
               className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5">
               <Settings size={15} />

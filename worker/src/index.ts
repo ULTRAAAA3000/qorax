@@ -15,6 +15,9 @@ import { runUptimeChecks, runUptimeCheckForSite, runSpeedChecks, runSpeedCheckFo
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleFixRequest } from "./lib/fixRequestHandler";
 import {
+  handleGetReferralStats, handleAdminListCommissions, handleAdminUpdateCommission,
+} from "./lib/referralHandler";
+import {
   handleGetTeam, handlePostInvite, handleRevokeInvite, handleAcceptInvite,
   handleUpdateMemberRole, handleRemoveMember, handleGetInvitePreview,
 } from "./lib/teamHandler";
@@ -92,6 +95,18 @@ const worker = {
 
     if (url.pathname === "/api/fix-request" && request.method === "POST") {
       return handleFixRequest(request, env, origin);
+    }
+
+    // ── Referrals ────────────────────────────────────────────────
+    if (url.pathname === "/api/referrals" && request.method === "GET") {
+      return handleGetReferralStats(request, env, origin);
+    }
+    if (url.pathname === "/api/admin/referral-commissions" && request.method === "GET") {
+      return handleAdminListCommissions(request, env, origin);
+    }
+    if (url.pathname.startsWith("/api/admin/referral-commissions/") && request.method === "PATCH") {
+      const commissionId = url.pathname.split("/api/admin/referral-commissions/")[1];
+      return handleAdminUpdateCommission(request, env, origin, commissionId);
     }
 
     // ── Team / invites ──────────────────────────────────────────

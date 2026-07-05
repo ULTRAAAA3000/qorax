@@ -13,6 +13,7 @@
 // ============================================================
 
 import { selectRows, upsertRow, updateRows } from "./supabase";
+import { processReferralCommission } from "./referralCommission";
 
 // ─── Типи LS webhook payload ─────────────────────────────────
 
@@ -52,6 +53,37 @@ interface LSWebhookPayload {
   };
 }
 
+// Payload для subscription_payment_success / subscription_payment_failed —
+// інша структура ніж subscription_* events: data.type = "subscription-invoices".
+// LS API документація не гарантує єдине поле для subscription_id в усіх
+// SDK/прикладах — деякі показують його прямо в attributes, тому читаємо
+// звідти з фолбеком на relationships, якщо він колись зміниться.
+interface LSInvoiceAttributes {
+  store_id: number;
+  subscription_id?: number;
+  customer_id: number;
+  billing_reason?: string; // "initial" | "renewal" | "updated"
+  status: string; // "paid" | "pending" | "void" | "refunded"
+  total: number;
+  total_usd: number;
+  subtotal: number;
+  subtotal_usd: number;
+  currency: string;
+  test_mode?: boolean;
+}
+
+interface LSInvoicePayload {
+  meta: LSWebhookMeta;
+  data: {
+    id: string;
+    type: string; // "subscription-invoices"
+    attributes: LSInvoiceAttributes;
+    relationships?: {
+      subscription?: { data?: { id?: string } };
+    };
+  };
+}
+
 // Маппінг LS статусів → наші subscription_status
 function mapStatus(lsStatus: string): string {
   switch (lsStatus) {
@@ -83,9 +115,9 @@ export async function handleLSWebhook(
     return new Response("Invalid signature", { status: 401 });
   }
 
-  let payload: LSWebhookPayload;
+  let payload: { meta: LSWebhookMeta; data: Record<string, unknown> };
   try {
-    payload = JSON.parse(rawBody) as LSWebhookPayload;
+    payload = JSON.parse(rawBody);
   } catch {
     return new Response("Invalid JSON", { status: 400 });
   }
@@ -99,13 +131,17 @@ export async function handleLSWebhook(
     case "subscription_created":
     case "subscription_updated":
     case "subscription_resumed":
-      handled = await handleSubscriptionActive(payload, supabaseUrl, serviceRoleKey);
+      handled = await handleSubscriptionActive(payload as unknown as LSWebhookPayload, supabaseUrl, serviceRoleKey);
       break;
 
     case "subscription_cancelled":
     case "subscription_expired":
     case "subscription_paused":
-      handled = await handleSubscriptionCancelled(payload, supabaseUrl, serviceRoleKey);
+      handled = await handleSubscriptionCancelled(payload as unknown as LSWebhookPayload, supabaseUrl, serviceRoleKey);
+      break;
+
+    case "subscription_payment_success":
+      handled = await handleSubscriptionPaymentSuccess(payload as unknown as LSInvoicePayload, supabaseUrl, serviceRoleKey);
       break;
 
     default:
@@ -303,6 +339,68 @@ async function handleSubscriptionCancelled(
 
   console.log("[ls-webhook] subscription cancelled:", { orgId, status: attrs.status });
   return true;
+}
+
+// ─── Subscription payment success → нарахування реферальної комісії ──
+
+async function handleSubscriptionPaymentSuccess(
+  payload: LSInvoicePayload,
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<boolean> {
+  const attrs = payload.data.attributes;
+  const invoiceId = payload.data.id;
+
+  // Пропускаємо неоплачені/повернені інвойси — комісія тільки за реально
+  // отримані гроші
+  if (attrs.status !== "paid") {
+    console.log("[ls-webhook] Invoice not paid, skipping:", { invoiceId, status: attrs.status });
+    return true;
+  }
+
+  const lsSubscriptionId = attrs.subscription_id
+    ? String(attrs.subscription_id)
+    : payload.data.relationships?.subscription?.data?.id ?? null;
+
+  if (!lsSubscriptionId) {
+    console.error("[ls-webhook] No subscription_id in invoice payload:", invoiceId);
+    return true; // не транзієнтна помилка, ретрай не допоможе
+  }
+
+  // Знаходимо organization_id за ls_subscription_id (custom_data тут
+  // недоступний — invoice-подія прив'язана до підписки, а не до checkout)
+  const subResult = await selectRows<{ organization_id: string }>(
+    "subscriptions",
+    `select=organization_id&ls_subscription_id=eq.${encodeURIComponent(lsSubscriptionId)}&limit=1`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+
+  if (!subResult.ok) {
+    console.error("[ls-webhook] Failed to look up subscription for invoice:", subResult.error);
+    return false;
+  }
+
+  const orgId = subResult.data[0]?.organization_id;
+  if (!orgId) {
+    // Підписка ще не встигла зафіксуватись в нашій БД (можливий порядок
+    // доставки: invoice раніше за subscription_created) — не транзієнтна
+    // помилка в класичному сенсі, але повторна спроба МОЖЕ допомогти якщо
+    // subscription_created прийде трохи пізніше. Повертаємо false один раз;
+    // LS ретраїть з експоненційною затримкою (5с/25с/125с), цього зазвичай
+    // достатньо щоб subscription_created встиг обробитись першим.
+    console.error("[ls-webhook] No local subscription found for ls_subscription_id yet:", lsSubscriptionId);
+    return false;
+  }
+
+  return await processReferralCommission(
+    orgId,
+    invoiceId,
+    lsSubscriptionId,
+    attrs.total_usd,
+    supabaseUrl,
+    serviceRoleKey
+  );
 }
 
 // ─── HMAC-SHA256 signature verification ──────────────────────

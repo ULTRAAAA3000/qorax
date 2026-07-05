@@ -2,6 +2,7 @@
 
 import { createClient } from "@/app/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import { buildWelcomeEmail } from "@/app/lib/onboarding-email";
 
 export async function signUp(formData: FormData) {
@@ -35,7 +36,13 @@ export async function signUp(formData: FormData) {
     email,
     password,
     options: {
-      data: { full_name: fullName },
+      data: {
+        full_name: fullName,
+        // Реф-код зберігається в cookie при переході по /r/:code (30 днів,
+        // див. app/r/[code]/route.ts). handle_new_user() в БД шукає
+        // організацію з таким referral_code і проставляє атрибуцію.
+        referral_code: (await cookies()).get("qorax_ref")?.value ?? null,
+      },
     },
   });
 
