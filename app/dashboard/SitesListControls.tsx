@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { SiteCard } from "./SiteCard";
+import { ExportSitesButton } from "./ExportSitesButton";
 
 interface SiteRow {
   id: string;
@@ -25,6 +26,23 @@ const SORT_OPTIONS: { key: SortKey; label: string }[] = [
 export function SitesListControls({ sites }: { sites: SiteRow[] }) {
   const [query, setQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("status");
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Клавіатурний шорткат "/" — фокусує пошук, як у GitHub/Linear.
+  // Не спрацьовує якщо юзер вже пише в іншому полі (input/textarea),
+  // щоб не заважати вводу символу "/" в звичайному тексті.
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== "/") return;
+      const target = e.target as HTMLElement;
+      const isTyping = target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable;
+      if (isTyping) return;
+      e.preventDefault();
+      searchInputRef.current?.focus();
+    }
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -63,13 +81,22 @@ export function SitesListControls({ sites }: { sites: SiteRow[] }) {
           <div className="relative flex-1 min-w-[180px] max-w-sm">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--text-tertiary)" }} />
             <input
+              ref={searchInputRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Пошук за назвою або URL..."
-              className="w-full text-sm rounded-xl pl-8 pr-3 py-2 bg-transparent outline-none transition-colors"
+              className="w-full text-sm rounded-xl pl-8 pr-9 py-2 bg-transparent outline-none transition-colors"
               style={{ border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-primary)" }}
             />
+            {!query && (
+              <kbd
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono px-1.5 py-0.5 rounded-md pointer-events-none"
+                style={{ background: "rgba(255,255,255,0.05)", color: "var(--text-tertiary)", border: "1px solid rgba(255,255,255,0.08)" }}
+              >
+                /
+              </kbd>
+            )}
           </div>
           <div className="flex items-center gap-1 rounded-xl p-1" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
             {SORT_OPTIONS.map(opt => (
@@ -86,6 +113,7 @@ export function SitesListControls({ sites }: { sites: SiteRow[] }) {
               </button>
             ))}
           </div>
+          <ExportSitesButton sites={filtered} />
         </div>
       )}
 

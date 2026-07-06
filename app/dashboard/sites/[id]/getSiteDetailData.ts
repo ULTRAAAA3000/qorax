@@ -85,6 +85,17 @@ export async function getSiteDetailData(id: string) {
   const planCode = (subData?.plans as any)?.code as string | undefined;
   const canUseGsc = ["growth", "agency", "admin", "trial"].includes(planCode ?? "");
 
+  // Інші сайти тієї ж організації — для кнопки "Скопіювати поріг на інші сайти"
+  const { data: siblingSitesRaw } = orgId
+    ? await supabase
+        .from("sites")
+        .select("id, display_name")
+        .eq("organization_id", orgId)
+        .neq("id", id)
+        .order("display_name", { ascending: true })
+    : { data: [] as { id: string; display_name: string }[] };
+  const siblingSites = siblingSitesRaw ?? [];
+
   let hostname = site.url;
   try { hostname = new URL(site.url).hostname; } catch { /* keep raw */ }
 
@@ -178,7 +189,7 @@ export async function getSiteDetailData(id: string) {
     isUp, latestSpeed, mobileCwv, desktopCwv,
     supabaseUrl, supabaseAnonKey, workerUrl,
     uptimePct, sslOk, seoIssueCount,
-    staleCheckMinutes, isStale,
+    staleCheckMinutes, isStale, siblingSites,
   };
 }
 

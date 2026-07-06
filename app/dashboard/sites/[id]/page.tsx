@@ -27,6 +27,7 @@ import { UptimeBadgeSection } from "./UptimeBadgeSection";
 import { SidebarNavLink } from "./SidebarNavLink";
 import { IncidentTimeline } from "./IncidentTimeline";
 import { getSiteDetailData } from "./getSiteDetailData";
+import { formatRelativeTime } from "@/app/lib/formatRelativeTime";
 import { FixRequestButton } from "./FixRequestButton";
 import {
   KpiTile, Section, SpeedLineChart, CwvBlock, SeoCell, SeoCheckCell,
@@ -56,7 +57,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
     isUp, latestSpeed, mobileCwv, desktopCwv,
     supabaseUrl, supabaseAnonKey, workerUrl,
     uptimePct, sslOk, seoIssueCount,
-    staleCheckMinutes, isStale,
+    staleCheckMinutes, isStale, siblingSites,
   } = data;
 
   const navItems = [
@@ -241,6 +242,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                 accessToken={accessToken}
                 initialThresholdMs={alertThresholdMs}
                 workerUrl={workerUrl}
+                siblingSites={siblingSites}
               />
             </div>
             <div style={{ marginTop: 20 }}>
@@ -330,7 +332,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             id="seo"
             icon={<Search size={14} />}
             title="SEO аудит"
-            badge={seoAudit ? fmtDate(seoAudit.checked_at) : undefined}
+            badge={seoAudit ? formatRelativeTime(seoAudit.checked_at) : undefined}
             action={
               <RefreshSeoButton
                 siteId={site.id}
@@ -454,7 +456,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                       : "Проблема з сертифікатом"}
                   </p>
                   <p className="text-xs mt-0.5" style={{ color: "var(--text-tertiary)" }}>
-                    Перевірено {fmtDate(ssl.last_checked_at)}
+                    Перевірено {formatRelativeTime(ssl.last_checked_at)}
                   </p>
                 </div>
               </div>

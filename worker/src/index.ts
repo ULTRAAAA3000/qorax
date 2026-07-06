@@ -869,6 +869,29 @@ const worker = {
         headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
       });
       if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+      const userData = await userRes.json() as { id?: string };
+      if (!userData.id) return json({ error: "Unauthorized" }, 401, origin);
+
+      // Перевіряємо що юзер належить до організації цього сайту — ця
+      // мутація тепер також викликається для "чужих" (у сенсі — не
+      // поточної сторінки) сайтів через "Скопіювати поріг", тому
+      // валідного JWT вже не досить.
+      const siteResult = await selectRows<{ id: string; organization_id: string }>(
+        "sites",
+        `select=id,organization_id&id=eq.${encodeURIComponent(siteId)}`,
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY
+      );
+      const site = siteResult.data[0];
+      if (!site) return json({ error: "Сайт не знайдено" }, 404, origin);
+
+      const membershipResult = await selectRows<{ organization_id: string }>(
+        "organization_members",
+        `select=organization_id&user_id=eq.${encodeURIComponent(userData.id)}&organization_id=eq.${encodeURIComponent(site.organization_id)}`,
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY
+      );
+      if (membershipResult.data.length === 0) return json({ error: "Forbidden" }, 403, origin);
 
       const body = await request.json() as { thresholdMs?: number | null };
 

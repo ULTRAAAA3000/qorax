@@ -6,22 +6,31 @@
 // алерт email/Telegram/Slack (не частіше разу на годину на сайт).
 
 import { useState } from "react";
+import { Copy, Check } from "lucide-react";
+
+interface SiblingSite {
+  id: string;
+  display_name: string;
+}
 
 interface Props {
   siteId: string;
   accessToken: string;
   initialThresholdMs: number | null;
   workerUrl: string;
+  siblingSites?: SiblingSite[];
 }
 
 const PRESETS = [1000, 2000, 3000, 5000];
 
-export function AlertThresholdSettings({ siteId, accessToken, initialThresholdMs, workerUrl }: Props) {
+export function AlertThresholdSettings({ siteId, accessToken, initialThresholdMs, workerUrl, siblingSites = [] }: Props) {
   const [enabled, setEnabled] = useState(initialThresholdMs != null);
   const [thresholdMs, setThresholdMs] = useState<number>(initialThresholdMs ?? 2000);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copyMenuOpen, setCopyMenuOpen] = useState(false);
+  const [copyState, setCopyState] = useState<Record<string, "idle" | "loading" | "done" | "error">>({});
 
   async function save(nextEnabled: boolean, nextThreshold: number) {
     setSaving(true);
@@ -59,6 +68,24 @@ export function AlertThresholdSettings({ siteId, accessToken, initialThresholdMs
   function handlePresetClick(ms: number) {
     setThresholdMs(ms);
     if (enabled) save(true, ms);
+  }
+
+  async function copyThresholdToSite(targetSiteId: string) {
+    setCopyState(prev => ({ ...prev, [targetSiteId]: "loading" }));
+    try {
+      const res = await fetch(`${workerUrl}/api/sites/${targetSiteId}/alert-threshold`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ thresholdMs: enabled ? thresholdMs : null }),
+      });
+      const data = await res.json() as { ok?: boolean };
+      setCopyState(prev => ({ ...prev, [targetSiteId]: data.ok ? "done" : "error" }));
+    } catch {
+      setCopyState(prev => ({ ...prev, [targetSiteId]: "error" }));
+    }
   }
 
   const btnStyle = (active: boolean): React.CSSProperties => ({
@@ -128,6 +155,78 @@ export function AlertThresholdSettings({ siteId, accessToken, initialThresholdMs
 
       {error && <p style={{ margin: 0, fontSize: 12, color: "#F5675A" }}>{error}</p>}
       {saved && <p style={{ margin: 0, fontSize: 12, color: "var(--lime)" }}>✓ Збережено</p>}
+
+      {siblingSites.length > 0 && (
+        <div style={{ position: "relative" }}>
+          <button
+            onClick={() => setCopyMenuOpen(o => !o)}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              fontWeight: 500,
+              padding: "6px 10px",
+              borderRadius: 8,
+              cursor: "pointer",
+              border: "1px solid rgba(255,255,255,0.08)",
+              background: "rgba(255,255,255,0.02)",
+              color: "var(--text-tertiary)",
+            }}
+          >
+            <Copy size={11} />
+            Скопіювати поріг на інші сайти
+          </button>
+
+          {copyMenuOpen && (
+            <div style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              zIndex: 20,
+              minWidth: 220,
+              maxHeight: 240,
+              overflowY: "auto",
+              borderRadius: 12,
+              padding: 6,
+              background: "#12161f",
+              border: "1px solid rgba(255,255,255,0.1)",
+              boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+            }}>
+              {siblingSites.map(s => {
+                const state = copyState[s.id] ?? "idle";
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => copyThresholdToSite(s.id)}
+                    disabled={state === "loading" || state === "done"}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 8,
+                      width: "100%",
+                      textAlign: "left",
+                      fontSize: 12.5,
+                      padding: "7px 10px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "transparent",
+                      color: state === "done" ? "var(--lime)" : "var(--text-secondary)",
+                      cursor: state === "loading" || state === "done" ? "default" : "pointer",
+                    }}
+                  >
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.display_name}</span>
+                    {state === "loading" && <span style={{ fontSize: 11, color: "var(--text-tertiary)" }}>...</span>}
+                    {state === "done" && <Check size={13} />}
+                    {state === "error" && <span style={{ fontSize: 11, color: "#F5675A" }}>помилка</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
