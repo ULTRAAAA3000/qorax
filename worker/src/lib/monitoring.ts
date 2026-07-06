@@ -79,6 +79,53 @@ export interface UptimeCheckSummary {
  * site_id замість усіх активних сайтів. Використовується кнопкою
  * "Перевірити зараз" у дашборді.
  */
+/**
+ * Ручне закриття інциденту власником сайту — для false-positive
+ * випадків (наприклад тимчасовий збій воркера, а не реальний
+ * даунтайм). На відміну від автоматичного reconcileIncident, тут
+ * НЕ надсилається "recovered" алерт — юзер сам знає що робить.
+ * Перевіряє що інцидент реально належить вказаному сайту (захист
+ * від підміни ID чужим інцидентом).
+ */
+export async function resolveIncidentManually(
+  incidentId: string,
+  siteId: string,
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<{ ok: boolean; error?: string }> {
+  const incidentResult = await selectRows<{ id: string; site_id: string; started_at: string; resolved_at: string | null }>(
+    "uptime_incidents",
+    `select=id,site_id,started_at,resolved_at&id=eq.${encodeURIComponent(incidentId)}`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (!incidentResult.ok || incidentResult.data.length === 0) {
+    return { ok: false, error: "Інцидент не знайдено" };
+  }
+  const incident = incidentResult.data[0];
+  if (incident.site_id !== siteId) {
+    return { ok: false, error: "Інцидент не належить цьому сайту" };
+  }
+  if (incident.resolved_at) {
+    return { ok: true }; // вже закритий — нема що робити
+  }
+
+  const resolvedAt = Date.now();
+  const startedAt = new Date(incident.started_at).getTime();
+  const durationSeconds = Math.round((resolvedAt - startedAt) / 1000);
+
+  const updateResult = await updateRows(
+    "uptime_incidents",
+    `id=eq.${incidentId}`,
+    { resolved_at: new Date(resolvedAt).toISOString(), duration_seconds: durationSeconds, resolved_manually: true },
+    supabaseUrl,
+    serviceRoleKey
+  );
+
+  if (!updateResult.ok) return { ok: false, error: updateResult.error ?? "Не вдалося закрити інцидент" };
+  return { ok: true };
+}
+
 export async function runUptimeCheckForSite(
   siteId: string,
   supabaseUrl: string,

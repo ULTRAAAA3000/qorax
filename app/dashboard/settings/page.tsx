@@ -3,6 +3,7 @@ import { QoraxLogo } from "@/app/components/QoraxLogo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, User, CreditCard } from "lucide-react";
+import { CopyButton } from "@/app/components/CopyButton";
 import { NotificationSettingsForm } from "./NotificationSettingsForm";
 import { WhiteLabelSettingsForm } from "./WhiteLabelSettingsForm";
 import { TeamSettingsForm } from "./TeamSettingsForm";
@@ -115,10 +116,31 @@ export default async function SettingsPage() {
               <span className="text-sm text-[var(--text-tertiary)]">Ім&apos;я</span>
               <span className="text-sm">{profile?.full_name ?? "—"}</span>
             </div>
-            <div className="flex items-center justify-between py-3 last:pb-0">
+            <div className="flex items-center justify-between py-3">
               <span className="text-sm text-[var(--text-tertiary)]">Email</span>
               <span className="text-sm font-mono text-[var(--text-secondary)]">{user.email}</span>
             </div>
+            {org?.id && (
+              <div className="flex items-center justify-between py-3 last:pb-0 gap-3">
+                <span className="text-sm text-[var(--text-tertiary)] shrink-0">Organization ID</span>
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="text-xs font-mono text-[var(--text-secondary)] truncate" title={org.id}>{org.id}</span>
+                  <CopyButton value={org.id} iconSize={12} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Support info — для звернень у підтримку */}
+        <div className="rounded-2xl px-5 py-3.5 flex items-center justify-between"
+          style={{ background: "rgba(255,255,255,0.015)", border: "1px solid rgba(255,255,255,0.05)" }}>
+          <span className="text-xs text-[var(--text-tertiary)]">
+            Пишете в підтримку? Скопіюйте User ID — це прискорить діагностику.
+          </span>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <span className="text-xs font-mono text-[var(--text-tertiary)] hidden sm:inline">{user.id.slice(0, 8)}…</span>
+            <CopyButton value={user.id} iconSize={12} label="User ID" />
           </div>
         </div>
 

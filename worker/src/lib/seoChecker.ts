@@ -45,6 +45,45 @@ export interface SeoCheckSummary {
 
 // ─── Main ────────────────────────────────────────────────────
 
+/**
+ * Ручний запуск SEO/sitemap-перевірки для одного конкретного сайту —
+ * той самий шлях що й у cron (checkSite), просто для одного site_id.
+ * Використовується кнопкою "Оновити зараз" в секції SEO аудиту.
+ */
+export async function runSeoCheckForSite(
+  siteId: string,
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<{ ok: boolean; error?: string }> {
+  const siteResult = await selectRows<SiteRow>(
+    "sites",
+    `select=id,url,display_name,organization_id&id=eq.${encodeURIComponent(siteId)}`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (!siteResult.ok || siteResult.data.length === 0) {
+    return { ok: false, error: "Сайт не знайдено" };
+  }
+  const site = siteResult.data[0];
+
+  const subResult = await selectRows<SubscriptionRow>(
+    "subscriptions",
+    `select=plans(code)&organization_id=eq.${encodeURIComponent(site.organization_id)}&status=in.(trialing,active)&order=created_at.desc&limit=1`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+  const planCode = (subResult.data[0]?.plans as PlanRow | null)?.code ?? "free";
+  const isGrowthPlus = ["growth", "agency", "admin", "trial"].includes(planCode);
+
+  try {
+    const summary = await checkSite(site, supabaseUrl, serviceRoleKey, isGrowthPlus);
+    if (summary.error) return { ok: false, error: summary.error };
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Невідома помилка" };
+  }
+}
+
 export async function runSeoChecks(
   supabaseUrl: string,
   serviceRoleKey: string

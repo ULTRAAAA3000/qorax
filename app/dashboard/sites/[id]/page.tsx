@@ -13,6 +13,8 @@ import { QoraxusChat } from "./QoraxusChat";
 import { GscPanel } from "./GscPanel";
 import { RefreshSpeedButton } from "./RefreshSpeedButton";
 import { RunUptimeCheckButton } from "./RunUptimeCheckButton";
+import { RefreshSeoButton } from "./RefreshSeoButton";
+import { ResolveIncidentButton } from "./ResolveIncidentButton";
 import { MultiUrlPanel } from "./MultiUrlPanel";
 import { FormMonitorPanel } from "./FormMonitorPanel";
 import { SpeedHeatmap } from "./SpeedHeatmap";
@@ -48,7 +50,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
   const {
     site, hostname, accessToken, canUseGsc, statusPageData, alertThresholdMs, maintenanceUntil,
-    uptimeChecks, speedChecks, ssl,
+    uptimeChecks, speedChecks, ssl, openIncidents,
     aiInsights, reports, seoAudit, sitemapAudit, competitors,
     competitorChanges, brokenLinks, historyIncidents,
     isUp, latestSpeed, mobileCwv, desktopCwv,
@@ -204,6 +206,20 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                 </p>
               </div>
             )}
+            {!isUp && openIncidents[0] && (
+              <div className="flex items-center justify-between gap-3 rounded-xl px-4 py-3 mb-4 flex-wrap"
+                style={{ background: "rgba(245,103,90,0.06)", border: "1px solid rgba(245,103,90,0.2)" }}>
+                <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                  Сайт позначено як недоступний. Якщо це технічна помилка (не справжній даунтайм) — можна закрити інцидент вручну.
+                </p>
+                <ResolveIncidentButton
+                  siteId={site.id}
+                  incidentId={openIncidents[0].id}
+                  accessToken={accessToken}
+                  workerUrl={workerUrl}
+                />
+              </div>
+            )}
             <LiveUptimePanel
               siteId={site.id}
               initialChecks={uptimeChecks}
@@ -315,6 +331,13 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
             icon={<Search size={14} />}
             title="SEO аудит"
             badge={seoAudit ? fmtDate(seoAudit.checked_at) : undefined}
+            action={
+              <RefreshSeoButton
+                siteId={site.id}
+                accessToken={accessToken}
+                workerUrl={workerUrl}
+              />
+            }
           >
             {seoAudit ? (
               <div className="space-y-4">

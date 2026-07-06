@@ -11,7 +11,7 @@ import { runBasicCheck } from "./lib/basicCheck";
 import { runPageSpeedChecks } from "./lib/pageSpeed";
 import { runAiAnalysis } from "./lib/aiAnalysis";
 import { saveAuditLead, selectRows, serviceRoleHeaders } from "./lib/supabase";
-import { runUptimeChecks, runUptimeCheckForSite, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails, sendWeeklyDigests, checkSpeedDegradation } from "./lib/monitoring";
+import { runUptimeChecks, runUptimeCheckForSite, resolveIncidentManually, runSpeedChecks, runSpeedCheckForSite, checkSslExpiry, expireTrials, sendTrialEmails, sendWeeklyDigests, checkSpeedDegradation } from "./lib/monitoring";
 import { handleReportRequest, generateMonthlyReports } from "./lib/reportHandler";
 import { handleFixRequest } from "./lib/fixRequestHandler";
 import {
@@ -33,7 +33,7 @@ import {
   handleGscMetrics,
   runGscSync,
 } from "./lib/gscHandler";
-import { runSeoChecks } from "./lib/seoChecker";
+import { runSeoChecks, runSeoCheckForSite } from "./lib/seoChecker";
 import { runCompetitorChecks } from "./lib/competitorChecker";
 import { runUrlSpeedChecks } from "./lib/urlSpeedChecker";
 import { runFormChecks } from "./lib/formChecker";
@@ -573,6 +573,60 @@ const worker = {
 
       if (!result.ok) return json({ error: result.error ?? "Перевірка не вдалась" }, 500, origin);
       return json({ ok: true, status: result.status }, 200, origin);
+    }
+
+    // POST /api/sites/:id/run-seo-check — ручний запуск SEO/sitemap-перевірки для одного сайту
+    const seoCheckMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/run-seo-check$/);
+    if (seoCheckMatch && request.method === "POST") {
+      const siteId = seoCheckMatch[1];
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+
+      const result = await runSeoCheckForSite(siteId, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+      if (!result.ok) return json({ error: result.error ?? "Перевірка не вдалась" }, 500, origin);
+      return json({ ok: true }, 200, origin);
+    }
+
+    // POST /api/sites/:id/incidents/:incidentId/resolve — ручне закриття "застряглого" інциденту
+    const resolveIncidentMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/incidents\/([^/]+)\/resolve$/);
+    if (resolveIncidentMatch && request.method === "POST") {
+      const [, siteId, incidentId] = resolveIncidentMatch;
+      const authHeader = request.headers.get("Authorization");
+      const token = authHeader?.replace("Bearer ", "") ?? "";
+      const userRes = await fetch(`${env.SUPABASE_URL}/auth/v1/user`, {
+        headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${token}` },
+      });
+      if (!userRes.ok) return json({ error: "Unauthorized" }, 401, origin);
+      const userData = await userRes.json() as { id?: string };
+      if (!userData.id) return json({ error: "Unauthorized" }, 401, origin);
+
+      // Перевіряємо що юзер належить до організації, якій належить сайт —
+      // це мутація даних (закриття інциденту), тому перевірка власності
+      // тут суворіша, ніж просто валідний JWT.
+      const siteResult = await selectRows<{ id: string; organization_id: string }>(
+        "sites",
+        `select=id,organization_id&id=eq.${encodeURIComponent(siteId)}`,
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY
+      );
+      const site = siteResult.data[0];
+      if (!site) return json({ error: "Сайт не знайдено" }, 404, origin);
+
+      const membershipResult = await selectRows<{ organization_id: string }>(
+        "organization_members",
+        `select=organization_id&user_id=eq.${encodeURIComponent(userData.id)}&organization_id=eq.${encodeURIComponent(site.organization_id)}`,
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY
+      );
+      if (membershipResult.data.length === 0) return json({ error: "Forbidden" }, 403, origin);
+
+      const result = await resolveIncidentManually(incidentId, siteId, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+      if (!result.ok) return json({ error: result.error ?? "Не вдалося закрити інцидент" }, 500, origin);
+      return json({ ok: true }, 200, origin);
     }
 
     // GET /api/badge/:siteId — публічний SVG бейдж "Monitored by Qorax"
