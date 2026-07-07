@@ -7,7 +7,7 @@ import { HeroAtmosphere } from "./components/HeroAtmosphere";
 import { HeroGlassCubeLazy as HeroGlassCube } from "./components/HeroGlassCubeLazy";
 import { StatsStrip } from "./components/StatsStrip";
 import { FeatureBento } from "./components/FeatureBento";
-import { RoadmapSection } from "./components/RoadmapSection";
+import { PlatformModulesSection } from "./components/PlatformModulesSection";
 import { HowItWorksSection } from "./components/HowItWorksSection";
 import { FaqSection } from "./components/FaqSection";
 import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
@@ -101,7 +101,7 @@ export default async function Home() {
       </ProductSection>
 
       <FeatureBento />
-      <RoadmapSection />
+      <PlatformModulesSection />
       <HowItWorksSection />
       <PlansSection starterUrl={starterUrl} growthUrl={growthUrl} agencyUrl={agencyUrl} />
       <FaqSection />
