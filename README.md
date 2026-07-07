@@ -28,4 +28,11 @@ npm run dev
 
 - `app/` — Next.js App Router, сторінки та компоненти лендінгу
 - `worker/` — Cloudflare Worker API (безкоштовний аудит, надалі — моніторинг). Деплоїться окремо, див. `worker/README.md`
+
+## Платформа
+
+Qorax росте з продукту моніторингу в платформу з кількох модулів
+(Audit, Sites, AI, Content, Rank, Analytics). Архітектура цього
+переходу — реєстр модулів, RLS, catch-all заглушки, тимчасове
+відключення checkout — описана в [`PLATFORM.md`](./PLATFORM.md).
 - `supabase/migrations/` — SQL-міграції схеми бази даних, застосовуються по порядку (0001 → ...)
