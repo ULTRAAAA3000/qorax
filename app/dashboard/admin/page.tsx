@@ -8,6 +8,7 @@ import { AdminStats } from "./AdminStats";
 import { BusinessMetricsPanel } from "./BusinessMetricsPanel";
 import { FixRequestsPanel } from "./FixRequestsPanel";
 import { ReferralCommissionsPanel } from "./ReferralCommissionsPanel";
+import { PlatformModulesPanel } from "./PlatformModulesPanel";
 
 export const metadata = { title: "Адмін панель — Qorax" };
 
@@ -67,6 +68,9 @@ export default async function AdminPage() {
 
         {/* Реферальні виплати */}
         <ReferralCommissionsPanel accessToken={accessToken} workerUrl={workerUrl} />
+
+        {/* Модулі платформи — статус для sidebar/лендингу */}
+        <PlatformModulesPanel />
 
         {/* Ручний запуск */}
         <AdminPanel />
