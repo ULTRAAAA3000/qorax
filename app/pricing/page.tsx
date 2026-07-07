@@ -2,6 +2,7 @@ import { Reveal } from "@/app/components/Reveal";
 import { MarketingHeader } from "@/app/components/MarketingHeader";
 import { SiteFooterExpanded } from "@/app/components/SiteFooterExpanded";
 import { createClient } from "@/app/lib/supabase/server";
+import { CHECKOUT_DISABLED } from "@/app/lib/checkoutFlag";
 
 const LS_SUBDOMAIN = process.env.LS_STORE_SUBDOMAIN ?? "qoraxus";
 const LS_VARIANTS: Record<string, string> = {
@@ -144,14 +145,24 @@ export default async function PricingPage() {
                     </li>
                   ))}
                 </ul>
-                <a
-                  href={plan.url}
-                  target={plan.url.startsWith("http") ? "_blank" : undefined}
-                  rel={plan.url.startsWith("http") ? "noopener noreferrer" : undefined}
-                  className={`mt-8 w-full py-3 rounded-xl text-sm font-medium transition-all text-center block ${plan.highlighted ? "glow-button justify-center" : "ghost-button justify-center"}`}
-                >
-                  Почати 14 днів безкоштовно →
-                </a>
+                {CHECKOUT_DISABLED ? (
+                  <div
+                    className="mt-8 w-full py-3 rounded-xl text-sm font-medium text-center block cursor-not-allowed"
+                    style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-tertiary)" }}
+                    title="Реєстрація відкриється найближчим часом"
+                  >
+                    Скоро відкриємо реєстрацію
+                  </div>
+                ) : (
+                  <a
+                    href={plan.url}
+                    target={plan.url.startsWith("http") ? "_blank" : undefined}
+                    rel={plan.url.startsWith("http") ? "noopener noreferrer" : undefined}
+                    className={`mt-8 w-full py-3 rounded-xl text-sm font-medium transition-all text-center block ${plan.highlighted ? "glow-button justify-center" : "ghost-button justify-center"}`}
+                  >
+                    Почати 14 днів безкоштовно →
+                  </a>
+                )}
               </div>
             </Reveal>
           ))}
