@@ -3,6 +3,7 @@ import { MarketingHeader } from "@/app/components/MarketingHeader";
 import { SiteFooterExpanded } from "@/app/components/SiteFooterExpanded";
 import { Reveal } from "@/app/components/Reveal";
 import { FeatureBento } from "@/app/components/FeatureBento";
+import { PlatformModulesSection } from "@/app/components/PlatformModulesSection";
 import { HowItWorksSection } from "@/app/components/HowItWorksSection";
 
 export const metadata = { title: "Можливості — Qorax" };
@@ -132,7 +133,7 @@ export default async function FeaturesPage() {
           </Reveal>
           <Reveal delay={0.1}>
             <p className="mt-6 text-lg text-[var(--text-secondary)] max-w-xl mx-auto leading-relaxed">
-              Один сервіс замість п&apos;яти різних інструментів. Моніторинг, SEO, швидкість, конкуренти та AI-аналіз — все в одному дашборді.
+              Платформа з шести модулів замість п&apos;яти розрізнених інструментів. Моніторинг, SEO, швидкість, конкуренти та AI-аналіз — вже працюють. Далі — сайти, контент, позиції та аналітика в одній екосистемі.
             </p>
           </Reveal>
           <Reveal delay={0.15}>
@@ -223,6 +224,9 @@ export default async function FeaturesPage() {
 
       {/* Bento grid */}
       <FeatureBento />
+
+      {/* Platform-wide narrative — all 6 modules */}
+      <PlatformModulesSection />
 
       {/* How it works */}
       <HowItWorksSection />
