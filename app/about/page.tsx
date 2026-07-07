@@ -138,6 +138,50 @@ export default async function AboutPage() {
         </div>
       </section>
 
+      {/* Vision — platform, not just a tool */}
+      <section className="relative">
+        <div className="gradient-divider" />
+        <div className="mx-auto max-w-6xl px-6 sm:px-8 py-16 sm:py-20">
+          <div className="grid lg:grid-cols-[0.7fr_1.3fr] gap-10 items-start">
+            <div>
+              <Reveal>
+                <span
+                  className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono text-[var(--text-tertiary)] mb-5"
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
+                >
+                  ✦ КУДИ МИ ЙДЕМО
+                </span>
+              </Reveal>
+              <Reveal delay={0.04}>
+                <h2 className="font-display text-3xl sm:text-4xl font-semibold leading-tight">
+                  Від інструмента —{" "}
+                  <span className="gradient-text">до екосистеми</span>
+                </h2>
+              </Reveal>
+            </div>
+            <div>
+              <Reveal delay={0.06}>
+                <p className="text-[var(--text-secondary)] leading-relaxed">
+                  Моніторинг був лише першим кроком. Ми будуємо Qorax як платформу, де бізнес
+                  проходить весь шлях в одному місці: створює присутність в інтернеті, контролює
+                  її технічний стан, отримує AI-допомогу з контентом, бачить свої позиції в
+                  пошуку і розуміє, звідки приходять клієнти — без перемикання між п&apos;ятьма
+                  різними сервісами.
+                </p>
+              </Reveal>
+              <Reveal delay={0.1}>
+                <p className="mt-4 text-[var(--text-secondary)] leading-relaxed">
+                  Audit — моніторинг, швидкість, SEO та AI-аналіз — вже працює і саме ним
+                  користуються наші перші клієнти сьогодні. Sites, AI, Content, Rank та Analytics —
+                  модулі, які ми активно будуємо просто зараз, крок за кроком, разом із
+                  людьми, які вже з нами.
+                </p>
+              </Reveal>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* Team */}
       <section className="relative">
         <div className="gradient-divider" />

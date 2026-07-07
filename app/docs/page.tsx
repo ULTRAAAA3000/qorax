@@ -36,7 +36,8 @@ export default async function DocsPage() {
         </Reveal>
         <Reveal delay={0.1}>
           <p className="mt-4 text-[var(--text-secondary)] max-w-md leading-relaxed">
-            Все, що потрібно знати для початку роботи та ефективного використання Qorax.
+            Все, що потрібно знати про модуль Audit — моніторинг, SEO та AI-аналіз, який вже працює.
+            Документацію інших модулів платформи додамо по мірі їх запуску.
           </p>
         </Reveal>
       </section>
