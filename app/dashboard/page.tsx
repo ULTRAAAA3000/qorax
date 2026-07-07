@@ -8,6 +8,8 @@ import { SiteCard } from "./SiteCard";
 import { SitesListControls } from "./SitesListControls";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 import { PortfolioHealthCard } from "./PortfolioHealthCard";
+import { PlatformSidebar } from "./PlatformSidebar";
+import { getPlatformModules } from "@/app/lib/getPlatformModules";
 
 export const metadata = { title: "Дашборд — Qorax" };
 
@@ -53,6 +55,8 @@ export default async function DashboardPage({
       .order("created_at", { ascending: false }),
     supabase.from("profiles").select("full_name, platform_role").eq("id", user.id).single(),
   ]);
+
+  const platformModules = await getPlatformModules(membership?.organization_id ?? null);
 
   // Відкриті інциденти для всіх сайтів організації одним запитом —
   // потрібно для статусу up/down у списку (сортування, груповий badge).
@@ -267,7 +271,10 @@ export default async function DashboardPage({
         </div>
       </header>
 
-      <main className="mx-auto max-w-6xl px-6 sm:px-8 py-8 space-y-5">
+      <div className="flex" style={{ minHeight: "calc(100vh - 56px)" }}>
+        <PlatformSidebar modules={platformModules} />
+
+        <main className="flex-1 min-w-0 mx-auto max-w-6xl px-6 sm:px-8 py-8 space-y-5">
 
         {/* ── Welcome banner ── */}
         {params.welcome === "1" && !params.plan && (
@@ -433,7 +440,8 @@ export default async function DashboardPage({
           </div>
         )}
 
-      </main>
+        </main>
+      </div>
     </div>
   );
 }
