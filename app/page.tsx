@@ -13,6 +13,7 @@ import { FaqSection } from "./components/FaqSection";
 import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
 import { MarketingHeader } from "./components/MarketingHeader";
 import { createClient } from "./lib/supabase/server";
+import { CHECKOUT_DISABLED } from "./lib/checkoutFlag";
 
 // LemonSqueezy checkout URLs
 const LS_SUBDOMAIN = process.env.LS_STORE_SUBDOMAIN ?? "qoraxus";
@@ -407,16 +408,26 @@ function PlanCard({
           </li>
         ))}
       </ul>
-      <a
-        href={checkoutUrl}
-        target={checkoutUrl.startsWith("http") ? "_blank" : undefined}
-        rel={checkoutUrl.startsWith("http") ? "noopener noreferrer" : undefined}
-        className={`mt-8 w-full py-3 rounded-xl text-sm font-medium transition-all text-center block ${
-          highlighted ? "glow-button justify-center" : "ghost-button justify-center"
-        }`}
-      >
-        Почати →
-      </a>
+      {CHECKOUT_DISABLED ? (
+        <div
+          className="mt-8 w-full py-3 rounded-xl text-sm font-medium text-center block cursor-not-allowed"
+          style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-tertiary)" }}
+          title="Реєстрація відкриється найближчим часом"
+        >
+          Скоро відкриємо реєстрацію
+        </div>
+      ) : (
+        <a
+          href={checkoutUrl}
+          target={checkoutUrl.startsWith("http") ? "_blank" : undefined}
+          rel={checkoutUrl.startsWith("http") ? "noopener noreferrer" : undefined}
+          className={`mt-8 w-full py-3 rounded-xl text-sm font-medium transition-all text-center block ${
+            highlighted ? "glow-button justify-center" : "ghost-button justify-center"
+          }`}
+        >
+          Почати →
+        </a>
+      )}
     </div>
   );
 }

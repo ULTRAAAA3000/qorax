@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, Check, Zap } from "lucide-react";
 import { CustomerPortalButton } from "./CustomerPortalButton";
+import { CHECKOUT_DISABLED } from "@/app/lib/checkoutFlag";
 
 export const metadata = { title: "Обрати план — Qorax" };
 
@@ -194,6 +195,12 @@ export default async function UpgradePage({ searchParams }: { searchParams: Prom
                   <div className="text-center text-sm font-medium rounded-xl py-3"
                     style={{ border: "1px solid rgba(140,246,255,0.2)", color: "var(--cyan)" }}>
                     Активний ✓
+                  </div>
+                ) : CHECKOUT_DISABLED ? (
+                  <div className="text-center text-xs rounded-xl py-3 cursor-not-allowed"
+                    style={{ border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-tertiary)", background: "rgba(255,255,255,0.02)" }}
+                    title="Платформа оновлюється — оформлення відкриється найближчим часом">
+                    Скоро
                   </div>
                 ) : checkoutUrl ? (
                   <a href={checkoutUrl} target="_blank" rel="noopener noreferrer"
