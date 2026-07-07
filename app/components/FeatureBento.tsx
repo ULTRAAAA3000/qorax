@@ -11,6 +11,10 @@ import {
   Flag,
   FileText,
   MessageCircle,
+  Sparkles,
+  Users,
+  Gift,
+  Wrench,
 } from "lucide-react";
 import { Reveal } from "./Reveal";
 
@@ -77,6 +81,31 @@ const TILES: Tile[] = [
     description: "Сайт впав — повідомлення приходить за хвилину, не через годину, коли хтось випадково помітив.",
     accent: "cyan",
     icon: MessageCircle,
+  },
+  {
+    title: "Qoraxus AI-чат",
+    description: "Запитайте прямо в дашборді: «чому сайт повільний» — і отримайте відповідь з конкретним планом дій.",
+    span: "wide",
+    accent: "lime",
+    icon: Sparkles,
+  },
+  {
+    title: "Команда та ролі",
+    description: "Запросіть колег чи клієнта з правами owner, admin, editor або viewer — кожен бачить те, що потрібно.",
+    accent: "cyan",
+    icon: Users,
+  },
+  {
+    title: "Партнерська програма",
+    description: "25% комісії з кожного клієнта, якого ви привели — фрілансерам і студіям, що рекомендують Qorax.",
+    accent: "lime",
+    icon: Gift,
+  },
+  {
+    title: "Заявка на виправлення",
+    description: "Знайшли проблему, а виправити нема часу? Одна кнопка — і ми беремось за це самі.",
+    accent: "cyan",
+    icon: Wrench,
   },
 ];
 
@@ -150,7 +179,7 @@ export function FeatureBento() {
         </Reveal>
         <Reveal delay={0.08}>
           <p className="mt-4 text-center text-[var(--text-secondary)] max-w-lg mx-auto">
-            Усе, що потрібно для технічного здоров&apos;я сайту — в одному дашборді
+            Технічний стан, AI-аналіз, команда та партнерство — все, що потрібно для росту в одному дашборді
           </p>
         </Reveal>
 

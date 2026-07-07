@@ -7,6 +7,7 @@ import { HeroAtmosphere } from "./components/HeroAtmosphere";
 import { HeroGlassCubeLazy as HeroGlassCube } from "./components/HeroGlassCubeLazy";
 import { StatsStrip } from "./components/StatsStrip";
 import { FeatureBento } from "./components/FeatureBento";
+import { RoadmapSection } from "./components/RoadmapSection";
 import { HowItWorksSection } from "./components/HowItWorksSection";
 import { FaqSection } from "./components/FaqSection";
 import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
@@ -99,6 +100,7 @@ export default async function Home() {
       </ProductSection>
 
       <FeatureBento />
+      <RoadmapSection />
       <HowItWorksSection />
       <PlansSection starterUrl={starterUrl} growthUrl={growthUrl} agencyUrl={agencyUrl} />
       <FaqSection />
@@ -130,22 +132,22 @@ function Hero() {
               }}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--lime)] animate-pulse-glow" />
-              Моніторинг працює прямо зараз
+              Аудит · Моніторинг · AI-аналіз — усе разом
             </span>
           </Reveal>
 
           <Reveal delay={0.06}>
             <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold leading-[1.05] tracking-tight">
-              Сайт працює,
+              Повний контроль
               <br />
-              <span className="gradient-text">поки ви не дивитесь?</span>
+              <span className="gradient-text">над сайтом — в одному місці</span>
             </h1>
           </Reveal>
 
           <Reveal delay={0.12}>
             <p className="mt-6 text-lg sm:text-xl text-[var(--text-secondary)] leading-relaxed max-w-xl mx-auto">
-              Qorax стежить за швидкістю, безпекою та SEO вашого сайту
-              щодня — і каже, скільки грошей коштує кожна знайдена проблема.
+              Uptime, швидкість, SEO, безпека та конкуренти — під наглядом щохвилини.
+              AI пояснює кожну проблему простою мовою і каже, скільки вона коштує в грошах.
             </p>
           </Reveal>
 
@@ -438,13 +440,13 @@ function FinalCta() {
       <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-28 text-center">
         <Reveal>
           <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-semibold max-w-lg mx-auto leading-tight">
-            Перевірте свій сайт —{" "}
+            Дізнайтесь стан сайту —{" "}
             <span className="gradient-text">це безкоштовно</span>
           </h2>
         </Reveal>
         <Reveal delay={0.06}>
           <p className="mt-4 text-[var(--text-secondary)] max-w-md mx-auto">
-            Без реєстрації, без зобов&apos;язань. Просто введіть URL.
+            Без реєстрації, без зобов&apos;язань. AI-аудит за 60 секунд — просто введіть URL.
           </p>
         </Reveal>
         <Reveal delay={0.1} className="mt-9 flex justify-center">
