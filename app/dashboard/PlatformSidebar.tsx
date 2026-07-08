@@ -4,12 +4,12 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
-  ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Lock, Users,
+  ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Lock, Users, Send,
 } from "lucide-react";
 import type { PlatformModule } from "@/app/lib/getPlatformModules";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Users,
+  ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Users, Send,
 };
 
 /**

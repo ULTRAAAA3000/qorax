@@ -50,6 +50,16 @@ import {
   handleCrmReminderCreate,
 } from "./lib/crmHandler";
 import {
+  handleSocialConnectionsList,
+  handleSocialConnectionCreate,
+  handleSocialConnectionDelete,
+  handleSocialPostsList,
+  handleSocialPostCreate,
+  handleSocialPostDelete,
+  handleSocialGenerate,
+  runSocialPublishWithEnv,
+} from "./lib/socialHandler";
+import {
   handleAiGenerate,
   handleAiHistory,
   handleAiCredits,
@@ -575,6 +585,31 @@ const worker = {
     }
     if (url.pathname === "/api/crm/reminders" && request.method === "POST") {
       return handleCrmReminderCreate(request, env, corsHeaders(origin));
+    }
+
+    // ── Social routes (MODULE_ROADMAP.md, розділ 8; EXECUTION_PLAN.md Фаза 2.4) ──
+    if (url.pathname === "/api/social/connections" && request.method === "GET") {
+      return handleSocialConnectionsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/social/connections" && request.method === "POST") {
+      return handleSocialConnectionCreate(request, env, corsHeaders(origin));
+    }
+    const socialConnDeleteMatch = url.pathname.match(/^\/api\/social\/connections\/([^/]+)$/);
+    if (socialConnDeleteMatch && request.method === "DELETE") {
+      return handleSocialConnectionDelete(request, env, corsHeaders(origin), socialConnDeleteMatch[1]);
+    }
+    if (url.pathname === "/api/social/posts" && request.method === "GET") {
+      return handleSocialPostsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/social/posts" && request.method === "POST") {
+      return handleSocialPostCreate(request, env, corsHeaders(origin));
+    }
+    const socialPostDeleteMatch = url.pathname.match(/^\/api\/social\/posts\/([^/]+)$/);
+    if (socialPostDeleteMatch && request.method === "DELETE") {
+      return handleSocialPostDelete(request, env, corsHeaders(origin), socialPostDeleteMatch[1]);
+    }
+    if (url.pathname === "/api/social/generate" && request.method === "POST") {
+      return handleSocialGenerate(request, env, corsHeaders(origin));
     }
 
     // ── AI/Content routes (MODULE_ROADMAP.md, розділ 2) ───────────────
@@ -1293,6 +1328,18 @@ const worker = {
         env.APP_URL
       );
       console.log("Broken links run:", JSON.stringify(s));
+      return;
+    }
+
+    // * * * * * — щохвилини: публікація запланованих Social-постів
+    // (MODULE_ROADMAP.md розділ 8, Крок 2; EXECUTION_PLAN.md Фаза 2.4).
+    // НОВИЙ тригер — Артему потрібно додати вручну в Cloudflare Dashboard
+    // (той самий механізм, що інші cron-и цього проекту — wrangler.toml
+    // не працює на цьому акаунті). Окремий від "*/5 * * * *" (uptime/SSL),
+    // бо там уже своє навантаження щохвилини.
+    if (event.cron === "* * * * *") {
+      const s = await runSocialPublishWithEnv(env);
+      console.log("Social publish run:", JSON.stringify(s));
       return;
     }
 

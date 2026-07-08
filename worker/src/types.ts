@@ -43,4 +43,5 @@ export interface Env {
   GOOGLE_CLIENT_ID: string;
   GOOGLE_CLIENT_SECRET: string;
   GOOGLE_TOKEN_ENCRYPTION_KEY: string; // 32 hex chars (16 bytes)
+  SOCIAL_TOKEN_ENCRYPTION_KEY?: string; // 32 hex chars (16 bytes) — окремий ключ для social_connections.encrypted_bot_token, не змішувати з Google OAuth-токенами. Optional — handler перевіряє наявність і повертає 503, якщо не налаштовано (Артему потрібно додати secret у Cloudflare Dashboard)
 }
