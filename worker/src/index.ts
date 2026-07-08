@@ -40,6 +40,16 @@ import {
   handleRankQueryHistory,
 } from "./lib/rankHandler";
 import {
+  handleCrmContactsList,
+  handleCrmContactCreate,
+  handleCrmDealsList,
+  handleCrmDealCreate,
+  handleCrmDealStageUpdate,
+  handleCrmNoteCreate,
+  handleCrmNotesList,
+  handleCrmReminderCreate,
+} from "./lib/crmHandler";
+import {
   handleAiGenerate,
   handleAiHistory,
   handleAiCredits,
@@ -538,6 +548,33 @@ const worker = {
     const rankHistoryMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/rank\/history$/);
     if (rankHistoryMatch && request.method === "GET") {
       return handleRankQueryHistory(request, env, corsHeaders(origin), rankHistoryMatch[1]);
+    }
+
+    // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
+    if (url.pathname === "/api/crm/contacts" && request.method === "GET") {
+      return handleCrmContactsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/crm/contacts" && request.method === "POST") {
+      return handleCrmContactCreate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/crm/deals" && request.method === "GET") {
+      return handleCrmDealsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/crm/deals" && request.method === "POST") {
+      return handleCrmDealCreate(request, env, corsHeaders(origin));
+    }
+    const crmDealStageMatch = url.pathname.match(/^\/api\/crm\/deals\/([^/]+)\/stage$/);
+    if (crmDealStageMatch && request.method === "PATCH") {
+      return handleCrmDealStageUpdate(request, env, corsHeaders(origin), crmDealStageMatch[1]);
+    }
+    if (url.pathname === "/api/crm/notes" && request.method === "GET") {
+      return handleCrmNotesList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/crm/notes" && request.method === "POST") {
+      return handleCrmNoteCreate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/crm/reminders" && request.method === "POST") {
+      return handleCrmReminderCreate(request, env, corsHeaders(origin));
     }
 
     // ── AI/Content routes (MODULE_ROADMAP.md, розділ 2) ───────────────
