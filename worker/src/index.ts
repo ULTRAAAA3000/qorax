@@ -39,6 +39,11 @@ import {
   handleRankQueryDelete,
   handleRankQueryHistory,
 } from "./lib/rankHandler";
+import {
+  handleAiGenerate,
+  handleAiHistory,
+  handleAiCredits,
+} from "./lib/contentGeneration";
 import { runSeoChecks, runSeoCheckForSite } from "./lib/seoChecker";
 import { runCompetitorChecks } from "./lib/competitorChecker";
 import { runUrlSpeedChecks } from "./lib/urlSpeedChecker";
@@ -533,6 +538,17 @@ const worker = {
     const rankHistoryMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/rank\/history$/);
     if (rankHistoryMatch && request.method === "GET") {
       return handleRankQueryHistory(request, env, corsHeaders(origin), rankHistoryMatch[1]);
+    }
+
+    // ── AI/Content routes (MODULE_ROADMAP.md, розділ 2) ───────────────
+    if (url.pathname === "/api/ai/generate" && request.method === "POST") {
+      return handleAiGenerate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/ai/history" && request.method === "GET") {
+      return handleAiHistory(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/ai/credits" && request.method === "GET") {
+      return handleAiCredits(request, env, corsHeaders(origin));
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {
