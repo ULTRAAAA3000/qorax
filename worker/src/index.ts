@@ -33,6 +33,12 @@ import {
   handleGscMetrics,
   runGscSync,
 } from "./lib/gscHandler";
+import {
+  handleRankQueriesList,
+  handleRankQueryCreate,
+  handleRankQueryDelete,
+  handleRankQueryHistory,
+} from "./lib/rankHandler";
 import { runSeoChecks, runSeoCheckForSite } from "./lib/seoChecker";
 import { runCompetitorChecks } from "./lib/competitorChecker";
 import { runUrlSpeedChecks } from "./lib/urlSpeedChecker";
@@ -510,6 +516,23 @@ const worker = {
     }
     if (url.pathname === "/api/gsc/metrics" && request.method === "GET") {
       return handleGscMetrics(request, env, corsHeaders(origin));
+    }
+
+    // ── Rank routes (MODULE_ROADMAP.md, розділ 1) ─────────────────────
+    const rankQueriesMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/rank\/queries$/);
+    if (rankQueriesMatch && request.method === "GET") {
+      return handleRankQueriesList(request, env, corsHeaders(origin), rankQueriesMatch[1]);
+    }
+    if (rankQueriesMatch && request.method === "POST") {
+      return handleRankQueryCreate(request, env, corsHeaders(origin), rankQueriesMatch[1]);
+    }
+    const rankQueryDeleteMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/rank\/queries\/([^/]+)$/);
+    if (rankQueryDeleteMatch && request.method === "DELETE") {
+      return handleRankQueryDelete(request, env, corsHeaders(origin), rankQueryDeleteMatch[1], rankQueryDeleteMatch[2]);
+    }
+    const rankHistoryMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/rank\/history$/);
+    if (rankHistoryMatch && request.method === "GET") {
+      return handleRankQueryHistory(request, env, corsHeaders(origin), rankHistoryMatch[1]);
     }
 
     if (url.pathname === "/api/chat" && request.method === "POST") {

@@ -1,5 +1,5 @@
 import type { Env } from "../types";
-import { selectRows, upsertRow, updateRows, insertRow } from "./supabase";
+import { selectRows, upsertRow, updateRows } from "./supabase";
 
 const SCOPES = [
   "https://www.googleapis.com/auth/webmasters.readonly",
@@ -292,9 +292,10 @@ async function syncGscForSite(siteId: string, accessToken: string, propertyUrl: 
   const fmt = (d: Date) => d.toISOString().slice(0, 10);
   const today = fmt(new Date());
 
-  const gscFetch = async (dimensions: string[], rowLimit = 28, orderBy?: object[]) => {
+  const gscFetch = async (dimensions: string[], rowLimit = 28, orderBy?: object[], dimensionFilterGroups?: object[]) => {
     const body: Record<string, unknown> = { startDate: fmt(start), endDate: fmt(end), dimensions, rowLimit };
     if (orderBy) body.orderBy = orderBy;
+    if (dimensionFilterGroups) body.dimensionFilterGroups = dimensionFilterGroups;
     const res = await fetch(`${GSC_API}/sites/${encodeURIComponent(propertyUrl)}/searchAnalytics/query`, {
       method: "POST",
       headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
@@ -309,10 +310,27 @@ async function syncGscForSite(siteId: string, accessToken: string, propertyUrl: 
   };
 
   try {
-    const [aggData, pagesData, queriesData] = await Promise.all([
+    // Модуль Rank: запити, які власник явно відстежує (rank_tracked_queries).
+    // Топ-10 по кліках (queriesData нижче) не гарантує покриття нішевих
+    // запитів — тому для tracked-запитів окремо тягнемо історію по датах
+    // з GSC-фільтром по конкретному тексту запиту (contains-match).
+    const trackedQueriesResult = await selectRows<{ query: string }>(
+      "rank_tracked_queries",
+      `site_id=eq.${encodeURIComponent(siteId)}&select=query`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    const trackedQueries = trackedQueriesResult.ok ? trackedQueriesResult.data : [];
+
+    const [aggData, pagesData, queriesData, ...trackedHistories] = await Promise.all([
       gscFetch(["date"], 28),
       gscFetch(["page"], 10, [{ fieldName: "clicks", sortOrder: "DESCENDING" }]),
       gscFetch(["query"], 10, [{ fieldName: "clicks", sortOrder: "DESCENDING" }]),
+      ...trackedQueries.map(tq =>
+        gscFetch(["date"], 28, undefined, [
+          { filters: [{ dimension: "query", operator: "equals", expression: tq.query }] },
+        ])
+      ),
     ]);
 
     const rows: Record<string, unknown>[] = [];
@@ -326,6 +344,12 @@ async function syncGscForSite(siteId: string, accessToken: string, propertyUrl: 
     for (const r of queriesData.rows ?? []) {
       rows.push({ site_id: siteId, date: today, clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, average_position: r.position, page_url: null, query: r.keys[0], synced_at: new Date().toISOString() });
     }
+    trackedHistories.forEach((history, i) => {
+      const query = trackedQueries[i].query;
+      for (const r of history.rows ?? []) {
+        rows.push({ site_id: siteId, date: r.keys[0], clicks: r.clicks, impressions: r.impressions, ctr: r.ctr, average_position: r.position, page_url: null, query, synced_at: new Date().toISOString() });
+      }
+    });
 
     // Upsert rows one-by-one (REST API doesn't support multi-row upsert with complex conflict columns easily)
     let saved = 0;
@@ -361,5 +385,4 @@ function json(data: unknown, status: number, headers: Record<string, string>): R
   return new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...headers } });
 }
 
-// unused import guard
-void insertRow;
+export { getUserIdFromToken, getOrgIdForSite };
