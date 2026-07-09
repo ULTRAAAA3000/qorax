@@ -60,6 +60,12 @@ import {
   runSocialPublishWithEnv,
 } from "./lib/socialHandler";
 import {
+  handleAcademyCoursesList,
+  handleAcademyCourseDetail,
+  handleAcademyProgress,
+  handleAcademyMentor,
+} from "./lib/academyHandler";
+import {
   handleAiGenerate,
   handleAiHistory,
   handleAiCredits,
@@ -610,6 +616,21 @@ const worker = {
     }
     if (url.pathname === "/api/social/generate" && request.method === "POST") {
       return handleSocialGenerate(request, env, corsHeaders(origin));
+    }
+
+    // ── Academy routes (MODULE_ROADMAP.md, розділ 10; EXECUTION_PLAN.md Фаза 2.5) ──
+    if (url.pathname === "/api/academy/courses" && request.method === "GET") {
+      return handleAcademyCoursesList(request, env, corsHeaders(origin));
+    }
+    const academyCourseDetailMatch = url.pathname.match(/^\/api\/academy\/courses\/([^/]+)$/);
+    if (academyCourseDetailMatch && request.method === "GET") {
+      return handleAcademyCourseDetail(request, env, corsHeaders(origin), academyCourseDetailMatch[1]);
+    }
+    if (url.pathname === "/api/academy/progress" && request.method === "POST") {
+      return handleAcademyProgress(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/academy/mentor" && request.method === "POST") {
+      return handleAcademyMentor(request, env, corsHeaders(origin));
     }
 
     // ── AI/Content routes (MODULE_ROADMAP.md, розділ 2) ───────────────
