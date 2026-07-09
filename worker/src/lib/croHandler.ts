@@ -131,12 +131,14 @@ async function requireSiteAccess(request: Request, siteId: string, env: Env): Pr
   return { ok: true, orgId };
 }
 
-// PRICING.md розділ 2: тарифи реально в БД — Starter/Growth/Agency, БЕЗ
-// "Pro" (MODULE_ROADMAP.md чернетка згадує "Pro+", але такого тарифу не
-// існує — задокументоване розходження чернетки з реальністю). CRO
-// гейтиться на Growth+ за аналогією з core_web_vitals/ai_revenue_impact/
-// live_dashboard — та сама межа "просунутіші можливості", що вже є в
-// PRICING.md таблиці фіче-флагів.
+// PRICING.md розділ 2: тарифи реально в БД — Starter/Growth/Agency + план
+// 'admin' (0016_admin_plan.sql, службовий план для platform_role=admin,
+// призначається через upgrade_to_admin(email) вручну в SQL Editor).
+// CRO гейтиться на Growth+ за тим самим списком planCode, що вже
+// використовується в усіх інших фіче-флагах проєкту (index.ts,
+// chatHandler.ts, teamHandler.ts, gscHandler.ts, seoChecker.ts,
+// competitorChecker.ts, fixRequestHandler.ts) — 'admin' і 'trial'
+// завжди мають доступ нарівні з Growth/Agency.
 async function canUseCro(orgId: string, env: Env): Promise<boolean> {
   const res = await selectRows<{ status: string; plans: { code: string } }>(
     "subscriptions",
@@ -145,7 +147,7 @@ async function canUseCro(orgId: string, env: Env): Promise<boolean> {
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   const planCode = (res.data?.[0]?.plans as { code: string } | null)?.code;
-  return planCode === "growth" || planCode === "agency";
+  return ["growth", "agency", "admin", "trial"].includes(planCode ?? "");
 }
 
 // ── GET /api/sites/:id/cro/snippet ── отримати/створити snippet_key
