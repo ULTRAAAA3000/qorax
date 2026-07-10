@@ -28,6 +28,7 @@ import {
   handleWorkspaceListRequest,
   handleWorkspaceDeleteRequest,
 } from "./lib/workspaceHandler";
+import { handleMemoryGetRequest, handleMemoryUpdateRequest } from "./lib/memoryHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -704,6 +705,14 @@ const worker = {
     const workspaceFileMatch = url.pathname.match(/^\/api\/workspace\/files\/([^/]+)$/);
     if (workspaceFileMatch && request.method === "DELETE") {
       return handleWorkspaceDeleteRequest(request, workspaceFileMatch[1], env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/memory" && request.method === "GET") {
+      return handleMemoryGetRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/memory" && request.method === "PUT") {
+      return handleMemoryUpdateRequest(request, env, origin, corsHeaders(origin));
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту
