@@ -4,6 +4,7 @@ import { useState } from "react";
 import { MessageSquare, FolderOpen, Brain, ListChecks, Bot, Zap, Lock } from "lucide-react";
 import { WorkspaceTab } from "./WorkspaceTab";
 import { MemoryTab } from "./MemoryTab";
+import { ChatTab } from "./ChatTab";
 
 type TabId = "chat" | "workspace" | "agents" | "memory" | "tasks" | "automations";
 
@@ -13,7 +14,7 @@ type TabId = "chat" | "workspace" | "agents" | "memory" | "tasks" | "automations
 // заблокованими з підказкою "Скоро", той самий патерн, що вже
 // використано в PlatformSidebar для coming_soon-модулів.
 const TABS: Array<{ id: TabId; label: string; icon: typeof MessageSquare; ready: boolean }> = [
-  { id: "chat", label: "Chat", icon: MessageSquare, ready: false },
+  { id: "chat", label: "Chat", icon: MessageSquare, ready: true },
   { id: "workspace", label: "Workspace", icon: FolderOpen, ready: true },
   { id: "agents", label: "Agents", icon: Bot, ready: false },
   { id: "memory", label: "Memory", icon: Brain, ready: true },
@@ -22,7 +23,7 @@ const TABS: Array<{ id: TabId; label: string; icon: typeof MessageSquare; ready:
 ];
 
 export function QoraxAiHub() {
-  const [activeTab, setActiveTab] = useState<TabId>("workspace");
+  const [activeTab, setActiveTab] = useState<TabId>("chat");
 
   return (
     <div>
@@ -57,10 +58,11 @@ export function QoraxAiHub() {
       </div>
 
       {/* Active tab content */}
+      {activeTab === "chat" && <ChatTab />}
       {activeTab === "workspace" && <WorkspaceTab />}
       {activeTab === "memory" && <MemoryTab />}
 
-      {activeTab !== "workspace" && activeTab !== "memory" && (
+      {activeTab !== "chat" && activeTab !== "workspace" && activeTab !== "memory" && (
         <div
           className="rounded-xl p-8 text-center"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
