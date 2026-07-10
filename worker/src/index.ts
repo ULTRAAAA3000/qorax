@@ -48,6 +48,7 @@ import {
   handleCrmNoteCreate,
   handleCrmNotesList,
   handleCrmReminderCreate,
+  runCrmReminders,
 } from "./lib/crmHandler";
 import {
   handleSocialConnectionsList,
@@ -343,6 +344,27 @@ const worker = {
             .then(s => console.log("Manual uptime:", JSON.stringify(s)))
         );
         return json({ ok: true, message: "Uptime checks started" }, 200, origin);
+      }
+
+      // Було написано (runSocialPublishWithEnv, socialHandler.ts), але
+      // не підключено в роутинг — EXECUTION_PLAN.md Фаза 2.4 "НЕ
+      // зроблено", закрито цим проходом.
+      if (url.pathname === "/api/admin/run-social-publish") {
+        ctx.waitUntil(
+          runSocialPublishWithEnv(env)
+            .then(s => console.log("Manual social publish:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "Social publish started" }, 200, origin);
+      }
+
+      // EXECUTION_PLAN.md Фаза 2.1 "НЕ зроблено": нагадування CRM
+      // створювались, ніхто їх не надсилав — закрито цим проходом.
+      if (url.pathname === "/api/admin/run-crm-reminders") {
+        ctx.waitUntil(
+          runCrmReminders(env)
+            .then(s => console.log("Manual CRM reminders:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "CRM reminders started" }, 200, origin);
       }
 
       if (url.pathname === "/api/admin/env-check") {

@@ -14,6 +14,7 @@ import type { Env } from "../types";
 import { selectRows, insertRow, updateRows } from "./supabase";
 import { json } from "./httpUtils";
 import { requireOrgAccess } from "./orgAuth";
+import { dispatchAlert } from "./monitoring";
 
 interface CrmContact {
   id: string;
@@ -91,6 +92,9 @@ export async function handleCrmContactCreate(
   if (!name && !email && !phone) {
     return json({ error: "Потрібно вказати хоча б ім'я, email чи телефон" }, 400, corsHeaders);
   }
+
+  const limitCheck = await checkContactLimit(organizationId, env);
+  if (!limitCheck.ok) return json({ error: limitCheck.error }, 402, corsHeaders);
 
   const insertRes = await insertRow(
     "crm_contacts",
@@ -345,4 +349,155 @@ export async function handleCrmReminderCreate(
   if (!insertRes.ok) return json({ error: insertRes.error }, 400, corsHeaders);
 
   return json({ ok: true }, 201, corsHeaders);
+}
+
+// ── Ліміт кількості контактів по тарифу (PRICING.md розділ 4: вісь
+// ліміту "кількість контактів" — конкретні числа зараз обираються,
+// узгоджено з тим же підходом, що MONTHLY_POST_LIMIT_BY_PLAN в
+// socialHandler.ts). НАКОПИЧУВАЛЬНИЙ ліміт (всього контактів), не
+// щомісячний — контакти не витрачаються, як публікації, вони
+// накопичуються. ──
+
+const CONTACT_LIMIT_BY_PLAN: Record<string, number> = {
+  starter: 100,
+  growth: 500,
+  agency: 5000,
+  admin: 999999,
+  trial: 100,
+};
+
+async function checkContactLimit(organizationId: string, env: Env): Promise<{ ok: true } | { ok: false; error: string }> {
+  const planRes = await selectRows<{ status: string; plans: { code: string } }>(
+    "subscriptions",
+    `select=status,plans(code)&organization_id=eq.${encodeURIComponent(organizationId)}&status=in.(active,trialing)&order=created_at.desc&limit=1`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const planCode = (planRes.data?.[0]?.plans as { code: string } | null)?.code ?? "starter";
+  const limit = CONTACT_LIMIT_BY_PLAN[planCode] ?? CONTACT_LIMIT_BY_PLAN.starter;
+
+  const countRes = await selectRows<{ id: string }>(
+    "crm_contacts",
+    `select=id&organization_id=eq.${encodeURIComponent(organizationId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const total = countRes.data?.length ?? 0;
+
+  if (total >= limit) {
+    return { ok: false, error: `Ліміт контактів вичерпано (${limit} на тарифі ${planCode}). Оновіть тариф для більшої кількості.` };
+  }
+  return { ok: true };
+}
+
+// ── run-crm-reminders — фонова задача (EXECUTION_PLAN.md Фаза 2.1,
+// "НЕ зроблено": нагадування створювались, але ніхто їх не
+// надсилав). Переюзовує dispatchAlert() (monitoring.ts). Легкий
+// аналог getOrgNotifSettings нижче — той вимагає siteId (форма
+// site→organization), нагадування CRM вже мають organization_id
+// напряму, тому without зайвого походу через sites. Викликається
+// через POST /api/admin/run-crm-reminders, той самий патерн, що
+// run-uptime. ──
+
+interface DueReminder {
+  id: string;
+  organization_id: string;
+  message: string;
+}
+
+export async function runCrmReminders(env: Env): Promise<{ sent: number; failed: number }> {
+  const nowIso = new Date().toISOString();
+  const dueRes = await selectRows<DueReminder>(
+    "crm_reminders",
+    `select=id,organization_id,message&is_done=eq.false&remind_at=lte.${nowIso}&limit=100`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!dueRes.ok || !dueRes.data?.length) return { sent: 0, failed: 0 };
+
+  let sent = 0;
+  let failed = 0;
+
+  for (const reminder of dueRes.data) {
+    try {
+      const settings = await getOrgNotifSettingsByOrgId(reminder.organization_id, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+      if (settings) {
+        await dispatchAlert(
+          settings,
+          { subject: "Нагадування CRM", html: `<p>${reminder.message}</p>` },
+          `🔔 Нагадування CRM: ${reminder.message}`,
+          null,
+          env.RESEND_API_KEY,
+          env.TELEGRAM_BOT_TOKEN
+        );
+      }
+      await updateRows("crm_reminders", `id=eq.${reminder.id}`, { is_done: true }, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+      sent++;
+    } catch (err) {
+      console.error("[crm-reminders] error for reminder", reminder.id, err);
+      failed++;
+    }
+  }
+
+  return { sent, failed };
+}
+
+/**
+ * Легкий аналог getOrgNotifSettings з monitoring.ts — той вимагає
+ * siteId (форма site→organization), нагадування CRM вже мають
+ * organization_id напряму, тому без зайвого походу через sites.
+ * Дублює частину логіки monitoring.ts навмисно (власник + settings) —
+ * винесення в спільний helper залишається окремим TODO, якщо
+ * з'явиться третій споживач цього патерну (organization_id → owner
+ * → notification_settings, обходячи sites).
+ */
+async function getOrgNotifSettingsByOrgId(
+  organizationId: string,
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<import("./monitoring").OrgEmailRow | null> {
+  const settingsRes = await selectRows<{
+    email_enabled: boolean;
+    telegram_enabled: boolean;
+    telegram_chat_id: string | null;
+    slack_enabled: boolean;
+    slack_webhook_url: string | null;
+    notify_site_down: boolean;
+    notify_ssl_domain_expiry: boolean;
+    notify_competitor_changes: boolean;
+  }>(
+    "notification_settings",
+    `select=email_enabled,telegram_enabled,telegram_chat_id,slack_enabled,slack_webhook_url,notify_site_down,notify_ssl_domain_expiry,notify_competitor_changes&organization_id=eq.${encodeURIComponent(organizationId)}`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (!settingsRes.ok || !settingsRes.data?.[0]) return null;
+
+  const ownerRes = await selectRows<{ user_id: string }>(
+    "organization_members",
+    `select=user_id&organization_id=eq.${encodeURIComponent(organizationId)}&role=eq.owner`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (!ownerRes.ok || !ownerRes.data?.[0]) return null;
+
+  const authResp = await fetch(`${supabaseUrl}/auth/v1/admin/users/${ownerRes.data[0].user_id}`, {
+    headers: { apikey: serviceRoleKey, Authorization: `Bearer ${serviceRoleKey}` },
+  });
+  if (!authResp.ok) return null;
+  const authData = (await authResp.json()) as { email?: string };
+  if (!authData.email) return null;
+
+  const s = settingsRes.data[0];
+  return {
+    email: authData.email,
+    notify_site_down: s.notify_site_down,
+    notify_ssl_domain_expiry: s.notify_ssl_domain_expiry,
+    notify_competitor_changes: s.notify_competitor_changes,
+    email_enabled: s.email_enabled,
+    telegram_enabled: s.telegram_enabled,
+    telegram_chat_id: s.telegram_chat_id,
+    slack_enabled: s.slack_enabled,
+    slack_webhook_url: s.slack_webhook_url,
+  };
 }
