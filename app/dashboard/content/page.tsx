@@ -7,9 +7,15 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Sparkles, ArrowLeft } from "lucide-react";
 
-export const metadata = { title: "AI — Qorax" };
+export const metadata = { title: "AI Content — Qorax" };
 
-export default async function AiPage() {
+// Перенесено з /dashboard/ai (EXECUTION_PLAN.md, розділ "Хвиля 3
+// почата: Qorax AI — схема БД"): platform_modules з 0039_platform_
+// foundation.sql з самого початку мала ключ 'content' саме під цю
+// сторінку (генерація текстів), а ключ 'ai' — під майбутній
+// повноцінний Qorax AI-хаб (0049_qorax_ai_hub.sql). Раніше цей код
+// помилково жив на /dashboard/ai; тепер шлях відповідає задуму.
+export default async function ContentPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -53,7 +59,7 @@ export default async function AiPage() {
           <div>
             <div className="flex items-center gap-2.5 mb-1">
               <Sparkles size={20} style={{ color: "var(--lime)" }} />
-              <h1 className="font-display text-2xl font-semibold">AI</h1>
+              <h1 className="font-display text-2xl font-semibold">AI Content</h1>
             </div>
             <p className="text-sm text-[var(--text-secondary)]">
               Генерація заголовків, meta-описів, FAQ та вступних абзаців — під ваш бізнес.
