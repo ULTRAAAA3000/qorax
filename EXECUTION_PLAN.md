@@ -664,3 +664,68 @@ wrangler.toml` успішно (452 KiB).
   `/dashboard/ai` (майбутній хаб) ще не існує — це наступний
   логічний крок хвилі 3 (сама сторінка Qorax AI-хаба)
 - Agents/Workspace/Memory/Tasks/Automations — окремі майбутні кроки
+
+---
+
+## Workspace — другий UI-крок хвилі 3
+
+Розміщено на `/dashboard/ai` (рішення Артема) як перша реально
+робоча вкладка майбутнього Qorax AI-хаба — сторінка тепер має табову
+навігацію (Chat/Workspace/Agents/Memory/Tasks/Automations), лише
+Workspace активна, решта — заблоковані заглушки "Скоро" (той самий
+патерн, що вже в `PlatformSidebar` для coming_soon-модулів).
+
+Рішення Артема: одразу авто-екстракція тексту + AI-сумаризація через
+Gemini (не просто зберігання файлів), 4 типи одразу — PDF, CSV,
+DOCX, зображення. Ліміт 5 МБ на файл.
+
+**Зроблено:**
+- `0051_ai_workspace_storage.sql` — приватний bucket
+  `ai-workspace-files` (на відміну від публічного 0028 для лого),
+  RLS за тим самим foldername-патерном organization_id
+- `worker/src/lib/workspaceHandler.ts` — upload/list/delete,
+  екстракція за типом файлу:
+  - PDF/зображення → нативний Gemini `inline_data` (document/image
+    understanding) — НЕ парситься самостійно
+  - CSV → звичайний текст, summarize окремим викликом
+  - DOCX → `fflate` (ZIP-розпаковка, чистий JS без `node:fs`) +
+    regex по `<w:t>` тегам у `word/document.xml`. **Важлива технічна
+    причина:** Gemini НЕ підтримує DOCX нативно через `inline_data`
+    (задокументована помилка "Unsupported MIME type" в офіційному
+    форумі Google) — самостійна екстракція обов'язкова саме для
+    цього формату, на відміну від PDF/зображень
+- `app/dashboard/ai/` — `page.tsx` (каркас хаба), `QoraxAiHub.tsx`
+  (табова навігація), `WorkspaceTab.tsx` (upload drag&drop, список
+  файлів із summary, видалення)
+- `0052_ai_module_hub_description.sql` — уточнює label/description
+  ключа `'ai'` під реальний хаб (старий текст описував функціонал,
+  перенесений на `/dashboard/content` в 0050)
+- Нова залежність воркера: `fflate`
+
+**Перевірено:** `rm -rf .next`, `tsc --noEmit` чисто (фронт+воркер
+окремо, воркер: ті самі 9 відомих помилок поза `workspaceHandler.ts`),
+`npm run build` успішно (`/dashboard/ai` у списку routes), `wrangler
+deploy --dry-run` успішно (481.50 KiB).
+
+**ВАЖЛИВО для Артема:** потребує застосування `0049`+`0051`+`0052` в
+продакшн Supabase ДО деплою воркера (bucket + `ai_files` мають
+існувати). Реальний upload/Gemini-виклик НЕ протестовано наживо —
+у пісочниці Claude немає доступу до продакшн Supabase/Gemini
+credentials, перевірено лише статичний код і успішна збірка/
+типізація. Перший реальний upload варто зробити самому і перевірити,
+що summary дійсно повертається коректно для кожного з 4 типів файлів.
+
+**Свідомо не зроблено (наступні кроки):**
+- Список тредів / кілька паралельних розмов — зараз один активний
+  тред на сайт (найновіший за `updated_at`), не мульти-тред UI
+- Streaming відповіді (як і раніше — повний JSON, не SSE)
+- Головний organization-рівня чат (`site_id=null`) в окремому UI —
+  backend вже підтримує (`buildOrgScopedPrompt`), але сторінки
+  `/dashboard/ai` (майбутній хаб) ще не існує — це наступний
+  логічний крок хвилі 3 (сама сторінка Qorax AI-хаба)
+- Agents/Memory/Tasks/Automations — окремі майбутні кроки, кожна
+  своя вкладка вже підготовлена в `QoraxAiHub.tsx` (просто замінити
+  `ready: false` на `true` і додати компонент вкладки)
+- Прикріплення файлу з Workspace прямо в Chat (спільний
+  `thread_id` вже підтримується схемою `ai_files.thread_id`, але
+  UI цього зв'язку ще нема)
