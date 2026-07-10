@@ -23,6 +23,11 @@ import {
 } from "./lib/teamHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
 import { handleChatRequest, handleGetOrCreateThreadRequest } from "./lib/chatHandler";
+import {
+  handleWorkspaceUploadRequest,
+  handleWorkspaceListRequest,
+  handleWorkspaceDeleteRequest,
+} from "./lib/workspaceHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -686,6 +691,19 @@ const worker = {
 
     if (url.pathname === "/api/ai-chat" && request.method === "POST") {
       return handleChatRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/workspace/upload" && request.method === "POST") {
+      return handleWorkspaceUploadRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/workspace/files" && request.method === "GET") {
+      return handleWorkspaceListRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    const workspaceFileMatch = url.pathname.match(/^\/api\/workspace\/files\/([^/]+)$/);
+    if (workspaceFileMatch && request.method === "DELETE") {
+      return handleWorkspaceDeleteRequest(request, workspaceFileMatch[1], env, origin, corsHeaders(origin));
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту
