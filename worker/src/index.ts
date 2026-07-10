@@ -1466,6 +1466,18 @@ const worker = {
       return;
     }
 
+    // 0 * * * * — щогодини: CRM-нагадування (EXECUTION_PLAN.md Фаза
+    // 2.1 "НЕ зроблено", закрито окремим проходом). НОВИЙ тригер —
+    // Артему потрібно додати вручну в Cloudflare Dashboard. Погодинний
+    // інтервал достатній для нагадувань (remind_at зазвичай задається
+    // з точністю до години самим користувачем, не до хвилини) — не
+    // навантажувати диспетчер ще одним щохвилинним тригером без потреби.
+    if (event.cron === "0 * * * *") {
+      const s = await runCrmReminders(env);
+      console.log("CRM reminders run:", JSON.stringify(s));
+      return;
+    }
+
     // */5 * * * * — кожні 5 хвилин: uptime + SSL
     await Promise.all([
       runUptimeChecks(
