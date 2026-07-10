@@ -22,7 +22,7 @@ import {
   handleUpdateMemberRole, handleRemoveMember, handleGetInvitePreview,
 } from "./lib/teamHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
-import { handleChatRequest } from "./lib/chatHandler";
+import { handleChatRequest, handleGetOrCreateThreadRequest } from "./lib/chatHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -680,7 +680,11 @@ const worker = {
       return handleAiCredits(request, env, corsHeaders(origin));
     }
 
-    if (url.pathname === "/api/chat" && request.method === "POST") {
+    if (url.pathname === "/api/ai-chat/thread" && request.method === "GET") {
+      return handleGetOrCreateThreadRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/ai-chat" && request.method === "POST") {
       return handleChatRequest(request, env, origin, corsHeaders(origin));
     }
 
