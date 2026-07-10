@@ -729,3 +729,44 @@ credentials, перевірено лише статичний код і успі
 - Прикріплення файлу з Workspace прямо в Chat (спільний
   `thread_id` вже підтримується схемою `ai_files.thread_id`, але
   UI цього зв'язку ще нема)
+
+---
+
+## Memory — третій UI-крок хвилі 3
+
+Продовження хаба на `/dashboard/ai`. MODULE_ROADMAP.md (рядок 1189)
+прямо задає обсяг: "проста форма, дешева технічно, дає AI одразу
+[контекст]" — тому реалізація навмисно проста, без AI-логіки
+автогенерації полів.
+
+**Ключове рішення цієї сесії:** Memory одразу інтегрована в Chat
+(`buildMemoryContext()` з `memoryHandler.ts` додається в системний
+промпт обох гілок `chatHandler.ts` — і site-scoped, і org-scoped,
+включно з випадком "ще немає жодного сайту"). Без цього Memory була
+б формою в порожнечу — тепер заповнене тут одразу впливає на
+відповіді AI в Chat.
+
+**Зроблено:**
+- `worker/src/lib/memoryHandler.ts` — `GET/PUT /api/memory` (upsert
+  одного рядка на organization_id), обмеження довжини полів (2000/
+  500/2000 символів, до 20 конкурентів) — щоб не роздувати системний
+  промпт Chat довільно великим текстом
+- `app/dashboard/ai/MemoryTab.tsx` — форма: business_summary/goals
+  (textarea), tone_preference (input), competitors (chip-список)
+- `QoraxAiHub.tsx`: Memory тепер `ready: true` (Chat/Agents/Tasks/
+  Automations усе ще заглушки "Скоро")
+
+**Перевірено:** `rm -rf .next`, `tsc --noEmit` чисто (фронт+воркер
+окремо, воркер: ті самі 9 відомих помилок поза `memoryHandler.ts`/
+`chatHandler.ts`), `npm run build` успішно, `wrangler deploy
+--dry-run` успішно (488.92 KiB).
+
+**ВАЖЛИВО для Артема:** потребує `0049_qorax_ai_hub.sql` (`ai_memory`)
+вже застосованої в продакшн Supabase. Реальний upsert і вплив на
+відповіді Gemini в Chat НЕ протестовано наживо — рекомендується
+самому заповнити Memory і перевірити, що Chat дійсно враховує цей
+контекст у відповідях.
+
+**Свідомо не зроблено (наступні кроки):** Agents, Tasks, Automations
+— кожна вже підготовлена як вкладка в `QoraxAiHub.tsx` (замінити
+`ready: false` на `true` + додати компонент).
