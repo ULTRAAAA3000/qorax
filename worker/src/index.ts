@@ -22,7 +22,13 @@ import {
   handleUpdateMemberRole, handleRemoveMember, handleGetInvitePreview,
 } from "./lib/teamHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
-import { handleChatRequest } from "./lib/chatHandler";
+import { handleChatRequest, handleGetOrCreateThreadRequest } from "./lib/chatHandler";
+import {
+  handleWorkspaceUploadRequest,
+  handleWorkspaceListRequest,
+  handleWorkspaceDeleteRequest,
+} from "./lib/workspaceHandler";
+import { handleMemoryGetRequest, handleMemoryUpdateRequest } from "./lib/memoryHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -67,6 +73,14 @@ import {
   handleAcademyMentor,
 } from "./lib/academyHandler";
 import {
+  handleCroTrack,
+  handleCroTrackOptions,
+  handleCroSnippetGet,
+  handleCroSnippetToggle,
+  handleCroStats,
+  runCroAggregate,
+} from "./lib/croHandler";
+import {
   handleAiGenerate,
   handleAiHistory,
   handleAiCredits,
@@ -109,6 +123,13 @@ const worker = {
     const origin = request.headers.get("Origin");
 
     if (request.method === "OPTIONS") {
+      // /api/cro/track — публічний ендпоінт, приймає запити з ДОВІЛЬНОГО
+      // домену (клієнтський сніпет на сайті клієнта, не на qorax.app).
+      // Стандартний corsHeaders(origin) нижче — allowlist лише
+      // qorax-доменів, відхилить legit preflight із сайту клієнта.
+      if (url.pathname === "/api/cro/track") {
+        return handleCroTrackOptions();
+      }
       return new Response(null, { status: 204, headers: corsHeaders(origin) });
     }
 
@@ -124,6 +145,14 @@ const worker = {
 
     if (url.pathname === "/api/audit" && request.method === "POST") {
       return handleAuditRequest(request, env, origin, ctx);
+    }
+
+    // /api/cro/track — публічний, без авторизації, довільний Origin
+    // (клієнтський сніпет на сайті клієнта). CORS обробляється всередині
+    // croHandler.ts (Access-Control-Allow-Origin: *), не через
+    // стандартний corsHeaders(origin) allowlist.
+    if (url.pathname === "/api/cro/track" && request.method === "POST") {
+      return handleCroTrack(request, env);
     }
 
     if (url.pathname === "/api/report" && request.method === "GET") {
@@ -588,6 +617,19 @@ const worker = {
       return handleRankQueryHistory(request, env, corsHeaders(origin), rankHistoryMatch[1]);
     }
 
+    // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
+    const croSnippetMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/cro\/snippet$/);
+    if (croSnippetMatch && request.method === "GET") {
+      return handleCroSnippetGet(request, env, corsHeaders(origin), croSnippetMatch[1]);
+    }
+    if (croSnippetMatch && request.method === "PATCH") {
+      return handleCroSnippetToggle(request, env, corsHeaders(origin), croSnippetMatch[1]);
+    }
+    const croStatsMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/cro\/stats$/);
+    if (croStatsMatch && request.method === "GET") {
+      return handleCroStats(request, env, corsHeaders(origin), croStatsMatch[1]);
+    }
+
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
     if (url.pathname === "/api/crm/contacts" && request.method === "GET") {
       return handleCrmContactsList(request, env, corsHeaders(origin));
@@ -666,8 +708,33 @@ const worker = {
       return handleAiCredits(request, env, corsHeaders(origin));
     }
 
-    if (url.pathname === "/api/chat" && request.method === "POST") {
+    if (url.pathname === "/api/ai-chat/thread" && request.method === "GET") {
+      return handleGetOrCreateThreadRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/ai-chat" && request.method === "POST") {
       return handleChatRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/workspace/upload" && request.method === "POST") {
+      return handleWorkspaceUploadRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/workspace/files" && request.method === "GET") {
+      return handleWorkspaceListRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    const workspaceFileMatch = url.pathname.match(/^\/api\/workspace\/files\/([^/]+)$/);
+    if (workspaceFileMatch && request.method === "DELETE") {
+      return handleWorkspaceDeleteRequest(request, workspaceFileMatch[1], env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/memory" && request.method === "GET") {
+      return handleMemoryGetRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/memory" && request.method === "PUT") {
+      return handleMemoryUpdateRequest(request, env, origin, corsHeaders(origin));
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту
@@ -1383,6 +1450,19 @@ const worker = {
     if (event.cron === "* * * * *") {
       const s = await runSocialPublishWithEnv(env);
       console.log("Social publish run:", JSON.stringify(s));
+      return;
+    }
+
+    // */10 * * * * — щодесять хвилин: агрегація CRO-подій + TTL-видалення
+    // сирих подій (MODULE_ROADMAP.md розділ 9 Крок 2; EXECUTION_PLAN.md
+    // Фаза 2.6). НОВИЙ тригер — Артему потрібно додати вручну в Cloudflare
+    // Dashboard. Окремий від "* * * * *" (Social) — CRO-агрегація важча
+    // операція (читає до 5000 подій, групує в пам'яті), 10-хвилинний
+    // інтервал достатній для UI, що показує денну статистику, не
+    // потребує щохвилинної свіжості.
+    if (event.cron === "*/10 * * * *") {
+      const s = await runCroAggregate(env);
+      console.log("CRO aggregate run:", JSON.stringify(s));
       return;
     }
 

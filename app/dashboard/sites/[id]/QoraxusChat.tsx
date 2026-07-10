@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react";
 import { Sparkles, Send, ChevronDown, Loader2, X } from "lucide-react";
+import { API_BASE_URL } from "@/app/lib/config";
 
 interface Message {
   role: "user" | "model";
@@ -14,7 +15,13 @@ const SUGGESTED_QUESTIONS = [
   "Скільки я втрачаю через ці проблеми?",
 ];
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
+// EXECUTION_PLAN.md "Хвиля 3 почата": Qoraxus перенесено на
+// персистентні ai_chat_threads/ai_chat_messages (0049_qorax_ai_hub.sql)
+// замість stateless-флоу — раніше історія жила ТІЛЬКИ в React-стані і
+// губилась при оновленні сторінки. Тепер /api/ai-chat/thread (GET)
+// підвантажує існуючий тред+історію при монтуванні, а /api/ai-chat
+// (POST) приймає ОДНЕ повідомлення (не весь масив, як раніше) — сервер
+// сам тримає й повертає історію.
 
 // Завжди беремо свіжий токен із Supabase client.
 // Ніколи не використовуємо серверний токен з props — він може бути
@@ -24,10 +31,8 @@ async function getFreshToken(): Promise<string> {
   try {
     const { createClient } = await import("@/app/lib/supabase/client");
     const supabase = createClient();
-    // getSession повертає токен з localStorage — він найсвіжіший
     const { data: { session } } = await supabase.auth.getSession();
     if (session?.access_token) return session.access_token;
-    // Якщо localStorage порожній — робимо network refresh
     const { data: refreshed } = await supabase.auth.refreshSession();
     return refreshed.session?.access_token ?? "";
   } catch {
@@ -39,15 +44,54 @@ function useChat(siteId: string) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const threadIdRef = useRef<string | null>(null);
+
+  // При монтуванні — підвантажуємо існуючий тред + історію (якщо є).
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadThread() {
+      setHistoryLoading(true);
+      try {
+        const token = await getFreshToken();
+        if (!token) {
+          if (!cancelled) setHistoryLoading(false);
+          return;
+        }
+
+        const resp = await fetch(
+          `${API_BASE_URL}/api/ai-chat/thread?site_id=${encodeURIComponent(siteId)}`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (!resp.ok) {
+          if (!cancelled) setHistoryLoading(false);
+          return;
+        }
+
+        const data = (await resp.json()) as { thread_id: string; messages: Message[] };
+        if (cancelled) return;
+
+        threadIdRef.current = data.thread_id;
+        setMessages(data.messages ?? []);
+      } catch (err) {
+        console.error("[QoraxusChat] failed to load thread:", err);
+      } finally {
+        if (!cancelled) setHistoryLoading(false);
+      }
+    }
+
+    loadThread();
+    return () => { cancelled = true; };
+  }, [siteId]);
 
   async function send(text: string) {
     if (!text.trim() || loading) return;
     setError(null);
 
     const userMessage: Message = { role: "user", content: text.trim() };
-    const next = [...messages, userMessage];
-    setMessages(next);
+    setMessages(prev => [...prev, userMessage]);
     setInput("");
     setLoading(true);
 
@@ -60,15 +104,16 @@ function useChat(siteId: string) {
 
       let resp: Response;
       try {
-        resp = await fetch(`${API_BASE}/api/chat`, {
+        resp = await fetch(`${API_BASE_URL}/api/ai-chat`, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
           body: JSON.stringify({
+            thread_id: threadIdRef.current ?? undefined,
             site_id: siteId,
-            messages: next,
+            message: text.trim(),
           }),
         });
       } catch (fetchErr) {
@@ -77,14 +122,16 @@ function useChat(siteId: string) {
         return;
       }
 
-      let data: { reply?: string; error?: string; message?: string };
+      let data: { thread_id?: string; reply?: string; error?: string; message?: string };
       try {
-        data = (await resp.json()) as { reply?: string; error?: string; message?: string };
+        data = (await resp.json()) as typeof data;
       } catch {
         console.error("[QoraxusChat] non-JSON response, status:", resp.status);
         setError(`Помилка сервера (${resp.status})`);
         return;
       }
+
+      if (data.thread_id) threadIdRef.current = data.thread_id;
 
       if (!resp.ok || data.error) {
         if (data.error === "upgrade_required") {
@@ -107,7 +154,7 @@ function useChat(siteId: string) {
     }
   }
 
-  return { messages, input, setInput, loading, error, send };
+  return { messages, input, setInput, loading, historyLoading, error, send };
 }
 
 function ChatBody({
@@ -116,6 +163,7 @@ function ChatBody({
   input,
   setInput,
   loading,
+  historyLoading,
   error,
   send,
   onClose,
@@ -126,6 +174,7 @@ function ChatBody({
   input: string;
   setInput: (v: string) => void;
   loading: boolean;
+  historyLoading: boolean;
   error: string | null;
   send: (text: string) => void;
   onClose?: () => void;
@@ -149,7 +198,7 @@ function ChatBody({
     }
   }
 
-  const isEmpty = messages.length === 0;
+  const isEmpty = messages.length === 0 && !historyLoading;
 
   return (
     <div className="flex flex-col h-full min-h-0">
@@ -182,6 +231,12 @@ function ChatBody({
 
       {/* Messages */}
       <div className="flex-1 min-h-0 overflow-y-auto px-4 py-4 space-y-3">
+        {historyLoading && (
+          <div className="flex justify-center py-6">
+            <Loader2 size={16} className="animate-spin" style={{ color: "var(--text-tertiary)" }} />
+          </div>
+        )}
+
         {isEmpty && (
           <div className="space-y-3">
             {/* Welcome */}

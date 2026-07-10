@@ -2,13 +2,31 @@ import { createClient } from "@/app/lib/supabase/server";
 import { MarketingHeader } from "@/app/components/MarketingHeader";
 import { SiteFooterExpanded } from "@/app/components/SiteFooterExpanded";
 import { Reveal } from "@/app/components/Reveal";
-import { DocsContent, DocsCta } from "./DocsContent";
+import { getAllDocsArticles, DOCS_CATEGORIES } from "@/app/lib/docs";
+import { DocsArticleBody } from "./DocsArticleBody";
+import { DocsBrowser, DocsCta } from "./DocsContent";
 
 export const metadata = { title: "Документація — Qorax" };
 
+// Docs — MODULE_ROADMAP.md розділ 11, Крок 3: розширення статичного
+// /docs реальним деревом статей замість hardcoded FAQ-віджета.
+// Артем обрав MDX-файли в репозиторії (content/docs/) замість
+// Supabase-таблиці docs_articles — простіше редагувати як розробнику,
+// компроміс — редагування статті вимагає деплою, а не SQL UPDATE.
 export default async function DocsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  const articles = getAllDocsArticles();
+  // MDX рендериться тут, на сервері (RSC) — DocsBrowser отримує вже
+  // готові React-елементи, тому next-mdx-remote не потрапляє в
+  // клієнтський бандл разом з інтерактивною навігацією.
+  const renderedArticles = articles.map(a => ({
+    slug: a.slug,
+    title: a.title,
+    category: a.category,
+    body: <DocsArticleBody key={a.slug} content={a.content} />,
+  }));
 
   return (
     <main className="flex flex-col min-h-screen" style={{ background: "var(--bg)" }}>
@@ -44,7 +62,7 @@ export default async function DocsPage() {
 
       <div className="gradient-divider" />
 
-      <DocsContent />
+      <DocsBrowser articles={renderedArticles} categories={DOCS_CATEGORIES} />
       <DocsCta />
 
       <SiteFooterExpanded />

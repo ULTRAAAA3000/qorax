@@ -2,24 +2,20 @@ import { createClient } from "@/app/lib/supabase/server";
 import { QoraxLogo } from "@/app/components/QoraxLogo";
 import { PlatformSidebar } from "@/app/dashboard/PlatformSidebar";
 import { getPlatformModules } from "@/app/lib/getPlatformModules";
-import { QoraxAiHub } from "./QoraxAiHub";
+import { AiContentUI } from "./AiContentUI";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Sparkles, ArrowLeft } from "lucide-react";
 
-export const metadata = { title: "Qorax AI — Qorax" };
+export const metadata = { title: "AI Content — Qorax" };
 
-// Каркас майбутнього Qorax AI-хаба (MODULE_ROADMAP.md "Третя хвиля",
-// EXECUTION_PLAN.md: Chat вже перенесено окремою сесією на
-// ai_chat_threads/messages, наступний крок — Workspace). Ключ
-// platform_modules 'ai' звільнено від AiContentUI попередньою сесією
-// (перенесено на /dashboard/content) саме для цього хаба.
-//
-// Рішення Артема: Workspace розміщується одразу тут як перша реально
-// робоча вкладка табової навігації, а не окремим /dashboard/workspace
-// — решта вкладок (Chat/Agents/Memory/Tasks/Automations) поки
-// заглушки "Скоро", наповнюються окремими майбутніми сесіями.
-export default async function QoraxAiPage() {
+// Перенесено з /dashboard/ai (EXECUTION_PLAN.md, розділ "Хвиля 3
+// почата: Qorax AI — схема БД"): platform_modules з 0039_platform_
+// foundation.sql з самого початку мала ключ 'content' саме під цю
+// сторінку (генерація текстів), а ключ 'ai' — під майбутній
+// повноцінний Qorax AI-хаб (0049_qorax_ai_hub.sql). Раніше цей код
+// помилково жив на /dashboard/ai; тепер шлях відповідає задуму.
+export default async function ContentPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -31,7 +27,17 @@ export default async function QoraxAiPage() {
     .single();
   if (!membership) redirect("/dashboard");
 
-  const platformModules = await getPlatformModules(membership.organization_id);
+  const { data: { session } } = await supabase.auth.getSession();
+  const accessToken = session?.access_token ?? "";
+
+  const [{ data: sites }, platformModules] = await Promise.all([
+    supabase
+      .from("sites")
+      .select("id, url, display_name")
+      .eq("organization_id", membership.organization_id)
+      .order("created_at", { ascending: false }),
+    getPlatformModules(membership.organization_id),
+  ]);
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
@@ -49,18 +55,18 @@ export default async function QoraxAiPage() {
       <div className="flex" style={{ minHeight: "calc(100vh - 56px)" }}>
         <PlatformSidebar modules={platformModules} />
 
-        <main className="flex-1 min-w-0 mx-auto max-w-5xl px-6 sm:px-8 py-8 space-y-6">
+        <main className="flex-1 min-w-0 mx-auto max-w-3xl px-6 sm:px-8 py-8 space-y-6">
           <div>
             <div className="flex items-center gap-2.5 mb-1">
               <Sparkles size={20} style={{ color: "var(--lime)" }} />
-              <h1 className="font-display text-2xl font-semibold">Qorax AI</h1>
+              <h1 className="font-display text-2xl font-semibold">AI Content</h1>
             </div>
             <p className="text-sm text-[var(--text-secondary)]">
-              Єдиний AI-хаб платформи: чат, агенти, файли, пам&apos;ять, задачі й автоматизації.
+              Генерація заголовків, meta-описів, FAQ та вступних абзаців — під ваш бізнес.
             </p>
           </div>
 
-          <QoraxAiHub />
+          <AiContentUI accessToken={accessToken} sites={sites ?? []} />
         </main>
       </div>
     </div>
