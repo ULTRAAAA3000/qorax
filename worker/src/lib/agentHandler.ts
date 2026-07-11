@@ -28,6 +28,7 @@
 
 import { selectRows, insertRow, updateRows } from "./supabase";
 import { buildPrompt, callGemini, type GenerationKind } from "./contentGeneration";
+import { createAgentTask, finishAgentTask } from "./taskHandler";
 import type { Env } from "../types";
 import { corsHeaders as sharedCorsHeaders } from "./cors";
 
@@ -294,6 +295,15 @@ export async function handleRunContentAgentRequest(
       env.SUPABASE_SERVICE_ROLE_KEY
     );
 
+    // ── Створюємо задачу в Tasks (taskHandler.ts) — так вкладка
+    // Tasks одразу показує роботу агента, а не лише ручні задачі ──
+    const taskId = await createAgentTask(
+      site.organization_id,
+      "content",
+      `Content-агент: генерація SEO для ${site.display_name}`,
+      env
+    );
+
     // ── Генеруємо по кожній проблемній сторінці ─────────────────
     const generated: Array<{ page_url: string; kind: GenerationKind; output: string }> = [];
     let creditsSpent = 0;
@@ -351,12 +361,13 @@ export async function handleRunContentAgentRequest(
     }
 
     const summary = `Згенеровано ${generated.length} з ${problematicPages.length} пропозицій для сторінок з проблемами SEO.`;
+    const finalStatus = generated.length > 0 ? "done" : "failed";
 
     await updateRows(
       "agent_runs",
       `id=eq.${encodeURIComponent(runId)}`,
       {
-        status: generated.length > 0 ? "done" : "failed",
+        status: finalStatus,
         credits_spent: creditsSpent,
         summary,
         raw_output: generated,
@@ -365,6 +376,10 @@ export async function handleRunContentAgentRequest(
       env.SUPABASE_URL,
       env.SUPABASE_SERVICE_ROLE_KEY
     );
+
+    if (taskId) {
+      await finishAgentTask(taskId, finalStatus, runId, env);
+    }
 
     await updateRows(
       "agent_subscriptions",

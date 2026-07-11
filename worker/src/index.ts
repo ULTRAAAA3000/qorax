@@ -34,6 +34,12 @@ import {
   handleAgentRunsListRequest,
   handleRunContentAgentRequest,
 } from "./lib/agentHandler";
+import {
+  handleTasksListRequest,
+  handleTaskCreateRequest,
+  handleTaskUpdateRequest,
+  handleTaskDeleteRequest,
+} from "./lib/taskHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -752,6 +758,22 @@ const worker = {
 
     if (url.pathname === "/api/agents/content/run" && request.method === "POST") {
       return handleRunContentAgentRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/tasks" && request.method === "GET") {
+      return handleTasksListRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/tasks" && request.method === "POST") {
+      return handleTaskCreateRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    const taskMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+    if (taskMatch && request.method === "PATCH") {
+      return handleTaskUpdateRequest(request, taskMatch[1], env, origin, corsHeaders(origin));
+    }
+    if (taskMatch && request.method === "DELETE") {
+      return handleTaskDeleteRequest(request, taskMatch[1], env, origin, corsHeaders(origin));
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту
