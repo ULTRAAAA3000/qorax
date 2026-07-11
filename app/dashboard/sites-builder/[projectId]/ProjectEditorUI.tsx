@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Plus, Trash2, Globe, GlobeLock, Save, X, ExternalLink, ChevronUp, ChevronDown } from "lucide-react";
+import { Loader2, Plus, Trash2, Globe, GlobeLock, Save, X, ExternalLink, ChevronUp, ChevronDown, Sparkles } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 
 interface Block {
@@ -80,6 +80,10 @@ export function ProjectEditorUI({ projectId }: Props) {
   const [showNewPage, setShowNewPage] = useState(false);
   const [newPageSlug, setNewPageSlug] = useState("");
 
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [showAiPrompt, setShowAiPrompt] = useState(false);
+  const [aiTopic, setAiTopic] = useState("");
+
   // ВАЖЛИВО: не кешувати authHeaders одним об'єктом на весь час життя
   // компонента — Supabase JWT живе ~1 годину, а сторінка редактора може
   // лишатись відкритою довше. Раніше тут був статичний accessToken-проп
@@ -150,6 +154,35 @@ export function ProjectEditorUI({ projectId }: Props) {
       return next;
     });
     setDirty(true);
+  }
+
+  async function generateWithAi() {
+    if (!activePageId) return;
+    if (dirty && !confirm("Незбережені зміни буде перезаписано згенерованим контентом. Продовжити?")) return;
+
+    setAiGenerating(true);
+    setError(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/pages/${activePageId}/ai-generate`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: aiTopic.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Помилка AI-генерації"); return; }
+
+      setBlocks(data.content?.blocks ?? []);
+      setSeoTitle(data.seo_title ?? "");
+      setSeoDescription(data.seo_description ?? "");
+      setDirty(false); // сервер вже зберіг — локальний стан просто синхронізуємо
+      setShowAiPrompt(false);
+      setAiTopic("");
+    } catch {
+      setError("Мережева помилка під час AI-генерації");
+    } finally {
+      setAiGenerating(false);
+    }
   }
 
   async function savePage() {
@@ -315,6 +348,45 @@ export function ProjectEditorUI({ projectId }: Props) {
         {activePageId && (
           <div className="space-y-4">
             <div className="glow-card p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>SEO та контент сторінки</p>
+                <button
+                  onClick={() => setShowAiPrompt(v => !v)}
+                  disabled={aiGenerating}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg shrink-0 disabled:opacity-50"
+                  style={{ background: "rgba(214,255,63,0.08)", color: "var(--lime)" }}
+                >
+                  {aiGenerating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  AI-генерація
+                </button>
+              </div>
+
+              {showAiPrompt && (
+                <div className="space-y-1.5 p-2 rounded-lg" style={{ background: "rgba(214,255,63,0.04)", border: "1px solid rgba(214,255,63,0.15)" }}>
+                  <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                    Заповнить {" "}
+                    <a href="/dashboard/ai" target="_blank" rel="noopener noreferrer" className="underline">Memory в Qorax AI</a>
+                    {" "}— тоді AI сам врахує ваш бізнес. Або опишіть коротко тут:
+                  </p>
+                  <input
+                    value={aiTopic}
+                    onChange={e => setAiTopic(e.target.value)}
+                    placeholder="Напр.: інтернет-магазин вітамінів для спортсменів"
+                    className="w-full rounded-lg px-3 py-2 text-sm"
+                    style={inputStyle}
+                  />
+                  <button
+                    onClick={generateWithAi}
+                    disabled={aiGenerating}
+                    className="w-full flex items-center justify-center gap-1.5 text-sm px-3 py-2 rounded-lg disabled:opacity-50"
+                    style={{ background: "var(--lime)", color: "#0c111d" }}
+                  >
+                    {aiGenerating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    Згенерувати всю сторінку
+                  </button>
+                </div>
+              )}
+
               <input
                 value={seoTitle}
                 onChange={e => { setSeoTitle(e.target.value); setDirty(true); }}
