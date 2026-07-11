@@ -18,10 +18,10 @@ interface SiteOption {
 
 // Табова навігація хаба (MODULE_ROADMAP.md "Третя хвиля": Chat +
 // Agents + Workspace + Memory + Tasks + Automations). Chat/Workspace/
-// Memory/Agents реально реалізовані (EXECUTION_PLAN.md, послідовні
-// сесії) — Tasks/Automations поки заблоковані заглушки "Скоро", той
-// самий патерн, що вже використано в PlatformSidebar для coming_soon-
-// модулів.
+// Memory/Agents/Tasks реально реалізовані (EXECUTION_PLAN.md,
+// послідовні сесії) — Automations поки заблокована заглушка "Скоро",
+// той самий патерн, що вже використано в PlatformSidebar для
+// coming_soon-модулів.
 const TABS: Array<{ id: TabId; label: string; icon: typeof MessageSquare; ready: boolean }> = [
   { id: "chat", label: "Chat", icon: MessageSquare, ready: true },
   { id: "workspace", label: "Workspace", icon: FolderOpen, ready: true },
@@ -73,7 +73,7 @@ export function QoraxAiHub({ sites }: { sites: SiteOption[] }) {
       {activeTab === "agents" && <AgentsTab sites={sites} />}
       {activeTab === "tasks" && <TasksTab />}
 
-      {activeTab !== "chat" && activeTab !== "workspace" && activeTab !== "memory" && activeTab !== "agents" && activeTab !== "tasks" && (
+      {activeTab === "automations" && (
         <div
           className="rounded-xl p-8 text-center"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}

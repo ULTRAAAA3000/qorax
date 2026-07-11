@@ -760,6 +760,7 @@ const worker = {
       return handleRunContentAgentRequest(request, env, origin, corsHeaders(origin));
     }
 
+    // ── Tasks routes (Qorax AI хаб, вкладка Tasks — хвиля 3) ──────────
     if (url.pathname === "/api/tasks" && request.method === "GET") {
       return handleTasksListRequest(request, env, origin, corsHeaders(origin));
     }
