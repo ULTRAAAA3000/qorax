@@ -59,6 +59,7 @@ import {
   handleCrmNoteCreate,
   handleCrmNotesList,
   handleCrmReminderCreate,
+  runCrmReminders,
 } from "./lib/crmHandler";
 import {
   handleSocialConnectionsList,
@@ -377,6 +378,27 @@ const worker = {
             .then(s => console.log("Manual uptime:", JSON.stringify(s)))
         );
         return json({ ok: true, message: "Uptime checks started" }, 200, origin);
+      }
+
+      // Було написано (runSocialPublishWithEnv, socialHandler.ts), але
+      // не підключено в роутинг — EXECUTION_PLAN.md Фаза 2.4 "НЕ
+      // зроблено", закрито цим проходом.
+      if (url.pathname === "/api/admin/run-social-publish") {
+        ctx.waitUntil(
+          runSocialPublishWithEnv(env)
+            .then(s => console.log("Manual social publish:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "Social publish started" }, 200, origin);
+      }
+
+      // EXECUTION_PLAN.md Фаза 2.1 "НЕ зроблено": нагадування CRM
+      // створювались, ніхто їх не надсилав — закрито цим проходом.
+      if (url.pathname === "/api/admin/run-crm-reminders") {
+        ctx.waitUntil(
+          runCrmReminders(env)
+            .then(s => console.log("Manual CRM reminders:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "CRM reminders started" }, 200, origin);
       }
 
       if (url.pathname === "/api/admin/env-check") {
@@ -1458,6 +1480,18 @@ const worker = {
     if (event.cron === "*/10 * * * *") {
       const s = await runCroAggregate(env);
       console.log("CRO aggregate run:", JSON.stringify(s));
+      return;
+    }
+
+    // 0 * * * * — щогодини: CRM-нагадування (EXECUTION_PLAN.md Фаза
+    // 2.1 "НЕ зроблено", закрито окремим проходом). НОВИЙ тригер —
+    // Артему потрібно додати вручну в Cloudflare Dashboard. Погодинний
+    // інтервал достатній для нагадувань (remind_at зазвичай задається
+    // з точністю до години самим користувачем, не до хвилини) — не
+    // навантажувати диспетчер ще одним щохвилинним тригером без потреби.
+    if (event.cron === "0 * * * *") {
+      const s = await runCrmReminders(env);
+      console.log("CRM reminders run:", JSON.stringify(s));
       return;
     }
 

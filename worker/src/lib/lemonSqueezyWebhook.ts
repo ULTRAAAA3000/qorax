@@ -164,6 +164,16 @@ export async function handleLSWebhook(
 
 // ─── Subscription active / updated ───────────────────────────
 
+// EXECUTION_PLAN.md Фаза 0.3 — робочі заглушки, конкретні числа
+// лишаються комерційним рішенням Артема (PRICING.md розділ 5), той
+// самий підхід, що MONTHLY_POST_LIMIT_BY_PLAN у socialHandler.ts.
+const AI_CREDITS_BY_PLAN: Record<string, number> = {
+  starter: 300,
+  growth: 1000,
+  agency: 3000,
+  enterprise: 10000,
+};
+
 async function handleSubscriptionActive(
   payload: LSWebhookPayload,
   supabaseUrl: string,
@@ -272,7 +282,38 @@ async function handleSubscriptionActive(
     console.error("[ls-webhook] Subscription activated but failed to sync org_type/site_limit:", orgUpdateResult.error, "org:", orgId);
   }
 
-  console.log("[ls-webhook] subscription upserted:", { orgId, status, lsSubscriptionId, orgType, siteLimit });
+  // Автоматична видача ai_credits (EXECUTION_PLAN.md Фаза 0.3;
+  // ai_credits — відоме обмеження задокументоване в коментарі до
+  // таблиці 0042_ai_content_module.sql: рядок створювався ВИКЛЮЧНО
+  // вручну). Числа нижче — робочі заглушки, той самий підхід, що
+  // MONTHLY_POST_LIMIT_BY_PLAN у socialHandler.ts — конкретні
+  // комерційні цифри лишаються рішенням Артема (PRICING.md розділ 5),
+  // не змінюють архітектуру: місячне скидання (credits_reset_at)
+  // працює однаково незалежно від того, яке число тут стоїть.
+  const creditsForPlan = AI_CREDITS_BY_PLAN[planCode] ?? AI_CREDITS_BY_PLAN.starter;
+  const nextResetAt = new Date();
+  nextResetAt.setUTCMonth(nextResetAt.getUTCMonth() + 1);
+  nextResetAt.setUTCDate(1);
+  nextResetAt.setUTCHours(0, 0, 0, 0);
+
+  const creditsUpsertResult = await upsertRow(
+    "ai_credits",
+    {
+      organization_id: orgId,
+      credits_remaining: creditsForPlan,
+      credits_reset_at: nextResetAt.toISOString(),
+    },
+    "organization_id",
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (!creditsUpsertResult.ok) {
+    // Той самий принцип, що org_type/site_limit вище — не блокуємо
+    // весь webhook через другорядну операцію, гучно логуємо.
+    console.error("[ls-webhook] Subscription activated but failed to upsert ai_credits:", creditsUpsertResult.error, "org:", orgId);
+  }
+
+  console.log("[ls-webhook] subscription upserted:", { orgId, status, lsSubscriptionId, orgType, siteLimit, creditsForPlan });
   return true;
 }
 
