@@ -23,7 +23,6 @@ interface Template {
 
 interface Props {
   organizationId: string;
-  accessToken: string;
 }
 
 const STATUS_META: Record<string, { label: string; color: string; icon: typeof FileEdit }> = {
@@ -32,7 +31,20 @@ const STATUS_META: Record<string, { label: string; color: string; icon: typeof F
   archived: { label: "Архів", color: "var(--text-tertiary)", icon: FileEdit },
 };
 
-export function ProjectsListUI({ organizationId, accessToken }: Props) {
+async function getFreshToken(): Promise<string> {
+  try {
+    const { createClient } = await import("@/app/lib/supabase/client");
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    return refreshed.session?.access_token ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function ProjectsListUI({ organizationId }: Props) {
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [templates, setTemplates] = useState<Template[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,29 +54,37 @@ export function ProjectsListUI({ organizationId, accessToken }: Props) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const [creating, setCreating] = useState(false);
 
-  const authHeaders = { Authorization: `Bearer ${accessToken}` };
+  // Не кешувати заголовки одним об'єктом на весь час життя компонента —
+  // Supabase JWT живе ~1 годину, сторінка списку проектів може лишатись
+  // відкритою довше (той самий фікс, що ProjectEditorUI.tsx).
+  async function getAuthHeaders(): Promise<Record<string, string>> {
+    const token = await getFreshToken();
+    return { Authorization: `Bearer ${token}` };
+  }
 
   const loadProjects = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/projects?organization_id=${organizationId}`, { headers: authHeaders });
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/api/projects?organization_id=${organizationId}`, { headers });
       const data = await res.json();
       setProjects(data.projects ?? []);
     } catch {
       setProjects([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [organizationId, accessToken]);
+  }, [organizationId]);
 
   const loadTemplates = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/project-templates`, { headers: authHeaders });
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/api/project-templates`, { headers });
       const data = await res.json();
       setTemplates(data.templates ?? []);
     } catch {
       setTemplates([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accessToken]);
+  }, []);
 
   useEffect(() => {
     loadProjects();
@@ -81,9 +101,10 @@ export function ProjectsListUI({ organizationId, accessToken }: Props) {
     setCreating(true);
     setError(null);
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/projects`, {
         method: "POST",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({
           organization_id: organizationId,
           name: newName.trim(),

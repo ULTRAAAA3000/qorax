@@ -34,7 +34,6 @@ interface ProjectData {
 
 interface Props {
   projectId: string;
-  accessToken: string;
 }
 
 const BLOCK_TYPES: Array<{ type: string; label: string }> = [
@@ -52,7 +51,20 @@ function emptyBlock(type: string): Block {
   return { type, heading: "", body: "" };
 }
 
-export function ProjectEditorUI({ projectId, accessToken }: Props) {
+async function getFreshToken(): Promise<string> {
+  try {
+    const { createClient } = await import("@/app/lib/supabase/client");
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    return refreshed.session?.access_token ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function ProjectEditorUI({ projectId }: Props) {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [pages, setPages] = useState<ProjectPage[] | null>(null);
   const [activePageId, setActivePageId] = useState<string | null>(null);
@@ -68,11 +80,24 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
   const [showNewPage, setShowNewPage] = useState(false);
   const [newPageSlug, setNewPageSlug] = useState("");
 
-  const authHeaders = { Authorization: `Bearer ${accessToken}` };
+  // ВАЖЛИВО: не кешувати authHeaders одним об'єктом на весь час життя
+  // компонента — Supabase JWT живе ~1 годину, а сторінка редактора може
+  // лишатись відкритою довше. Раніше тут був статичний accessToken-проп
+  // з серверного рендеру (page.tsx), що протухав і давав 401
+  // "Unauthorized" на дії типу "додати сторінку" без зрозумілої причини
+  // для користувача. getAuthHeaders() дістає свіжий токен (з
+  // авто-рефрешем через Supabase client) перед КОЖНИМ запитом — той
+  // самий патерн, що вже використаний в AgentsTab.tsx/AutomationsTab.tsx
+  // (Qorax AI хаб) і RankDetailUI.tsx.
+  async function getAuthHeaders(): Promise<Record<string, string>> {
+    const token = await getFreshToken();
+    return { Authorization: `Bearer ${token}` };
+  }
 
   const loadProject = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, { headers: authHeaders });
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, { headers });
       if (!res.ok) { setNotFound(true); return; }
       const data = await res.json();
       setProject(data.project);
@@ -84,7 +109,7 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
       setNotFound(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, accessToken]);
+  }, [projectId]);
 
   useEffect(() => { loadProject(); }, [loadProject]);
 
@@ -132,9 +157,10 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
     setSaving(true);
     setError(null);
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/pages/${activePageId}`, {
         method: "PATCH",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ content: { blocks }, seo_title: seoTitle, seo_description: seoDescription }),
       });
       const data = await res.json();
@@ -150,9 +176,10 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
     e.preventDefault();
     if (!newPageSlug.trim()) return;
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/pages`, {
         method: "POST",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ slug: newPageSlug.trim() }),
       });
       const data = await res.json();
@@ -168,9 +195,10 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
   async function deletePage(pageId: string) {
     if (!confirm("Видалити цю сторінку?")) return;
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/pages/${pageId}`, {
         method: "DELETE",
-        headers: authHeaders,
+        headers,
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Помилка"); return; }
@@ -187,9 +215,10 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
     setError(null);
     try {
       const action = project?.status === "published" ? "unpublish" : "publish";
+      const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/${action}`, {
         method: "POST",
-        headers: authHeaders,
+        headers,
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Помилка"); return; }
