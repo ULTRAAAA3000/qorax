@@ -10,6 +10,7 @@ import type { Env } from "../types";
 import { selectRows, insertRow, updateRows, serviceRoleHeaders } from "./supabase";
 import { corsHeaders } from "./cors";
 import { sendEmail, buildInviteEmail } from "./email";
+import { logSecurityEvent } from "./securityAuditLog";
 
 function json(data: unknown, status: number, origin: string | null): Response {
   return new Response(JSON.stringify(data), {
@@ -351,6 +352,16 @@ export async function handleUpdateMemberRole(request: Request, env: Env, origin:
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   if (!result.ok) return json({ error: "Не вдалося оновити роль" }, 500, origin);
+
+  await logSecurityEvent(env, {
+    organizationId: membership.organizationId,
+    actorUserId: user.id,
+    actionType: "member_role_changed",
+    targetTable: "organization_members",
+    targetId: memberId,
+    metadata: { from_role: target.role, to_role: body.role },
+  });
+
   return json({ ok: true }, 200, origin);
 }
 
@@ -382,6 +393,16 @@ export async function handleRemoveMember(request: Request, env: Env, origin: str
     }
   );
   if (!resp.ok) return json({ error: "Не вдалося видалити учасника" }, 500, origin);
+
+  await logSecurityEvent(env, {
+    organizationId: membership.organizationId,
+    actorUserId: user.id,
+    actionType: "member_removed",
+    targetTable: "organization_members",
+    targetId: memberId,
+    metadata: { removed_role: target.role },
+  });
+
   return json({ ok: true }, 200, origin);
 }
 
