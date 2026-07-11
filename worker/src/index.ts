@@ -37,6 +37,8 @@ import {
   handleAgentSubscriptionUpsertRequest,
   handleAgentSubscriptionToggleRequest,
   runDueAgentAutomations,
+  handleRunSeoAgentRequest,
+  handleRunRankAgentRequest,
 } from "./lib/agentHandler";
 import {
   handleTasksListRequest,
@@ -772,8 +774,13 @@ const worker = {
       return handleAgentRunsListRequest(request, env, origin, corsHeaders(origin));
     }
 
-    if (url.pathname === "/api/agents/content/run" && request.method === "POST") {
-      return handleRunContentAgentRequest(request, env, origin, corsHeaders(origin));
+    const agentRunMatch = url.pathname.match(/^\/api\/agents\/([^/]+)\/run$/);
+    if (agentRunMatch && request.method === "POST") {
+      const agentId = agentRunMatch[1];
+      if (agentId === "content") return handleRunContentAgentRequest(request, env, origin, corsHeaders(origin));
+      if (agentId === "seo") return handleRunSeoAgentRequest(request, env, origin, corsHeaders(origin));
+      if (agentId === "rank") return handleRunRankAgentRequest(request, env, origin, corsHeaders(origin));
+      return new Response(JSON.stringify({ error: "Невідомий агент" }), { status: 404, headers: { "Content-Type": "application/json", ...corsHeaders(origin) } });
     }
 
     // ── Automations routes (Qorax AI хаб, шостий UI-крок хвилі 3 —

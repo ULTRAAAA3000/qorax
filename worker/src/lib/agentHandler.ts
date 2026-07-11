@@ -177,6 +177,249 @@ export async function handleAgentRunsListRequest(
 // Запускає агент 'content' для конкретного сайту — знаходить
 // проблемні сторінки і генерує нові title/meta_description.
 
+/**
+ * Спільна логіка "почати run агента": знайти/створити agent_subscriptions
+ * (потрібен FK для agent_runs), створити сам agent_runs зі статусом
+ * 'running'. Винесено окремо, бо тепер її повторюють SEO/Rank агенти
+ * так само, як Content — без цього довелось би копіювати той самий
+ * 15-рядковий блок втретє.
+ */
+async function ensureAgentRun(
+  agentId: string,
+  organizationId: string,
+  siteId: string,
+  env: Env
+): Promise<{ runId: string; subscriptionId: string }> {
+  const subResult = await selectRows<{ id: string }>(
+    "agent_subscriptions",
+    `select=id&organization_id=eq.${encodeURIComponent(organizationId)}&agent_id=eq.${encodeURIComponent(agentId)}&site_id=eq.${encodeURIComponent(siteId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  let subscriptionId = subResult.data[0]?.id;
+  if (!subscriptionId) {
+    subscriptionId = crypto.randomUUID();
+    await insertRow(
+      "agent_subscriptions",
+      { id: subscriptionId, organization_id: organizationId, agent_id: agentId, site_id: siteId, is_enabled: true },
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  }
+
+  const runId = crypto.randomUUID();
+  await insertRow(
+    "agent_runs",
+    { id: runId, agent_subscription_id: subscriptionId, organization_id: organizationId, status: "running" },
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+
+  return { runId, subscriptionId };
+}
+
+async function finishAgentRun(
+  runId: string,
+  subscriptionId: string,
+  status: "done" | "failed",
+  summary: string,
+  rawOutput: unknown,
+  env: Env,
+  creditsSpent = 0
+): Promise<void> {
+  await updateRows(
+    "agent_runs",
+    `id=eq.${encodeURIComponent(runId)}`,
+    { status, credits_spent: creditsSpent, summary, raw_output: rawOutput, finished_at: new Date().toISOString() },
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  await updateRows(
+    "agent_subscriptions",
+    `id=eq.${encodeURIComponent(subscriptionId)}`,
+    { last_run_at: new Date().toISOString() },
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+}
+
+/** Спільна перевірка доступу: сайт існує + користувач editor+ в його організації. Ідентична для всіх трьох агентів. */
+async function resolveSiteAccess(siteId: string, userId: string, env: Env): Promise<SiteRow | null> {
+  const siteResult = await selectRows<SiteRow>(
+    "sites",
+    `select=id,url,display_name,organization_id&id=eq.${encodeURIComponent(siteId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const site = siteResult.data[0];
+  if (!site) return null;
+
+  const memberCheck = await selectRows<{ organization_id: string; role: string }>(
+    "organization_members",
+    `select=organization_id,role&organization_id=eq.${encodeURIComponent(site.organization_id)}&user_id=eq.${encodeURIComponent(userId)}&role=in.(owner,admin,editor)`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!memberCheck.data[0]) return null;
+
+  return site;
+}
+
+// ─── POST /api/agents/seo/run ────────────────────────────────
+// SEO Agent: НЕ генерує новий AI-контент (на відміну від Content
+// Agent) — агрегує вже наявні ai_insights (0007_ai_insights.sql),
+// сгенеровані фоновим аудитом. credit_cost_per_run = 0 (agents seed),
+// тому що дані вже готові — агент лише збирає й підсумовує їх у
+// один run, без нового Gemini-виклику.
+
+interface AiInsightRow {
+  severity: string;
+  problem_summary: string;
+  estimated_monthly_loss_usd: number | null;
+}
+
+export async function handleRunSeoAgentRequest(
+  request: Request,
+  env: Env,
+  origin: string | null,
+  prebuiltCors?: Record<string, string>
+): Promise<Response> {
+  const corsHeaders = prebuiltCors ?? sharedCorsHeaders(origin);
+
+  try {
+    const userId = await authenticate(request, env);
+    if (!userId) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
+
+    let body: { site_id?: string };
+    try {
+      body = (await request.json()) as { site_id?: string };
+    } catch {
+      return jsonResponse({ error: "Невірний формат запиту" }, 400, corsHeaders);
+    }
+    const siteId = body.site_id;
+    if (!siteId) return jsonResponse({ error: "site_id обов'язковий" }, 400, corsHeaders);
+
+    const site = await resolveSiteAccess(siteId, userId, env);
+    if (!site) return jsonResponse({ error: "Сайт не знайдено або немає доступу" }, 404, corsHeaders);
+
+    const { runId, subscriptionId } = await ensureAgentRun("seo", site.organization_id, siteId, env);
+
+    const insightsResult = await selectRows<AiInsightRow>(
+      "ai_insights",
+      `select=severity,problem_summary,estimated_monthly_loss_usd&site_id=eq.${encodeURIComponent(siteId)}&is_resolved=eq.false&order=estimated_monthly_loss_usd.desc.nullslast&limit=10`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    const insights = insightsResult.data;
+
+    if (insights.length === 0) {
+      const summary = "Активних проблем не знайдено — сайт у гарному стані.";
+      await finishAgentRun(runId, subscriptionId, "done", summary, [], env);
+      return jsonResponse({ run_id: runId, summary, insights: [] }, 200, corsHeaders);
+    }
+
+    const totalLoss = insights.reduce((sum, i) => sum + (i.estimated_monthly_loss_usd ?? 0), 0);
+    const critical = insights.filter(i => i.severity === "critical" || i.severity === "high").length;
+    const summary = totalLoss > 0
+      ? `Знайдено ${insights.length} активних проблем (${critical} критичних) — орієнтовно $${totalLoss.toFixed(0)}/міс втрачених можливостей.`
+      : `Знайдено ${insights.length} активних проблем (${critical} критичних).`;
+
+    await finishAgentRun(runId, subscriptionId, "done", summary, insights, env);
+
+    return jsonResponse({ run_id: runId, summary, insights }, 200, corsHeaders);
+  } catch (err) {
+    console.error("[agents] run seo unhandled error:", err instanceof Error ? err.message : err);
+    return jsonResponse({ error: "Внутрішня помилка сервера" }, 500, corsHeaders);
+  }
+}
+
+// ─── POST /api/agents/rank/run ───────────────────────────────
+// Rank Agent: агрегує вже наявні gsc_metrics для tracked-запитів
+// (0041_rank_tracked_queries.sql) — так само, як SEO Agent, без
+// нового зовнішнього виклику. Порівнює найновішу позицію з позицією
+// 7 днів тому для кожного відстежуваного запиту.
+
+interface TrackedQueryRow { query: string }
+interface GscMetricRow { query: string; date: string; average_position: number | null }
+
+export async function handleRunRankAgentRequest(
+  request: Request,
+  env: Env,
+  origin: string | null,
+  prebuiltCors?: Record<string, string>
+): Promise<Response> {
+  const corsHeaders = prebuiltCors ?? sharedCorsHeaders(origin);
+
+  try {
+    const userId = await authenticate(request, env);
+    if (!userId) return jsonResponse({ error: "Unauthorized" }, 401, corsHeaders);
+
+    let body: { site_id?: string };
+    try {
+      body = (await request.json()) as { site_id?: string };
+    } catch {
+      return jsonResponse({ error: "Невірний формат запиту" }, 400, corsHeaders);
+    }
+    const siteId = body.site_id;
+    if (!siteId) return jsonResponse({ error: "site_id обов'язковий" }, 400, corsHeaders);
+
+    const site = await resolveSiteAccess(siteId, userId, env);
+    if (!site) return jsonResponse({ error: "Сайт не знайдено або немає доступу" }, 404, corsHeaders);
+
+    const { runId, subscriptionId } = await ensureAgentRun("rank", site.organization_id, siteId, env);
+
+    const trackedResult = await selectRows<TrackedQueryRow>(
+      "rank_tracked_queries",
+      `select=query&site_id=eq.${encodeURIComponent(siteId)}`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    const trackedQueries = trackedResult.data;
+
+    if (trackedQueries.length === 0) {
+      const summary = "Немає відстежуваних запитів — додайте їх у розділі Rank.";
+      await finishAgentRun(runId, subscriptionId, "done", summary, [], env);
+      return jsonResponse({ run_id: runId, summary, changes: [] }, 200, corsHeaders);
+    }
+
+    const metricsResult = await selectRows<GscMetricRow>(
+      "gsc_metrics",
+      `select=query,date,average_position&site_id=eq.${encodeURIComponent(siteId)}&query=not.is.null&order=date.desc&limit=500`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+
+    const trackedSet = new Set(trackedQueries.map(t => t.query));
+    const byQuery = new Map<string, GscMetricRow[]>();
+    for (const m of metricsResult.data) {
+      if (!trackedSet.has(m.query)) continue;
+      if (!byQuery.has(m.query)) byQuery.set(m.query, []);
+      byQuery.get(m.query)!.push(m);
+    }
+
+    const changes: Array<{ query: string; current: number | null; previous: number | null; delta: number | null }> = [];
+    for (const [query, points] of byQuery) {
+      const sorted = points.sort((a, b) => b.date.localeCompare(a.date));
+      const current = sorted[0]?.average_position ?? null;
+      const weekAgo = sorted.find(p => p.date <= sorted[0].date.slice(0, 8) + "01") ?? sorted[sorted.length - 1];
+      const previous = weekAgo?.average_position ?? null;
+      const delta = current !== null && previous !== null ? Number((previous - current).toFixed(1)) : null; // позитивне = покращення (менша позиція)
+      changes.push({ query, current, previous, delta });
+    }
+
+    const improved = changes.filter(c => (c.delta ?? 0) > 0.5).length;
+    const worsened = changes.filter(c => (c.delta ?? 0) < -0.5).length;
+    const summary = `Відстежується ${changes.length} запитів: ${improved} покращились, ${worsened} погіршились.`;
+
+    await finishAgentRun(runId, subscriptionId, "done", summary, changes, env);
+
+    return jsonResponse({ run_id: runId, summary, changes }, 200, corsHeaders);
+  } catch (err) {
+    console.error("[agents] run rank unhandled error:", err instanceof Error ? err.message : err);
+    return jsonResponse({ error: "Внутрішня помилка сервера" }, 500, corsHeaders);
+  }
+}
+
 export async function handleRunContentAgentRequest(
   request: Request,
   env: Env,
@@ -198,22 +441,8 @@ export async function handleRunContentAgentRequest(
     const siteId = body.site_id;
     if (!siteId) return jsonResponse({ error: "site_id обов'язковий" }, 400, corsHeaders);
 
-    const siteResult = await selectRows<SiteRow>(
-      "sites",
-      `select=id,url,display_name,organization_id&id=eq.${encodeURIComponent(siteId)}`,
-      env.SUPABASE_URL,
-      env.SUPABASE_SERVICE_ROLE_KEY
-    );
-    const site = siteResult.data[0];
-    if (!site) return jsonResponse({ error: "Сайт не знайдено" }, 404, corsHeaders);
-
-    const memberCheck = await selectRows<{ organization_id: string; role: string }>(
-      "organization_members",
-      `select=organization_id,role&organization_id=eq.${encodeURIComponent(site.organization_id)}&user_id=eq.${encodeURIComponent(userId)}&role=in.(owner,admin,editor)`,
-      env.SUPABASE_URL,
-      env.SUPABASE_SERVICE_ROLE_KEY
-    );
-    if (!memberCheck.data[0]) return jsonResponse({ error: "Немає доступу" }, 403, corsHeaders);
+    const site = await resolveSiteAccess(siteId, userId, env);
+    if (!site) return jsonResponse({ error: "Сайт не знайдено або немає доступу" }, 404, corsHeaders);
 
     const result = await runContentAgentCore(site, env);
     if ("error" in result) return jsonResponse({ error: result.error }, result.status, corsHeaders);
