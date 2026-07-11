@@ -1248,3 +1248,113 @@ Translator розблоковані технічно (`project_pages` тепер
 цим проходом. Перед стартом будь-якої — `git pull` першим кроком,
 без винятків (тричі поспіль підтверджена активна паралельна робота
 над репозиторієм).
+
+---
+
+## Translator — Фаза 3.2 ("транслейтор фастом")
+
+Артем попросив Translator одразу після Sites-конструктора — пряме
+продовження за MODULE_ROADMAP.md розділ 5 ("Чому недорого: пряме
+продовження Sites-конструктора... AI-переклад переюзовує ту саму
+інфраструктуру Gemini, що і AI/Content").
+
+**Знову підтверджена активна паралельна робота — `git pull` виявив
+конфлікт номера міграції:** origin зайняв `0060` під
+`0060_agents_seo_rank_seed.sql` (продовження хвилі 3, паралельно з
+цим проходом) якраз тоді, коли локально вже лежав
+`0060_translator_module.sql`. **Перейменовано на `0061`** до
+коміту — жодного реального SQL-конфлікту, тільки номер файлу.
+Окремо, той самий `git pull` підтягнув
+`fix(sites-builder): виправлено протухлий JWT-токен` — і Translator
+UI писався ЩЕ ДО того, як цей фікс з'явився в origin, тож мав
+рівно той самий баг (статичний `accessToken` проп із серверного
+рендеру, протухає через ~1 годину життя JWT). **Виправлено одразу
+в цьому ж проході** — `TranslatorDetailUI.tsx` написано з
+`getFreshToken()`/`getAuthHeaders()` з самого початку (копія
+патерну з уже виправленого Sites-конструктора), а не залишено
+повторювати баг для майбутнього окремого фіксу.
+
+**ВІДХИЛЕННЯ ВІД ЧЕРНЕТКИ MODULE_ROADMAP.md, задокументоване явно в
+самій міграції (0061), не мовчки:** Крок 1 чернетки прив'язує
+`site_languages`/`page_translations` до `site_id` (посилання на
+`sites`). Це суперечить РЕАЛІЗОВАНІЙ схемі Sites-конструктора
+(0058) і критичному правилу PLATFORM.md/DATA_MODEL.md розділ 2.1:
+`sites` (моніторинг) і `projects` (хостинг Qorax) — різні сутності.
+Сторінки, які перекладає цей модуль, живуть у `project_pages`
+(`project_id`), не в `sites`. Обидві нові таблиці перейменовано й
+переприв'язано: `site_languages` → `project_languages`,
+`page_translations.project_page_id` зроблено NOT NULL (не nullable,
+як у чернетці — MVP Translator існує ЛИШЕ для `project_pages`,
+послаблювати до nullable сенсу не було).
+
+**Зроблено:**
+- Міграція `0061_translator_module.sql`: `project_languages`,
+  `page_translations` (з виправленим `project_id`, не `site_id`) —
+  RLS через `project_id`, той самий патерн, що `project_pages_*`
+  policies з 0058
+- `worker/src/lib/translatorHandler.ts`:
+  `GET/POST /api/projects/:id/languages`, `DELETE .../languages/:id`,
+  `GET /api/projects/:id/translations`,
+  `POST /api/projects/:id/translate` (AI-переклад),
+  `PATCH /api/translations/:id` (ручне редагування → status
+  'reviewed'). Auth — `requireOrgAccessForProject()` (та сама
+  функція, що Sites-конструктор уже переюзовує з `orgAuth.ts`)
+- **AI-переклад переюзовує `callGemini()` з `contentGeneration.ts`
+  напряму** (retry-on-429/503, timeout) — той самий підхід, що
+  `agentHandler.ts` уже застосовує для content-агента ("переюзовує
+  buildPrompt/callGemini — не нову AI-інтеграцію"). `buildPrompt()`
+  з `contentGeneration.ts` НЕ підходить напряму (жорстко прив'язаний
+  до `GenerationKind` — генерація з нуля, не переклад) — власний
+  `buildTranslationPrompt()`, точно як явно дозволяє коментар у
+  roadmap ("різниця тільки в промпті: не дослівний переклад, а
+  SEO-адаптація")
+- Списує `ai_credits` — той самий єдиний пул, що AI/Content і
+  Social (PRICING.md розділ 5), окремого пулу на переклад нема
+- Ліміт мов на проект: `PRICING.md` розділ 4 явно каже "ще не
+  реалізовано" для Translator — робочі числа-заглушки
+  (`starter: 1, growth: 2, agency: 5`), той самий принцип, що
+  `MONTHLY_POST_LIMIT_BY_PLAN` у `socialHandler.ts` — конкретні
+  комерційні цифри лишаються рішенням Артема
+- **hreflang в SSR (roadmap Крок 2):** доопрацьовано вже наявну
+  `app/sites-builder/preview/[projectId]/page.tsx` (не нова
+  сторінка) — `?locale=xx` підміняє title/description/content на
+  переклад (worker сам робить підміну в
+  `handleSitesContentPublic`, якщо переклад існує й має статус
+  reviewed/published — draft-переклади не показуються відвідувачам
+  публічно), `<link rel="alternate" hreflang>` генерується в
+  `generateMetadata()` зі списку `languages`, який тепер повертає
+  `/api/sites-content/:projectId` разом з `pages` — жодного
+  окремого запиту не додано
+- UI: `app/dashboard/translator/` (список проектів — той самий
+  "картка з посиланням" патерн, що інші site/project-scoped модулі)
+  і `[projectId]/` (підключені мови з швидким вибором популярних
+  локалей, список сторінок × мов зі статусом перекладу, кнопка "AI
+  переклад", модалка ручного редагування). `PlatformSidebar` і
+  `AppsGrid` — додано `Languages` в ICONS-мапу обох (заразом
+  виявлено й виправлено, що `AppsGrid.tsx` вже відставав від
+  `PlatformSidebar.tsx` на іконку `Target` для CRO — застаріла копія
+  з часів Design-проходу реструктуризації сайдбару, не пов'язана з
+  Translator, але виправлена тут же, щоб не тягнути далі)
+- Перевірено ПІСЛЯ pull і перейменування міграції: `rm -rf .next`,
+  `npm run build` успішно (2 нових роути:
+  `/dashboard/translator`, `/dashboard/translator/[projectId]`),
+  worker `tsc --noEmit` — ті самі 9 відомих помилок (без нових),
+  `wrangler deploy --dry-run` успішно (574.05 KiB, gzip 101.92 KiB)
+
+**Свідомо не зроблено (наступні кроки за MODULE_ROADMAP.md розділ 5):**
+- Переклад блоків контенту сторінки (не тільки title/description/OG)
+  — `page_translations.content`/`image_alt_overrides` існують у
+  схемі, worker їх не наповнює. Roadmap Крок 5 явно дозволяє
+  відкласти ("переклад блогу і зображень (alt) — той самий
+  пайплайн, просто більше kind у промпті, друга ітерація")
+- Преміум-моделі перекладу (roadmap Крок 4, друга ітерація)
+- UI для перегляду перекладеної сторінки в самому редакторі Sites
+  (зараз перевірити переклад можна тільки через `?locale=` на
+  публічному preview, не інлайн у `ProjectEditorUI.tsx`)
+
+**Наступний крок:** з Translator готовим лишається тільки Commerce
+з нереалізованих модулів, розблокованих Sites-конструктором. Перед
+стартом — `git pull` першим кроком (учетверте поспіль підтверджена
+активна паралельна робота — це вже стійкий патерн цього проєкту,
+не випадковість, варто закладати в кожен наступний прохід за
+замовчуванням, не тільки як застереження).

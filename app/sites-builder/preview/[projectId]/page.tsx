@@ -18,6 +18,14 @@
 // fetch() на публічний URL іншого Worker'а того ж акаунта (Cloudflare
 // error 1042) — тому звертаємось до qorax-api через Service Binding
 // (env.API_WORKER), не через публічний https://qorax-api.mrcru96.workers.dev.
+//
+// Translator-модуль (MODULE_ROADMAP.md розділ 5, Крок 2 —
+// "hreflang генерується не окремим ендпоінтом, а на льоту в
+// SSR-рендерингу Sites"): ?locale=xx перемикає контент на переклад
+// (worker сам підміняє title/description/content, якщо переклад
+// існує й опублікований), <link rel="alternate" hreflang> в <head>
+// генерується з languages, які повертає /api/sites-content разом з
+// pages — жодного окремого запиту тут не потрібно.
 // ============================================================
 
 export const dynamic = "force-dynamic";
@@ -36,13 +44,20 @@ interface ProjectPageData {
   updated_at: string;
 }
 
+interface ProjectLanguageData {
+  locale: string;
+  is_default: boolean;
+  url_prefix: string | null;
+}
+
 interface SitesContentData {
   project: { id: string; name: string };
   pages: ProjectPageData[];
+  languages: ProjectLanguageData[];
 }
 
-async function fetchSitesContent(projectId: string): Promise<SitesContentData | null> {
-  const path = `/api/sites-content/${encodeURIComponent(projectId)}`;
+async function fetchSitesContent(projectId: string, locale?: string): Promise<SitesContentData | null> {
+  const path = `/api/sites-content/${encodeURIComponent(projectId)}${locale ? `?locale=${encodeURIComponent(locale)}` : ""}`;
 
   // 1) Service Binding (працює на Cloudflare — обходить error 1042)
   try {
@@ -58,7 +73,8 @@ async function fetchSitesContent(projectId: string): Promise<SitesContentData | 
         console.error(`[sites-builder/preview/${projectId}] binding responded ${res.status}`);
         return null;
       }
-      return (await res.json()) as SitesContentData;
+      const data = (await res.json()) as SitesContentData;
+      return { ...data, languages: data.languages ?? [] };
     }
   } catch (err) {
     // Binding недоступний (локальна розробка без wrangler dev) —
@@ -74,7 +90,8 @@ async function fetchSitesContent(projectId: string): Promise<SitesContentData | 
       console.error(`[sites-builder/preview/${projectId}] fetch responded ${res.status}`);
       return null;
     }
-    return (await res.json()) as SitesContentData;
+    const data = (await res.json()) as SitesContentData;
+    return { ...data, languages: data.languages ?? [] };
   } catch (err) {
     console.error(`[sites-builder/preview/${projectId}] fetch failed:`, err instanceof Error ? err.message : err);
     return null;
@@ -82,24 +99,41 @@ async function fetchSitesContent(projectId: string): Promise<SitesContentData | 
 }
 
 export async function generateMetadata(
-  { params }: { params: Promise<{ projectId: string }> }
+  { params, searchParams }: { params: Promise<{ projectId: string }>; searchParams: Promise<{ locale?: string }> }
 ): Promise<Metadata> {
   const { projectId } = await params;
-  const data = await fetchSitesContent(projectId);
+  const { locale } = await searchParams;
+  const data = await fetchSitesContent(projectId, locale);
   if (!data) return { title: "Сайт — Qorax" };
 
   const indexPage = data.pages.find(p => p.slug === "index") ?? data.pages[0];
+
+  // hreflang: <link rel="alternate" hreflang="xx" href=".../preview/:id?locale=xx">
+  // для кожної підключеної мови + дефолтну (без ?locale=, x-default)
+  const languages: Record<string, string> = {};
+  if (data.languages.length > 0) {
+    for (const lang of data.languages) {
+      languages[lang.locale] = `/sites-builder/preview/${projectId}?locale=${lang.locale}`;
+    }
+    const defaultLang = data.languages.find(l => l.is_default);
+    languages["x-default"] = defaultLang
+      ? `/sites-builder/preview/${projectId}`
+      : `/sites-builder/preview/${projectId}?locale=${data.languages[0].locale}`;
+  }
+
   return {
     title: indexPage?.seo_title || data.project.name,
     description: indexPage?.seo_description || undefined,
+    alternates: Object.keys(languages).length > 0 ? { languages } : undefined,
   };
 }
 
 export default async function SitesBuilderPreviewPage(
-  { params }: { params: Promise<{ projectId: string }> }
+  { params, searchParams }: { params: Promise<{ projectId: string }>; searchParams: Promise<{ locale?: string }> }
 ) {
   const { projectId } = await params;
-  const data = await fetchSitesContent(projectId);
+  const { locale } = await searchParams;
+  const data = await fetchSitesContent(projectId, locale);
   if (!data) notFound();
 
   const indexPage = data.pages.find(p => p.slug === "index") ?? data.pages[0];
@@ -107,3 +141,4 @@ export default async function SitesBuilderPreviewPage(
 
   return <SitePreviewRenderer page={indexPage} projectName={data.project.name} />;
 }
+

@@ -372,5 +372,51 @@ export async function handleSitesContentPublic(request: Request, env: Env, corsH
     env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  return json({ project: { id: project.id, name: project.name }, pages: pagesRes.data ?? [] }, 200, corsHeaders);
+  // Translator-модуль (0060_translator_module.sql): якщо у проекта
+  // підключені мови, повертаємо їх список — SSR-сторінка preview
+  // будує з нього <link rel="alternate" hreflang> (roadmap Translator
+  // Крок 2: "hreflang генерується на льоту в SSR-рендерингу Sites").
+  // Проект без жодної підключеної мови (більшість) — languages: [],
+  // Translator для нього просто не використовується, зайвого запиту
+  // page_translations без потреби не робимо.
+  const languagesRes = await selectRows<{ locale: string; is_default: boolean; url_prefix: string | null }>(
+    "project_languages",
+    `select=locale,is_default,url_prefix&project_id=eq.${encodeURIComponent(projectId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const languages = languagesRes.data ?? [];
+
+  let pages = pagesRes.data ?? [];
+
+  // ?locale=xx — підміняємо title/description/content на переклад,
+  // якщо він існує й опублікований (reviewed чи published; draft — ще
+  // не перевірений людиною, не показуємо відвідувачам публічно)
+  const url = new URL(request.url);
+  const locale = url.searchParams.get("locale");
+  if (locale && languages.some(l => l.locale === locale)) {
+    const pageIds = pages.map(p => p.id);
+    if (pageIds.length > 0) {
+      const translationsRes = await selectRows<{ project_page_id: string; title: string | null; description: string | null; content: { blocks?: unknown[] } | null; status: string }>(
+        "page_translations",
+        `select=project_page_id,title,description,content,status&project_page_id=in.(${pageIds.join(",")})&locale=eq.${encodeURIComponent(locale)}&status=in.(reviewed,published)`,
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY
+      );
+      const translationByPageId = new Map((translationsRes.data ?? []).map(t => [t.project_page_id, t]));
+
+      pages = pages.map(p => {
+        const t = translationByPageId.get(p.id);
+        if (!t) return p;
+        return {
+          ...p,
+          seo_title: t.title || p.seo_title,
+          seo_description: t.description || p.seo_description,
+          content: t.content?.blocks?.length ? t.content : p.content,
+        };
+      });
+    }
+  }
+
+  return json({ project: { id: project.id, name: project.name }, pages, languages }, 200, corsHeaders);
 }

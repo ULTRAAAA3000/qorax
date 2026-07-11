@@ -58,6 +58,14 @@ import {
   handleProjectUnpublish,
   handleSitesContentPublic,
 } from "./lib/sitesBuilderHandler";
+import {
+  handleProjectLanguagesList,
+  handleProjectLanguageCreate,
+  handleProjectLanguageDelete,
+  handleTranslationsList,
+  handleTranslate,
+  handleTranslationUpdate,
+} from "./lib/translatorHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -851,6 +859,31 @@ const worker = {
     const sitesContentMatch = url.pathname.match(/^\/api\/sites-content\/([^/]+)$/);
     if (sitesContentMatch && request.method === "GET") {
       return handleSitesContentPublic(request, env, corsHeaders(origin), sitesContentMatch[1]);
+    }
+
+    // ── Translator routes (MODULE_ROADMAP.md розділ 5; EXECUTION_PLAN.md Фаза 3.2) ──
+    const projectLanguagesMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/languages$/);
+    if (projectLanguagesMatch && request.method === "GET") {
+      return handleProjectLanguagesList(request, env, corsHeaders(origin), projectLanguagesMatch[1]);
+    }
+    if (projectLanguagesMatch && request.method === "POST") {
+      return handleProjectLanguageCreate(request, env, corsHeaders(origin), projectLanguagesMatch[1]);
+    }
+    const projectLanguageItemMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/languages\/([^/]+)$/);
+    if (projectLanguageItemMatch && request.method === "DELETE") {
+      return handleProjectLanguageDelete(request, env, corsHeaders(origin), projectLanguageItemMatch[1], projectLanguageItemMatch[2]);
+    }
+    const projectTranslationsMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/translations$/);
+    if (projectTranslationsMatch && request.method === "GET") {
+      return handleTranslationsList(request, env, corsHeaders(origin), projectTranslationsMatch[1]);
+    }
+    const projectTranslateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/translate$/);
+    if (projectTranslateMatch && request.method === "POST") {
+      return handleTranslate(request, env, corsHeaders(origin), projectTranslateMatch[1]);
+    }
+    const translationItemMatch = url.pathname.match(/^\/api\/translations\/([^/]+)$/);
+    if (translationItemMatch && request.method === "PATCH") {
+      return handleTranslationUpdate(request, env, corsHeaders(origin), translationItemMatch[1]);
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту

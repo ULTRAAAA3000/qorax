@@ -5,12 +5,12 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Lock, Users, Send,
-  GraduationCap, Target, ChevronDown, Grid2x2, ArrowUpRight,
+  GraduationCap, Target, ChevronDown, Grid2x2, ArrowUpRight, Languages,
 } from "lucide-react";
 import type { PlatformModule } from "@/app/lib/getPlatformModules";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Users, Send, GraduationCap, Target,
+  ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Users, Send, GraduationCap, Target, Languages,
 };
 
 // Модуль 'ai' винесено окремим верхнім пунктом (DESIGN_SYSTEM.md, розділ

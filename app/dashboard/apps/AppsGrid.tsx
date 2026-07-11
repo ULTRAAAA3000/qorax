@@ -3,12 +3,12 @@
 import Link from "next/link";
 import {
   ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Users, Send,
-  GraduationCap, ArrowRight, Clock,
+  GraduationCap, Target, Languages, ArrowRight, Clock,
 } from "lucide-react";
 import type { PlatformModule } from "@/app/lib/getPlatformModules";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
-  ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Users, Send, GraduationCap,
+  ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Users, Send, GraduationCap, Target, Languages,
 };
 
 /**
