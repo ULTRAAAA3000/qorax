@@ -44,6 +44,18 @@ import {
   handleTaskUpdateRequest,
   handleTaskDeleteRequest,
 } from "./lib/taskHandler";
+import {
+  handleProjectsList,
+  handleProjectTemplatesList,
+  handleProjectCreate,
+  handleProjectDetail,
+  handleProjectPageUpdate,
+  handleProjectPageCreate,
+  handleProjectPageDelete,
+  handleProjectPublish,
+  handleProjectUnpublish,
+  handleSitesContentPublic,
+} from "./lib/sitesBuilderHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -793,6 +805,45 @@ const worker = {
     }
     if (taskMatch && request.method === "DELETE") {
       return handleTaskDeleteRequest(request, taskMatch[1], env, origin, corsHeaders(origin));
+    }
+
+    // ── Sites-конструктор routes (MODULE_ROADMAP.md розділ 4; EXECUTION_PLAN.md Фаза 3.1) ──
+    if (url.pathname === "/api/projects" && request.method === "GET") {
+      return handleProjectsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/projects" && request.method === "POST") {
+      return handleProjectCreate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/project-templates" && request.method === "GET") {
+      return handleProjectTemplatesList(request, env, corsHeaders(origin));
+    }
+    const projectDetailMatch = url.pathname.match(/^\/api\/projects\/([^/]+)$/);
+    if (projectDetailMatch && request.method === "GET") {
+      return handleProjectDetail(request, env, corsHeaders(origin), projectDetailMatch[1]);
+    }
+    const projectPublishMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/publish$/);
+    if (projectPublishMatch && request.method === "POST") {
+      return handleProjectPublish(request, env, corsHeaders(origin), projectPublishMatch[1]);
+    }
+    const projectUnpublishMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/unpublish$/);
+    if (projectUnpublishMatch && request.method === "POST") {
+      return handleProjectUnpublish(request, env, corsHeaders(origin), projectUnpublishMatch[1]);
+    }
+    const projectPagesMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/pages$/);
+    if (projectPagesMatch && request.method === "POST") {
+      return handleProjectPageCreate(request, env, corsHeaders(origin), projectPagesMatch[1]);
+    }
+    const projectPageItemMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/pages\/([^/]+)$/);
+    if (projectPageItemMatch && request.method === "PATCH") {
+      return handleProjectPageUpdate(request, env, corsHeaders(origin), projectPageItemMatch[1], projectPageItemMatch[2]);
+    }
+    if (projectPageItemMatch && request.method === "DELETE") {
+      return handleProjectPageDelete(request, env, corsHeaders(origin), projectPageItemMatch[1], projectPageItemMatch[2]);
+    }
+    // Публічний, без авторизації — SSR-рендеринг опублікованого проекту
+    const sitesContentMatch = url.pathname.match(/^\/api\/sites-content\/([^/]+)$/);
+    if (sitesContentMatch && request.method === "GET") {
+      return handleSitesContentPublic(request, env, corsHeaders(origin), sitesContentMatch[1]);
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту
