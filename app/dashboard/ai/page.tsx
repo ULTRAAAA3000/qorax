@@ -67,7 +67,7 @@ export default async function QoraxAiPage() {
             </p>
           </div>
 
-          <QoraxAiHub sites={sites ?? []} />
+          <QoraxAiHub sites={sites ?? []} organizationId={membership.organization_id} />
         </main>
       </div>
     </div>

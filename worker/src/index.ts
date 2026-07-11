@@ -33,6 +33,10 @@ import {
   handleAgentsListRequest,
   handleAgentRunsListRequest,
   handleRunContentAgentRequest,
+  handleAgentSubscriptionsListRequest,
+  handleAgentSubscriptionUpsertRequest,
+  handleAgentSubscriptionToggleRequest,
+  runDueAgentAutomations,
 } from "./lib/agentHandler";
 import {
   handleTasksListRequest,
@@ -760,6 +764,20 @@ const worker = {
       return handleRunContentAgentRequest(request, env, origin, corsHeaders(origin));
     }
 
+    // ── Automations routes (Qorax AI хаб, шостий UI-крок хвилі 3 —
+    // agent_subscriptions = Automations, за задумом MODULE_ROADMAP.md,
+    // коментар у 0049_qorax_ai_hub.sql) ─────────────────────────────
+    if (url.pathname === "/api/agents/subscriptions" && request.method === "GET") {
+      return handleAgentSubscriptionsListRequest(request, env, origin, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/agents/subscriptions" && request.method === "POST") {
+      return handleAgentSubscriptionUpsertRequest(request, env, origin, corsHeaders(origin));
+    }
+    const agentSubToggleMatch = url.pathname.match(/^\/api\/agents\/subscriptions\/([^/]+)$/);
+    if (agentSubToggleMatch && request.method === "PATCH") {
+      return handleAgentSubscriptionToggleRequest(request, env, origin, agentSubToggleMatch[1], corsHeaders(origin));
+    }
+
     // ── Tasks routes (Qorax AI хаб, вкладка Tasks — хвиля 3) ──────────
     if (url.pathname === "/api/tasks" && request.method === "GET") {
       return handleTasksListRequest(request, env, origin, corsHeaders(origin));
@@ -1399,7 +1417,7 @@ const worker = {
   async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
     // 0 3 * * * — щодня о 3:00: швидкість + SEO + конкуренти
     if (event.cron === "0 3 * * *") {
-      const [speedSummary, seoSummary, competitorSummary] = await Promise.all([
+      const [speedSummary, seoSummary, competitorSummary, automationsSummary] = await Promise.all([
         runSpeedChecks(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
@@ -1426,10 +1444,17 @@ const worker = {
           env.APP_URL
         ),
         runGscSync(env),
+        // Qorax AI хаб, вкладка Automations (agent_subscriptions) —
+        // додано до вже наявного нічного тригера, щоб не вимагати від
+        // Артема створювати ще один Cloudflare Cron Trigger вручну.
+        // Найчастіший пресет розкладу зараз — 'daily', раз на добу
+        // достатньо для перевірки.
+        runDueAgentAutomations(env),
       ]);
       console.log("Speed:", JSON.stringify(speedSummary));
       console.log("SEO:", JSON.stringify(seoSummary));
       console.log("Competitors:", JSON.stringify(competitorSummary));
+      console.log("Automations:", JSON.stringify(automationsSummary));
       return;
     }
 

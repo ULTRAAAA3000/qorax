@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { MessageSquare, FolderOpen, Brain, ListChecks, Bot, Zap, Lock } from "lucide-react";
+import { MessageSquare, FolderOpen, Brain, ListChecks, Bot, Zap } from "lucide-react";
 import { WorkspaceTab } from "./WorkspaceTab";
 import { MemoryTab } from "./MemoryTab";
 import { ChatTab } from "./ChatTab";
 import { AgentsTab } from "./AgentsTab";
 import { TasksTab } from "./TasksTab";
+import { AutomationsTab } from "./AutomationsTab";
 
 type TabId = "chat" | "workspace" | "agents" | "memory" | "tasks" | "automations";
 
@@ -17,21 +18,21 @@ interface SiteOption {
 }
 
 // Табова навігація хаба (MODULE_ROADMAP.md "Третя хвиля": Chat +
-// Agents + Workspace + Memory + Tasks + Automations). Chat/Workspace/
-// Memory/Agents/Tasks реально реалізовані (EXECUTION_PLAN.md,
-// послідовні сесії) — Automations поки заблокована заглушка "Скоро",
-// той самий патерн, що вже використано в PlatformSidebar для
-// coming_soon-модулів.
-const TABS: Array<{ id: TabId; label: string; icon: typeof MessageSquare; ready: boolean }> = [
-  { id: "chat", label: "Chat", icon: MessageSquare, ready: true },
-  { id: "workspace", label: "Workspace", icon: FolderOpen, ready: true },
-  { id: "agents", label: "Agents", icon: Bot, ready: true },
-  { id: "memory", label: "Memory", icon: Brain, ready: true },
-  { id: "tasks", label: "Tasks", icon: ListChecks, ready: true },
-  { id: "automations", label: "Automations", icon: Zap, ready: false },
+// Agents + Workspace + Memory + Tasks + Automations). Усі шість
+// вкладок реалізовано (EXECUTION_PLAN.md, послідовні сесії) —
+// Automations, остання, підключена до agent_subscriptions
+// (0049_qorax_ai_hub.sql — та сама таблиця, задум roadmap "Automations
+// = agent_subscriptions" виконано без нової схеми).
+const TABS: Array<{ id: TabId; label: string; icon: typeof MessageSquare }> = [
+  { id: "chat", label: "Chat", icon: MessageSquare },
+  { id: "workspace", label: "Workspace", icon: FolderOpen },
+  { id: "agents", label: "Agents", icon: Bot },
+  { id: "memory", label: "Memory", icon: Brain },
+  { id: "tasks", label: "Tasks", icon: ListChecks },
+  { id: "automations", label: "Automations", icon: Zap },
 ];
 
-export function QoraxAiHub({ sites }: { sites: SiteOption[] }) {
+export function QoraxAiHub({ sites, organizationId }: { sites: SiteOption[]; organizationId: string }) {
   const [activeTab, setActiveTab] = useState<TabId>("chat");
 
   return (
@@ -48,19 +49,15 @@ export function QoraxAiHub({ sites }: { sites: SiteOption[] }) {
           return (
             <button
               key={tab.id}
-              onClick={() => tab.ready && setActiveTab(tab.id)}
-              disabled={!tab.ready}
+              onClick={() => setActiveTab(tab.id)}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-sm whitespace-nowrap transition-colors shrink-0"
               style={{
                 background: isActive ? "rgba(214,255,63,0.1)" : "transparent",
-                color: isActive ? "var(--lime)" : tab.ready ? "var(--text-secondary)" : "var(--text-tertiary)",
-                opacity: tab.ready ? 1 : 0.5,
-                cursor: tab.ready ? "pointer" : "default",
+                color: isActive ? "var(--lime)" : "var(--text-secondary)",
               }}
             >
               <Icon size={14} />
               {tab.label}
-              {!tab.ready && <Lock size={10} className="ml-0.5" />}
             </button>
           );
         })}
@@ -72,17 +69,7 @@ export function QoraxAiHub({ sites }: { sites: SiteOption[] }) {
       {activeTab === "memory" && <MemoryTab />}
       {activeTab === "agents" && <AgentsTab sites={sites} />}
       {activeTab === "tasks" && <TasksTab />}
-
-      {activeTab === "automations" && (
-        <div
-          className="rounded-xl p-8 text-center"
-          style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
-        >
-          <p className="text-sm text-[var(--text-secondary)]">
-            Ця вкладка ще в розробці — з&apos;явиться найближчим часом.
-          </p>
-        </div>
-      )}
+      {activeTab === "automations" && <AutomationsTab sites={sites} organizationId={organizationId} />}
     </div>
   );
 }
