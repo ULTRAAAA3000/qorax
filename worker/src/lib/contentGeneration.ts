@@ -44,7 +44,7 @@ async function getOrgIdForUser(userId: string, supabaseUrl: string, serviceKey: 
   return res.data?.[0]?.organization_id ?? null;
 }
 
-function buildPrompt(kind: GenerationKind, topic: string, keywords: string | undefined, tone: string | undefined): string {
+export function buildPrompt(kind: GenerationKind, topic: string, keywords: string | undefined, tone: string | undefined): string {
   const toneCtx = tone?.trim() ? `Тон: ${tone.trim()}.` : "Тон: професійний, але дружній.";
   const keywordsCtx = keywords?.trim() ? `Ключові слова, які варто природно включити: ${keywords.trim()}.` : "";
 
@@ -65,7 +65,7 @@ ${toneCtx}
  * тут немає system_instruction/історії повідомлень — просто один
  * prompt на один результат.
  */
-async function callGemini(prompt: string, apiKey: string): Promise<{ ok: true; text: string } | { ok: false; error: string; status: number }> {
+export async function callGemini(prompt: string, apiKey: string): Promise<{ ok: true; text: string } | { ok: false; error: string; status: number }> {
   const body = {
     contents: [{ parts: [{ text: prompt }] }],
     generationConfig: { temperature: 0.7, maxOutputTokens: 1500 },

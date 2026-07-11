@@ -29,6 +29,11 @@ import {
   handleWorkspaceDeleteRequest,
 } from "./lib/workspaceHandler";
 import { handleMemoryGetRequest, handleMemoryUpdateRequest } from "./lib/memoryHandler";
+import {
+  handleAgentsListRequest,
+  handleAgentRunsListRequest,
+  handleRunContentAgentRequest,
+} from "./lib/agentHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -713,6 +718,18 @@ const worker = {
 
     if (url.pathname === "/api/memory" && request.method === "PUT") {
       return handleMemoryUpdateRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/agents" && request.method === "GET") {
+      return handleAgentsListRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/agents/runs" && request.method === "GET") {
+      return handleAgentRunsListRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/agents/content/run" && request.method === "POST") {
+      return handleRunContentAgentRequest(request, env, origin, corsHeaders(origin));
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту

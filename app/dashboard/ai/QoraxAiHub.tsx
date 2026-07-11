@@ -5,24 +5,32 @@ import { MessageSquare, FolderOpen, Brain, ListChecks, Bot, Zap, Lock } from "lu
 import { WorkspaceTab } from "./WorkspaceTab";
 import { MemoryTab } from "./MemoryTab";
 import { ChatTab } from "./ChatTab";
+import { AgentsTab } from "./AgentsTab";
 
 type TabId = "chat" | "workspace" | "agents" | "memory" | "tasks" | "automations";
 
+interface SiteOption {
+  id: string;
+  url: string;
+  display_name: string;
+}
+
 // Табова навігація хаба (MODULE_ROADMAP.md "Третя хвиля": Chat +
-// Agents + Workspace + Memory + Tasks + Automations). Тільки
-// Workspace реально реалізовано в цій сесії — решта показуються
-// заблокованими з підказкою "Скоро", той самий патерн, що вже
-// використано в PlatformSidebar для coming_soon-модулів.
+// Agents + Workspace + Memory + Tasks + Automations). Chat/Workspace/
+// Memory/Agents реально реалізовані (EXECUTION_PLAN.md, послідовні
+// сесії) — Tasks/Automations поки заблоковані заглушки "Скоро", той
+// самий патерн, що вже використано в PlatformSidebar для coming_soon-
+// модулів.
 const TABS: Array<{ id: TabId; label: string; icon: typeof MessageSquare; ready: boolean }> = [
   { id: "chat", label: "Chat", icon: MessageSquare, ready: true },
   { id: "workspace", label: "Workspace", icon: FolderOpen, ready: true },
-  { id: "agents", label: "Agents", icon: Bot, ready: false },
+  { id: "agents", label: "Agents", icon: Bot, ready: true },
   { id: "memory", label: "Memory", icon: Brain, ready: true },
   { id: "tasks", label: "Tasks", icon: ListChecks, ready: false },
   { id: "automations", label: "Automations", icon: Zap, ready: false },
 ];
 
-export function QoraxAiHub() {
+export function QoraxAiHub({ sites }: { sites: SiteOption[] }) {
   const [activeTab, setActiveTab] = useState<TabId>("chat");
 
   return (
@@ -61,8 +69,9 @@ export function QoraxAiHub() {
       {activeTab === "chat" && <ChatTab />}
       {activeTab === "workspace" && <WorkspaceTab />}
       {activeTab === "memory" && <MemoryTab />}
+      {activeTab === "agents" && <AgentsTab sites={sites} />}
 
-      {activeTab !== "chat" && activeTab !== "workspace" && activeTab !== "memory" && (
+      {activeTab !== "chat" && activeTab !== "workspace" && activeTab !== "memory" && activeTab !== "agents" && (
         <div
           className="rounded-xl p-8 text-center"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}

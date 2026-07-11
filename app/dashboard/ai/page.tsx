@@ -31,7 +31,14 @@ export default async function QoraxAiPage() {
     .single();
   if (!membership) redirect("/dashboard");
 
-  const platformModules = await getPlatformModules(membership.organization_id);
+  const [{ data: sites }, platformModules] = await Promise.all([
+    supabase
+      .from("sites")
+      .select("id, url, display_name")
+      .eq("organization_id", membership.organization_id)
+      .order("created_at", { ascending: false }),
+    getPlatformModules(membership.organization_id),
+  ]);
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
@@ -60,7 +67,7 @@ export default async function QoraxAiPage() {
             </p>
           </div>
 
-          <QoraxAiHub />
+          <QoraxAiHub sites={sites ?? []} />
         </main>
       </div>
     </div>
