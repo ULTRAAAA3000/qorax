@@ -34,6 +34,12 @@ import {
   handleAgentRunsListRequest,
   handleRunContentAgentRequest,
 } from "./lib/agentHandler";
+import {
+  handleTasksListRequest,
+  handleTaskCreateRequest,
+  handleTaskUpdateRequest,
+  handleTaskDeleteRequest,
+} from "./lib/tasksHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -752,6 +758,23 @@ const worker = {
 
     if (url.pathname === "/api/agents/content/run" && request.method === "POST") {
       return handleRunContentAgentRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    // ── Tasks routes (Qorax AI хаб, вкладка Tasks — хвиля 3) ──────────
+    if (url.pathname === "/api/tasks" && request.method === "GET") {
+      return handleTasksListRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    if (url.pathname === "/api/tasks" && request.method === "POST") {
+      return handleTaskCreateRequest(request, env, origin, corsHeaders(origin));
+    }
+
+    const taskItemMatch = url.pathname.match(/^\/api\/tasks\/([^/]+)$/);
+    if (taskItemMatch && request.method === "PATCH") {
+      return handleTaskUpdateRequest(request, env, origin, taskItemMatch[1], corsHeaders(origin));
+    }
+    if (taskItemMatch && request.method === "DELETE") {
+      return handleTaskDeleteRequest(request, env, origin, taskItemMatch[1], corsHeaders(origin));
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту

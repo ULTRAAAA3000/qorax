@@ -6,6 +6,7 @@ import { WorkspaceTab } from "./WorkspaceTab";
 import { MemoryTab } from "./MemoryTab";
 import { ChatTab } from "./ChatTab";
 import { AgentsTab } from "./AgentsTab";
+import { TasksTab } from "./TasksTab";
 
 type TabId = "chat" | "workspace" | "agents" | "memory" | "tasks" | "automations";
 
@@ -17,16 +18,16 @@ interface SiteOption {
 
 // Табова навігація хаба (MODULE_ROADMAP.md "Третя хвиля": Chat +
 // Agents + Workspace + Memory + Tasks + Automations). Chat/Workspace/
-// Memory/Agents реально реалізовані (EXECUTION_PLAN.md, послідовні
-// сесії) — Tasks/Automations поки заблоковані заглушки "Скоро", той
-// самий патерн, що вже використано в PlatformSidebar для coming_soon-
-// модулів.
+// Memory/Agents/Tasks реально реалізовані (EXECUTION_PLAN.md,
+// послідовні сесії) — Automations поки заблокована заглушка "Скоро",
+// той самий патерн, що вже використано в PlatformSidebar для
+// coming_soon-модулів.
 const TABS: Array<{ id: TabId; label: string; icon: typeof MessageSquare; ready: boolean }> = [
   { id: "chat", label: "Chat", icon: MessageSquare, ready: true },
   { id: "workspace", label: "Workspace", icon: FolderOpen, ready: true },
   { id: "agents", label: "Agents", icon: Bot, ready: true },
   { id: "memory", label: "Memory", icon: Brain, ready: true },
-  { id: "tasks", label: "Tasks", icon: ListChecks, ready: false },
+  { id: "tasks", label: "Tasks", icon: ListChecks, ready: true },
   { id: "automations", label: "Automations", icon: Zap, ready: false },
 ];
 
@@ -70,8 +71,9 @@ export function QoraxAiHub({ sites }: { sites: SiteOption[] }) {
       {activeTab === "workspace" && <WorkspaceTab />}
       {activeTab === "memory" && <MemoryTab />}
       {activeTab === "agents" && <AgentsTab sites={sites} />}
+      {activeTab === "tasks" && <TasksTab />}
 
-      {activeTab !== "chat" && activeTab !== "workspace" && activeTab !== "memory" && activeTab !== "agents" && (
+      {activeTab === "automations" && (
         <div
           className="rounded-xl p-8 text-center"
           style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}
