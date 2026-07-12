@@ -33,6 +33,7 @@ export const dynamic = "force-dynamic";
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { SitePreviewRenderer } from "./SitePreviewRenderer";
+import type { PublicProduct } from "./ProductShowcase";
 
 interface ProjectPageData {
   id: string;
@@ -54,6 +55,7 @@ interface SitesContentData {
   project: { id: string; name: string };
   pages: ProjectPageData[];
   languages: ProjectLanguageData[];
+  products: PublicProduct[];
 }
 
 async function fetchSitesContent(projectId: string, locale?: string): Promise<SitesContentData | null> {
@@ -74,7 +76,7 @@ async function fetchSitesContent(projectId: string, locale?: string): Promise<Si
         return null;
       }
       const data = (await res.json()) as SitesContentData;
-      return { ...data, languages: data.languages ?? [] };
+      return { ...data, languages: data.languages ?? [], products: data.products ?? [] };
     }
   } catch (err) {
     // Binding недоступний (локальна розробка без wrangler dev) —
@@ -91,7 +93,7 @@ async function fetchSitesContent(projectId: string, locale?: string): Promise<Si
       return null;
     }
     const data = (await res.json()) as SitesContentData;
-    return { ...data, languages: data.languages ?? [] };
+    return { ...data, languages: data.languages ?? [], products: data.products ?? [] };
   } catch (err) {
     console.error(`[sites-builder/preview/${projectId}] fetch failed:`, err instanceof Error ? err.message : err);
     return null;
@@ -139,6 +141,6 @@ export default async function SitesBuilderPreviewPage(
   const indexPage = data.pages.find(p => p.slug === "index") ?? data.pages[0];
   if (!indexPage) notFound();
 
-  return <SitePreviewRenderer page={indexPage} projectName={data.project.name} />;
+  return <SitePreviewRenderer page={indexPage} projectName={data.project.name} projectId={projectId} products={data.products} />;
 }
 

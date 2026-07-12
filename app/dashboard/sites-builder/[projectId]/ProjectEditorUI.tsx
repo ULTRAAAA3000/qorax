@@ -42,12 +42,18 @@ const BLOCK_TYPES: Array<{ type: string; label: string }> = [
   { type: "image", label: "Зображення" },
   { type: "cta", label: "Заклик до дії" },
   { type: "faq", label: "Питання-відповіді" },
+  { type: "products", label: "Товари (Commerce)" },
 ];
 
 function emptyBlock(type: string): Block {
   if (type === "faq") return { type, heading: "Часті питання", items: [{ question: "", answer: "" }] };
   if (type === "image") return { type, image_url: "", alt: "" };
   if (type === "cta" || type === "hero") return { type, heading: "", subheading: "", cta_text: "", cta_href: "" };
+  // products — не потребує налаштувань у блоці: показує ВСІ
+  // опубліковані товари проєкту автоматично (MVP-спрощення, не вибір
+  // конкретних товарів у блок — керування товарами вже є в
+  // /dashboard/commerce/[projectId], блок тут лише вітрина)
+  if (type === "products") return { type, heading: "Наші товари" };
   return { type, heading: "", body: "" };
 }
 
@@ -536,6 +542,15 @@ function BlockEditor({
           >
             <Plus size={11} /> Питання
           </button>
+        </>
+      )}
+
+      {block.type === "products" && (
+        <>
+          <input value={block.heading ?? ""} onChange={e => onChange({ heading: e.target.value })} placeholder="Заголовок секції" className="w-full rounded-lg px-3 py-2 text-sm" style={inputStyle} />
+          <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>
+            Показує всі опубліковані товари автоматично. Керування товарами — в розділі Commerce.
+          </p>
         </>
       )}
     </div>
