@@ -77,6 +77,12 @@ import {
   handleCouponCreate,
   handleCouponDelete,
   handleCouponValidate,
+  handleCategoriesList,
+  handleCategoryCreate,
+  handleCategoryUpdate,
+  handleCategoryDelete,
+  handleProductCategoriesList,
+  handleProductCategoriesSet,
 } from "./lib/commerceCatalog";
 import { handleCommerceCheckout } from "./lib/commerceCheckout";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
@@ -923,6 +929,30 @@ const worker = {
     const ordersListMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/orders$/);
     if (ordersListMatch && request.method === "GET") {
       return handleOrdersList(request, env, corsHeaders(origin), ordersListMatch[1]);
+    }
+    // Категорії товарів (product_categories) — перевіряються ПЕРЕД
+    // /products/:productId нижче, бо шлях /products/:id/categories
+    // інакше збігся б з productItemMatch, якби порядок був зворотним.
+    const productCategoriesMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/products\/([^/]+)\/categories$/);
+    if (productCategoriesMatch && request.method === "GET") {
+      return handleProductCategoriesList(request, env, corsHeaders(origin), productCategoriesMatch[1], productCategoriesMatch[2]);
+    }
+    if (productCategoriesMatch && request.method === "PUT") {
+      return handleProductCategoriesSet(request, env, corsHeaders(origin), productCategoriesMatch[1], productCategoriesMatch[2]);
+    }
+    const categoriesListMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/categories$/);
+    if (categoriesListMatch && request.method === "GET") {
+      return handleCategoriesList(request, env, corsHeaders(origin), categoriesListMatch[1]);
+    }
+    if (categoriesListMatch && request.method === "POST") {
+      return handleCategoryCreate(request, env, corsHeaders(origin), categoriesListMatch[1]);
+    }
+    const categoryItemMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/categories\/([^/]+)$/);
+    if (categoryItemMatch && request.method === "PATCH") {
+      return handleCategoryUpdate(request, env, corsHeaders(origin), categoryItemMatch[1], categoryItemMatch[2]);
+    }
+    if (categoryItemMatch && request.method === "DELETE") {
+      return handleCategoryDelete(request, env, corsHeaders(origin), categoryItemMatch[1], categoryItemMatch[2]);
     }
     const couponsListMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/coupons$/);
     if (couponsListMatch && request.method === "GET") {
