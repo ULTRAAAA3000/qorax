@@ -12,7 +12,7 @@
 // Документація: https://docs.lemonsqueezy.com/help/webhooks
 // ============================================================
 
-import { selectRows, upsertRow, updateRows } from "./supabase";
+import { selectRows, upsertRow, updateRows, updateRowsReturning } from "./supabase";
 import { processReferralCommission } from "./referralCommission";
 
 // ─── Типи LS webhook payload ─────────────────────────────────
@@ -486,9 +486,15 @@ async function handleOrderCreated(
     return true;
   }
 
-  const updateResult = await updateRows(
+  // Атомарний guard: PATCH з фільтром status=eq.pending і
+  // Prefer: return=representation — якщо LS повторить цей самий
+  // webhook (retry) або подія прийде вдруге з будь-якої причини,
+  // фільтр вже не збіжеться (замовлення вже paid), rows.length буде
+  // 0, і списання стоку/все інше нижче просто не виконається. Без
+  // цього повторний виклик списав би товар зі складу вдруге.
+  const updateResult = await updateRowsReturning<{ id: string }>(
     "orders",
-    `id=eq.${encodeURIComponent(qoraxOrderId)}`,
+    `id=eq.${encodeURIComponent(qoraxOrderId)}&status=eq.pending`,
     { status: "paid", payment_reference: attrs?.identifier ?? null },
     supabaseUrl,
     serviceRoleKey
@@ -499,7 +505,64 @@ async function handleOrderCreated(
     return false; // LS зробить retry за своєю 3-retry політикою
   }
 
+  if (updateResult.data.length === 0) {
+    // Фільтр status=eq.pending не збігся — замовлення вже було
+    // оброблено раніше (повторний webhook) або не існує. Не помилка,
+    // просто нічого додатково робити не треба.
+    console.log("[ls-webhook] commerce order already processed or not found:", qoraxOrderId);
+    return true;
+  }
+
   console.log("[ls-webhook] commerce order marked paid:", qoraxOrderId);
+
+  // ── Списання складу ──
+  // Виконується РІВНО ОДИН РАЗ завдяки guard вище. stock_quantity
+  // null означає "необмежено" (базовий облік, не повний WMS, див.
+  // коментар у 0061_commerce_module.sql) — такі товари пропускаємо.
+  // Кожен товар списується через read-then-write з optimistic locking:
+  // PATCH з фільтром stock_quantity=eq.<прочитане значення> — якщо між
+  // SELECT і PATCH значення змінилось (гонка з іншим замовленням чи
+  // ручним редагуванням у дашборді), фільтр не збігається, rows=0,
+  // і ми просто логуємо це замість тихого перезапису чужої зміни.
+  const orderItemsRes = await selectRows<{ product_id: string | null; quantity: number }>(
+    "order_items",
+    `select=product_id,quantity&order_id=eq.${encodeURIComponent(qoraxOrderId)}`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+
+  for (const item of orderItemsRes.data ?? []) {
+    if (!item.product_id) continue;
+
+    const productRes = await selectRows<{ id: string; stock_quantity: number | null }>(
+      "products",
+      `select=id,stock_quantity&id=eq.${encodeURIComponent(item.product_id)}`,
+      supabaseUrl,
+      serviceRoleKey
+    );
+    const product = productRes.data?.[0];
+    if (!product || product.stock_quantity === null) continue; // необмежений товар — нічого списувати
+
+    const newStock = Math.max(0, product.stock_quantity - item.quantity);
+    const stockUpdate = await updateRowsReturning<{ id: string }>(
+      "products",
+      `id=eq.${encodeURIComponent(item.product_id)}&stock_quantity=eq.${product.stock_quantity}`,
+      { stock_quantity: newStock },
+      supabaseUrl,
+      serviceRoleKey
+    );
+
+    if (!stockUpdate.ok || stockUpdate.data.length === 0) {
+      // stock_quantity змінився між SELECT і PATCH (гонка з іншим
+      // замовленням чи ручним редагуванням у дашборді) — не критична
+      // помилка для webhook (замовлення вже paid, гроші отримано),
+      // логуємо і продовжуємо з рештою товарів. Розбіжність складу
+      // на 1-2 одиниці в рідкісній гонці прийнятніша, ніж провалений
+      // webhook і незарахована оплата.
+      console.error("[ls-webhook] stock deduction race or failure for product:", item.product_id, stockUpdate.error);
+    }
+  }
+
   return true;
 }
 
