@@ -66,6 +66,16 @@ import {
   handleTranslate,
   handleTranslationUpdate,
 } from "./lib/translatorHandler";
+import { handleProjectPageAiGenerate } from "./lib/sitesAiHandler";
+import {
+  handleProductsList,
+  handleProductCreate,
+  handleProductUpdate,
+  handleProductDelete,
+  handleOrdersList,
+  handleCouponValidate,
+} from "./lib/commerceCatalog";
+import { handleCommerceCheckout } from "./lib/commerceCheckout";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -855,6 +865,10 @@ const worker = {
     if (projectPageItemMatch && request.method === "DELETE") {
       return handleProjectPageDelete(request, env, corsHeaders(origin), projectPageItemMatch[1], projectPageItemMatch[2]);
     }
+    const projectPageAiGenerateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/pages\/([^/]+)\/ai-generate$/);
+    if (projectPageAiGenerateMatch && request.method === "POST") {
+      return handleProjectPageAiGenerate(request, env, corsHeaders(origin), projectPageAiGenerateMatch[1], projectPageAiGenerateMatch[2]);
+    }
     // Публічний, без авторизації — SSR-рендеринг опублікованого проекту
     const sitesContentMatch = url.pathname.match(/^\/api\/sites-content\/([^/]+)$/);
     if (sitesContentMatch && request.method === "GET") {
@@ -884,6 +898,33 @@ const worker = {
     const translationItemMatch = url.pathname.match(/^\/api\/translations\/([^/]+)$/);
     if (translationItemMatch && request.method === "PATCH") {
       return handleTranslationUpdate(request, env, corsHeaders(origin), translationItemMatch[1]);
+    }
+
+    // ── Commerce routes (MODULE_ROADMAP.md розділ 6) ──────────────────
+    const productsListMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/products$/);
+    if (productsListMatch && request.method === "GET") {
+      return handleProductsList(request, env, corsHeaders(origin), productsListMatch[1]);
+    }
+    if (productsListMatch && request.method === "POST") {
+      return handleProductCreate(request, env, corsHeaders(origin), productsListMatch[1]);
+    }
+    const productItemMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/products\/([^/]+)$/);
+    if (productItemMatch && request.method === "PATCH") {
+      return handleProductUpdate(request, env, corsHeaders(origin), productItemMatch[1], productItemMatch[2]);
+    }
+    if (productItemMatch && request.method === "DELETE") {
+      return handleProductDelete(request, env, corsHeaders(origin), productItemMatch[1], productItemMatch[2]);
+    }
+    const ordersListMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/orders$/);
+    if (ordersListMatch && request.method === "GET") {
+      return handleOrdersList(request, env, corsHeaders(origin), ordersListMatch[1]);
+    }
+    // Публічні, без авторизації — доступні з вітрини магазину для анонімного покупця
+    if (url.pathname === "/api/coupons/validate" && request.method === "POST") {
+      return handleCouponValidate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/checkout/commerce" && request.method === "POST") {
+      return handleCommerceCheckout(request, env, corsHeaders(origin));
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту

@@ -144,6 +144,10 @@ export async function handleLSWebhook(
       handled = await handleSubscriptionPaymentSuccess(payload as unknown as LSInvoicePayload, supabaseUrl, serviceRoleKey);
       break;
 
+    case "order_created":
+      handled = await handleOrderCreated(payload as unknown as { meta: LSWebhookMeta; data: Record<string, unknown> }, supabaseUrl, serviceRoleKey);
+      break;
+
     default:
       console.log("[ls-webhook] unhandled event:", eventName);
   }
@@ -442,6 +446,61 @@ async function handleSubscriptionPaymentSuccess(
     supabaseUrl,
     serviceRoleKey
   );
+}
+
+// ─── order_created — Commerce-модуль (MODULE_ROADMAP.md розділ 6) ─
+// Розрізнення від майбутніх one-time покупок самого Qorax (напр.
+// $19 audit, згаданий у коментарі на початку файлу): commerce-заказ
+// несе custom_data.order_type = "commerce" + qorax_order_id
+// (наш orders.id, встановлений в commerceCheckout.ts перед
+// створенням LS checkout-сесії). Будь-який order_created БЕЗ цих
+// полів — не наша справа, тихо ігнорується (handled=true, щоб LS не
+// ретраїв подію, яку ми свідомо не обробляємо).
+
+async function handleOrderCreated(
+  payload: { meta: LSWebhookMeta; data: Record<string, unknown> },
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<boolean> {
+  const custom = payload.meta.custom_data;
+  const orderType = custom?.order_type;
+  const qoraxOrderId = custom?.qorax_order_id as string | undefined;
+
+  if (orderType !== "commerce" || !qoraxOrderId) {
+    // Не commerce-заказ (майбутня one-time покупка самого Qorax тощо)
+    // — не наша гілка, вважаємо "оброблено" щоб LS не повторював.
+    console.log("[ls-webhook] order_created ignored (not a commerce order):", orderType);
+    return true;
+  }
+
+  const attrs = payload.data.attributes as { status?: string; identifier?: string } | undefined;
+  const lsOrderStatus = attrs?.status; // 'paid' | 'pending' | 'refunded' | 'partial_refund'
+
+  if (lsOrderStatus !== "paid") {
+    // LemonSqueezy надсилає order_created навіть для неоплачених
+    // спроб (напр. failed payment) — оновлюємо тільки на 'paid',
+    // залишаючи наш власний orders.status='pending' незмінним
+    // інакше (немає окремого стану "failed" в нашій схемі, оскільки
+    // покупець просто спробує ще раз той самий checkout).
+    console.log("[ls-webhook] commerce order not paid yet:", qoraxOrderId, lsOrderStatus);
+    return true;
+  }
+
+  const updateResult = await updateRows(
+    "orders",
+    `id=eq.${encodeURIComponent(qoraxOrderId)}`,
+    { status: "paid", payment_reference: attrs?.identifier ?? null },
+    supabaseUrl,
+    serviceRoleKey
+  );
+
+  if (!updateResult.ok) {
+    console.error("[ls-webhook] Failed to mark commerce order as paid:", updateResult.error, "order:", qoraxOrderId);
+    return false; // LS зробить retry за своєю 3-retry політикою
+  }
+
+  console.log("[ls-webhook] commerce order marked paid:", qoraxOrderId);
+  return true;
 }
 
 // ─── HMAC-SHA256 signature verification ──────────────────────
