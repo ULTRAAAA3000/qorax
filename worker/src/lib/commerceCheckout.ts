@@ -135,6 +135,7 @@ export async function handleCommerceCheckout(request: Request, env: Env, corsHea
       currency,
       payment_provider: "lemonsqueezy",
       shipping_address: body.shipping_address ?? null,
+      coupon_id: couponId,
     },
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
@@ -204,17 +205,12 @@ export async function handleCommerceCheckout(request: Request, env: Env, corsHea
   const checkoutUrl = lsData.data?.attributes?.url;
   if (!checkoutUrl) return json({ error: "Не вдалося отримати посилання на оплату" }, 502, corsHeaders);
 
-  if (couponId) {
-    const currentRes = await selectRows<{ used_count: number }>(
-      "coupons", `select=used_count&id=eq.${encodeURIComponent(couponId)}`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY
-    );
-    const current = currentRes.data?.[0]?.used_count ?? 0;
-    await fetch(`${env.SUPABASE_URL}/rest/v1/coupons?id=eq.${encodeURIComponent(couponId)}`, {
-      method: "PATCH",
-      headers: { apikey: env.SUPABASE_SERVICE_ROLE_KEY, Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`, "Content-Type": "application/json", Prefer: "return=minimal" },
-      body: JSON.stringify({ used_count: current + 1 }),
-    });
-  }
+  // coupons.used_count НЕ інкрементується тут навмисно — купон вважався
+  // б використаним навіть для покинутого кошика чи неоплаченого
+  // checkout (LS checkout_data.expires_at — 30 хв). Інкремент
+  // перенесено у lemonSqueezyWebhook.ts (handleOrderCreated), де
+  // виконується РІВНО ОДИН РАЗ у момент підтвердження оплати —
+  // той самий guard-патерн (status=eq.pending), що для stock_quantity.
 
   return json({ ok: true, order_id: orderId, checkout_url: checkoutUrl }, 200, corsHeaders);
 }

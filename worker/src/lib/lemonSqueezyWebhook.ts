@@ -492,7 +492,7 @@ async function handleOrderCreated(
   // фільтр вже не збіжеться (замовлення вже paid), rows.length буде
   // 0, і списання стоку/все інше нижче просто не виконається. Без
   // цього повторний виклик списав би товар зі складу вдруге.
-  const updateResult = await updateRowsReturning<{ id: string }>(
+  const updateResult = await updateRowsReturning<{ id: string; coupon_id: string | null }>(
     "orders",
     `id=eq.${encodeURIComponent(qoraxOrderId)}&status=eq.pending`,
     { status: "paid", payment_reference: attrs?.identifier ?? null },
@@ -560,6 +560,43 @@ async function handleOrderCreated(
       // на 1-2 одиниці в рідкісній гонці прийнятніша, ніж провалений
       // webhook і незарахована оплата.
       console.error("[ls-webhook] stock deduction race or failure for product:", item.product_id, stockUpdate.error);
+    }
+  }
+
+  // ── Інкремент використання купона ──
+  // Той самий клас проблеми, що для складу, і те саме рішення:
+  // раніше commerceCheckout.ts рахував used_count одразу при
+  // СТВОРЕННІ checkout-сесії — покинутий кошик чи неоплачений
+  // checkout (LS expires_at 30 хв) все одно витрачав ліміт купона.
+  // Тепер рахуємо тут, РІВНО ОДИН РАЗ, завдяки тому самому
+  // status=eq.pending guard вище. orders.coupon_id заповнюється в
+  // commerceCheckout.ts у момент створення замовлення (0063 —
+  // orders_coupon_reference.sql).
+  const couponId = updateResult.data[0]?.coupon_id;
+  if (couponId) {
+    const couponRes = await selectRows<{ id: string; used_count: number }>(
+      "coupons",
+      `select=id,used_count&id=eq.${encodeURIComponent(couponId)}`,
+      supabaseUrl,
+      serviceRoleKey
+    );
+    const coupon = couponRes.data?.[0];
+    if (coupon) {
+      const couponUpdate = await updateRowsReturning<{ id: string }>(
+        "coupons",
+        `id=eq.${encodeURIComponent(couponId)}&used_count=eq.${coupon.used_count}`,
+        { used_count: coupon.used_count + 1 },
+        supabaseUrl,
+        serviceRoleKey
+      );
+      if (!couponUpdate.ok || couponUpdate.data.length === 0) {
+        // Optimistic locking не збігся (гонка з іншим замовленням тим
+        // самим купоном якраз у цю мілісекунду) — так само як зі
+        // складом, не критично для webhook: замовлення вже paid,
+        // гроші отримано. Розбіжність used_count на 1 у рідкісній
+        // гонці прийнятніша, ніж провалена оплата.
+        console.error("[ls-webhook] coupon usage increment race or failure:", couponId, couponUpdate.error);
+      }
     }
   }
 
