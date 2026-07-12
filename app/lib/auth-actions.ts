@@ -135,9 +135,13 @@ export async function signIn(formData: FormData) {
   const password = formData.get("password") as string;
   const redirectTo = formData.get("redirect") as string | null;
   // Дозволяємо редірект тільки на внутрішні шляхи (захист від open redirect)
+  // Дефолт — /dashboard/home (нова Головна), НЕ /dashboard (Audit).
+  // Артем: "надо как то сделать чтоб была главная связующая страница".
+  // Реєстрація (signUp нижче) свідомо НЕ змінена — onboarding-чеклист
+  // після welcome=1 прив'язаний саме до /dashboard (Audit).
   const safeRedirect = redirectTo && redirectTo.startsWith("/") && !redirectTo.startsWith("//")
     ? redirectTo
-    : "/dashboard";
+    : "/dashboard/home";
 
   const { error } = await supabase.auth.signInWithPassword({ email, password });
 

@@ -54,7 +54,7 @@ export default async function SettingsPage() {
         }}>
         <div className="mx-auto max-w-6xl px-6 sm:px-8 h-14 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <Link href="/dashboard"><QoraxLogo size="sm" /></Link>
+            <Link href="/dashboard/home"><QoraxLogo size="sm" /></Link>
             <span style={{ color: "rgba(255,255,255,0.12)" }}>/</span>
             <Link href="/dashboard"
               className="flex items-center gap-1.5 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">

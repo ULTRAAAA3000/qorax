@@ -18,7 +18,7 @@ export default async function ProjectEditorPage({ params }: { params: Promise<{ 
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
       <header className="sticky top-0 z-40" style={{ background: "rgba(10,10,10,0.8)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <div className="mx-auto max-w-5xl px-6 sm:px-8 h-14 flex items-center justify-between">
-          <Link href="/dashboard" className="flex items-center gap-3">
+          <Link href="/dashboard/home" className="flex items-center gap-3">
             <QoraxLogo size="sm" />
           </Link>
           <Link href="/dashboard/sites-builder" className="flex items-center gap-1.5 text-sm text-[var(--text-tertiary)] hover:text-[var(--text-primary)] transition-colors">

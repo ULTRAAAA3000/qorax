@@ -91,7 +91,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
         }}>
         <div className="h-14 flex items-center justify-between px-5 gap-4" style={{ maxWidth: "100%" }}>
           <div className="flex items-center gap-3 min-w-0">
-            <Link href="/dashboard"><QoraxLogo size="sm" /></Link>
+            <Link href="/dashboard/home"><QoraxLogo size="sm" /></Link>
             <span style={{ color: "rgba(255,255,255,0.12)" }}>/</span>
             <Link href="/dashboard" className="flex items-center gap-1.5 text-sm transition-colors"
               style={{ color: "var(--text-tertiary)" }}>

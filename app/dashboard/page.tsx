@@ -227,7 +227,7 @@ export default async function DashboardPage({
       >
         <div className="mx-auto max-w-6xl px-6 sm:px-8 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
-            <Link href="/"><QoraxLogo size="sm" /></Link>
+            <Link href="/dashboard/home"><QoraxLogo size="sm" /></Link>
             <span style={{ color: "rgba(255,255,255,0.12)" }}>/</span>
             <Link
               href="/dashboard/upgrade"
@@ -243,13 +243,6 @@ export default async function DashboardPage({
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity hover:opacity-80 mr-1"
                 style={{ background: "var(--lime)", color: "#0a0a0a" }}>
                 Upgrade
-              </Link>
-            )}
-            {profile.data?.platform_role === "admin" && (
-              <Link href="/dashboard/admin"
-                className="text-xs font-mono px-2.5 py-1.5 rounded-lg transition-colors hover:opacity-80"
-                style={{ background: "rgba(214,255,63,0.08)", color: "var(--lime)", border: "1px solid rgba(214,255,63,0.2)" }}>
-                ADMIN
               </Link>
             )}
             <Link href="/dashboard/referrals"
