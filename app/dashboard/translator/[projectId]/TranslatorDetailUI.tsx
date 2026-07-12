@@ -92,7 +92,6 @@ export function TranslatorDetailUI({ projectId, projectName }: Props) {
     } catch {
       setLanguages([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const loadPages = useCallback(async () => {
@@ -106,7 +105,6 @@ export function TranslatorDetailUI({ projectId, projectName }: Props) {
     } catch {
       setPages([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   const loadTranslations = useCallback(async () => {
@@ -118,7 +116,6 @@ export function TranslatorDetailUI({ projectId, projectName }: Props) {
     } catch {
       setTranslations([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   useEffect(() => {

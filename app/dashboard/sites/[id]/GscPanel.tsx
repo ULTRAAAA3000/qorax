@@ -123,8 +123,6 @@ export function GscPanel({ siteId, accessToken, workerUrl }: Props) {
   const avgCtr = dailyRows.length ? dailyRows.reduce((s, r) => s + (r.ctr ?? 0), 0) / dailyRows.length : null;
   const avgPos = dailyRows.length ? dailyRows.reduce((s, r) => s + (r.average_position ?? 0), 0) / dailyRows.length : null;
 
-  const maxClicks = Math.max(...dailyRows.map((r) => r.clicks), 1);
-
   if (loading) {
     return (
       <div className="rounded-2xl p-6 flex items-center justify-center h-32"

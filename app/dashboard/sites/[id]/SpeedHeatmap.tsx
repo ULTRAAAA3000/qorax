@@ -31,7 +31,7 @@ export function SpeedHeatmap({ checks }: { checks: Check[] }) {
       <div className="rounded-xl px-4 py-4 flex items-center gap-2.5"
         style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}>
         <p className="text-sm" style={{ color: "var(--text-tertiary)" }}>
-          Потрібно більше даних — heatmap з'явиться після кількох тижнів моніторингу
+          Потрібно більше даних — heatmap з&apos;явиться після кількох тижнів моніторингу
         </p>
       </div>
     );

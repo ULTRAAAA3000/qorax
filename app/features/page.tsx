@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { createClient } from "@/app/lib/supabase/server";
 import { MarketingHeader } from "@/app/components/MarketingHeader";
 import { SiteFooterExpanded } from "@/app/components/SiteFooterExpanded";
@@ -138,18 +139,18 @@ export default async function FeaturesPage() {
           </Reveal>
           <Reveal delay={0.15}>
             <div className="mt-8 flex items-center justify-center gap-4">
-              <a
+              <Link
                 href="/register"
                 className="glow-button text-sm !py-2.5 !px-6"
               >
                 Спробувати безкоштовно →
-              </a>
-              <a
+              </Link>
+              <Link
                 href="/#audit"
                 className="ghost-button text-sm !py-2.5 !px-6"
               >
                 Швидкий аудит
-              </a>
+              </Link>
             </div>
           </Reveal>
         </div>

@@ -35,9 +35,9 @@ export default async function SettingsPage() {
 
   const { data: profile } = await supabase.from("profiles").select("full_name").eq("id", user.id).single();
 
-  // @ts-expect-error — Supabase nested join
+  // @ts-expect-error — Supabase повертає nested join як масив без !inner, тип не співпадає з фактичним об'єктом
   const planCode = subscription?.plans?.code ?? "starter";
-  // @ts-expect-error
+  // @ts-expect-error — Supabase повертає nested join як масив без !inner, тип не співпадає з фактичним об'єктом
   const planName = subscription?.plans?.name ?? "Starter";
   const isTelegramAvailable = ["growth", "agency", "admin"].includes(planCode);
   const isActive = subscription?.status === "active";

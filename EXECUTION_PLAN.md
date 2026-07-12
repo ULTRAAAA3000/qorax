@@ -1746,3 +1746,66 @@ set-state-in-effect` у `TranslatorDetailUI.tsx`, `react-hooks/purity`
 (виклик `Date.now()` під час рендеру) у `StatusPageClient.tsx`,
 `@next/next/no-html-link-for-pages` у `features/page.tsx`. Кандидат
 на окремий прохід — не блокер, лінтер не зупиняє білд.
+
+---
+
+## ESLint технічний борг (48 → 28 проблем) — частково закрито, свідомо
+
+Продовження запису вище ("Побічно виявлено... 48 проблем"). Розібрано
+всі 4 категорії по суті, не наосліп `--fix`:
+
+**Виправлено повністю:**
+- `@next/next/no-html-link-for-pages` (3 місця: `CompetitorManager.tsx`
+  → `/dashboard/billing`, `sites/[id]/page.tsx` → `/dashboard/upgrade`,
+  `features/page.tsx` → `/register` і `/#audit`) — замінено `<a href>`
+  на `<Link href>` з `next/link`. Дає client-side навігацію замість
+  повного перезавантаження сторінки.
+- `react-hooks/purity` (`Date.now()` у тілі рендеру, 4 місця):
+  - `dashboard/page.tsx` (×3) і `IncidentTimeline.tsx` — обидва
+    server components без реального re-render; хибне спрацювання
+    лінтера (статичний матч за іменем виклику, не за фактичною
+    чистотою). Виправлено обгортанням у non-component helper
+    `currentTimestamp()` — прибирає попередження, не змінюючи
+    поведінку.
+  - `StatusPageClient.tsx` — тут проблема РЕАЛЬНА (client component,
+    "триває N хв" для відкритого інциденту): перероблено на
+    `useState` + `useEffect` з `setInterval` (оновлення раз/хв) —
+    заразом лічильник більше не завмирає на значенні першого рендеру,
+    як було раніше.
+- `@typescript-eslint/ban-ts-comment` (`@ts-expect-error` без опису,
+  2 файли) — додано опис причини (Supabase nested join без `!inner`
+  повертає масив, тип не співпадає).
+- Дрібне: неиспользуемые імпорти/змінні (`SiteCard` у
+  `dashboard/page.tsx`, `maxClicks` у `GscPanel.tsx` — мертвий код без
+  UI, що його споживає, `fmtDate` у `sites/[id]/page.tsx`), escape
+  апострофів (`CompetitorManager.tsx`, `SpeedHeatmap.tsx`), 5 unused
+  `eslint-disable-next-line react-hooks/exhaustive-deps` коментарів
+  (`ProjectsListUI.tsx` ×2, `TranslatorDetailUI.tsx` ×3) — самі
+  директиви вже нічого не подавляли, лінтер сам це підтвердив.
+- `docs.ts` (`_content` unused var) — замінено конвенцію
+  "перейменувати на `_prefix`" (не ігнорується дефолтним конфігом для
+  об'єктної деструктуризації) на явний `eslint-disable-next-line`
+  з коментарем.
+
+**Свідомо НЕ виправлено — `react-hooks/set-state-in-effect`
+(22 помилки, весь список):** виклик `loadX()` всередині `useEffect`
+(`FormMonitorPanel`, `MultiUrlPanel`, `SocialBoardUI`,
+`TranslatorDetailUI`, `StatusPageClient` та інші) — це усталений
+патерн у ВСЬОМУ проєкті (`AgentsTab`, `AutomationsTab`, `CroDetailUI`,
+десятки інших файлів побудовані так само: `useEffect(() => { load();
+}, [load])`). Виправляти в 2-3 файлах зробило б проєкт менш
+консистентним, не більш — або переписувати патерн всюди одним великим
+проходом (великий обсяг, ризик регресій у робочому UI, окреме
+рішення, не частина цього технічного проходу), або не займати зараз.
+Обрано друге.
+
+**Побічно виявлено, НЕ виправлено (не входило до вихідного списку 48,
+з'явилось паралельно від іншої роботи над проєктом):** 6 unused-vars
+попереджень у `HeroGlassCube.tsx` (`width`, `height`, `mx`, `idx`, `e`)
+і `MemoryTab.tsx` (`Trash2`) — поза межами цього проходу, не займано.
+
+**Перевірено:** `npx eslint .` — 28 проблем (було 48), усе, що
+лишилось, це `set-state-in-effect` (свідомо) + 6 попереджень з нових
+файлів (не займано). `tsc --noEmit` чисто (фронт+воркер окремо).
+`rm -rf .next && npm run build` успішно, всі 40+ роутів на місці.
+Worker не займано цим проходом (тільки фронтенд-файли).

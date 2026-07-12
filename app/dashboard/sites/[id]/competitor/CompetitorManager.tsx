@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { createClient } from "@/app/lib/supabase/client";
 import { Globe, Trash2, Lock, Plus, RefreshCw, ChevronDown, ChevronUp, Clock } from "lucide-react";
 
@@ -194,10 +195,10 @@ export function CompetitorManager({ siteId, competitors: initial, isGrowthPlus, 
         <p className="text-sm text-[var(--text-secondary)] max-w-xs mx-auto mb-6">
           Моніторинг конкурентів доступний з тарифу Growth ($99/міс).
         </p>
-        <a href="/dashboard/billing" className="inline-flex text-sm font-medium px-5 py-2.5 rounded-xl"
+        <Link href="/dashboard/billing" className="inline-flex text-sm font-medium px-5 py-2.5 rounded-xl"
           style={{ background: "var(--lime)", color: "#0C111D" }}>
           Переглянути тарифи
-        </a>
+        </Link>
       </div>
     );
   }
@@ -219,7 +220,7 @@ export function CompetitorManager({ siteId, competitors: initial, isGrowthPlus, 
                 onKeyDown={e => e.key === "Enter" && handleAdd()} />
             </div>
             <div>
-              <label className="text-xs text-[var(--text-tertiary)] mb-1.5 block">Назва (необов'язково)</label>
+              <label className="text-xs text-[var(--text-tertiary)] mb-1.5 block">Назва (необов&apos;язково)</label>
               <input type="text" value={name} onChange={e => setName(e.target.value)}
                 placeholder="Конкурент 1"
                 className="w-full text-sm px-3 py-2.5 rounded-xl outline-none"

@@ -4,7 +4,7 @@
 // Публічна сторінка статусу сайту клієнта.
 // Cyber Minimal стиль — темний фон, lime/red акценти, без navbar.
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 interface Incident {
   id: string;
@@ -148,10 +148,23 @@ function UptimeBar({ days }: { days: Array<{ date: string; pct: number; checks: 
 
 function IncidentRow({ incident }: { incident: Incident }) {
   const isOpen = !incident.resolved_at;
+
+  // Date.now() не можна викликати прямо в тілі рендеру (react-hooks/purity —
+  // реальна причина: розбіжність SSR/CSR при гідратації). Для відкритого
+  // інциденту "триває" рахуємо через стан, що оновлюється на клієнті після
+  // монтування і раз на хвилину — заразом лічильник більше не завмирає.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isOpen) return;
+    setNow(Date.now());
+    const interval = setInterval(() => setNow(Date.now()), 60000);
+    return () => clearInterval(interval);
+  }, [isOpen]);
+
   const duration = incident.duration_seconds
     ? fmtDuration(incident.duration_seconds)
     : isOpen
-    ? `${Math.round((Date.now() - new Date(incident.started_at).getTime()) / 60000)} хв (триває)`
+    ? (now !== null ? `${Math.round((now - new Date(incident.started_at).getTime()) / 60000)} хв (триває)` : "…")
     : "—";
 
   return (
