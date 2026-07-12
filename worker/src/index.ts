@@ -73,6 +73,9 @@ import {
   handleProductUpdate,
   handleProductDelete,
   handleOrdersList,
+  handleCouponsList,
+  handleCouponCreate,
+  handleCouponDelete,
   handleCouponValidate,
 } from "./lib/commerceCatalog";
 import { handleCommerceCheckout } from "./lib/commerceCheckout";
@@ -920,6 +923,17 @@ const worker = {
     const ordersListMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/orders$/);
     if (ordersListMatch && request.method === "GET") {
       return handleOrdersList(request, env, corsHeaders(origin), ordersListMatch[1]);
+    }
+    const couponsListMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/coupons$/);
+    if (couponsListMatch && request.method === "GET") {
+      return handleCouponsList(request, env, corsHeaders(origin), couponsListMatch[1]);
+    }
+    if (couponsListMatch && request.method === "POST") {
+      return handleCouponCreate(request, env, corsHeaders(origin), couponsListMatch[1]);
+    }
+    const couponItemMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/coupons\/([^/]+)$/);
+    if (couponItemMatch && request.method === "DELETE") {
+      return handleCouponDelete(request, env, corsHeaders(origin), couponItemMatch[1], couponItemMatch[2]);
     }
     // Публічні, без авторизації — доступні з вітрини магазину для анонімного покупця
     if (url.pathname === "/api/coupons/validate" && request.method === "POST") {
