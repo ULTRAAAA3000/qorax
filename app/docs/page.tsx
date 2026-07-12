@@ -4,6 +4,7 @@ import { SiteFooterExpanded } from "@/app/components/SiteFooterExpanded";
 import { Reveal } from "@/app/components/Reveal";
 import { getAllDocsArticles, DOCS_CATEGORIES } from "@/app/lib/docs";
 import { DocsArticleBody } from "./DocsArticleBody";
+import { DocsEnterpriseLocked } from "./DocsEnterpriseLocked";
 import { DocsBrowser, DocsCta } from "./DocsContent";
 
 export const metadata = { title: "Документація — Qorax" };
@@ -13,9 +14,23 @@ export const metadata = { title: "Документація — Qorax" };
 // Артем обрав MDX-файли в репозиторії (content/docs/) замість
 // Supabase-таблиці docs_articles — простіше редагувати як розробнику,
 // компроміс — редагування статті вимагає деплою, а не SQL UPDATE.
+//
+// Гейтинг isEnterpriseOnly (EXECUTION_PLAN.md, PRICING.md розділ 4 —
+// поле існувало в docs.ts з самого початку, але ніде не
+// перевірялось). КРИТИЧНО: перевірка робиться ДО рендерингу MDX-тіла
+// статті, не після — уся документація рендериться в один прохід тут
+// (RSC) і передається в DocsBrowser як готові React-елементи
+// (renderedArticles нижче). Якщо спершу відрендерити тіло
+// isEnterpriseOnly-статті і тільки потім приховати його в UI —
+// контент однаково потрапить у HTML/React payload, який видно через
+// "показати код сторінки". Тому для юзерів без доступу тіло взагалі
+// НЕ рендериться — підставляється DocsEnterpriseLocked замість
+// DocsArticleBody.
 export default async function DocsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
+
+  const hasEnterpriseAccess = await checkEnterpriseAccess(supabase, user?.id);
 
   const articles = getAllDocsArticles();
   // MDX рендериться тут, на сервері (RSC) — DocsBrowser отримує вже
@@ -23,9 +38,12 @@ export default async function DocsPage() {
   // клієнтський бандл разом з інтерактивною навігацією.
   const renderedArticles = articles.map(a => ({
     slug: a.slug,
-    title: a.title,
+    title: a.isEnterpriseOnly && !hasEnterpriseAccess ? `${a.title} 🔒` : a.title,
     category: a.category,
-    body: <DocsArticleBody key={a.slug} content={a.content} />,
+    body:
+      a.isEnterpriseOnly && !hasEnterpriseAccess
+        ? <DocsEnterpriseLocked key={a.slug} title={a.title} />
+        : <DocsArticleBody key={a.slug} content={a.content} />,
   }));
 
   return (
@@ -68,4 +86,45 @@ export default async function DocsPage() {
       <SiteFooterExpanded />
     </main>
   );
+}
+
+/**
+ * Enterprise-доступ = platform admin (бачить усе незалежно від
+ * тарифу своєї організації, той самий принцип, що is_platform_admin()
+ * в RLS-політиках) АБО членство в організації з активним тарифом
+ * enterprise (0056_enterprise_plan.sql). Анонімний відвідувач
+ * (user == null) — завжди без доступу, найбезпечніший дефолт.
+ */
+async function checkEnterpriseAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string | undefined
+): Promise<boolean> {
+  if (!userId) return false;
+
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("platform_role")
+    .eq("id", userId)
+    .single();
+  if (profile?.platform_role === "admin") return true;
+
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("user_id", userId)
+    .single();
+  if (!membership) return false;
+
+  const { data: subscription } = await supabase
+    .from("subscriptions")
+    .select("status, plans(code)")
+    .eq("organization_id", membership.organization_id)
+    .in("status", ["active", "trialing"])
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const planCode = (subscription?.plans as unknown as { code: string }[] | { code: string } | null);
+  const code = Array.isArray(planCode) ? planCode[0]?.code : planCode?.code;
+  return code === "enterprise";
 }
