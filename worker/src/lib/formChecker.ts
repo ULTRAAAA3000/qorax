@@ -82,7 +82,8 @@ async function checkForm(
   if (formMatches.length === 0) return { formFound: false, fieldsCount: null, hasSubmit: null };
 
   // Беремо першу форму (або ту що відповідає selctor якщо є class/id)
-  let targetForm = formMatches[0];
+  // formMatches.length === 0 вже перевірено вище, тож [0] тут завжди є
+  let targetForm: string = formMatches[0]!;
   if (formSelector) {
     // Шукаємо форму з цим id або class
     const selectorPart = formSelector.replace(/^[#.]/, "");

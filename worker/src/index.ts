@@ -465,14 +465,16 @@ const worker = {
 
       if (url.pathname === "/api/admin/run-seo") {
         ctx.waitUntil(
-          runUrlSpeedChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY).catch(e =>
-          console.error("urlSpeedChecks cron error:", e)
-        ),
-        runFormChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY).catch(e =>
-          console.error("formChecks cron error:", e)
-        ),
-        runSeoChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
-            .then(s => console.log("Manual SEO:", JSON.stringify(s)))
+          Promise.all([
+            runUrlSpeedChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY).catch(e =>
+              console.error("urlSpeedChecks cron error:", e)
+            ),
+            runFormChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY).catch(e =>
+              console.error("formChecks cron error:", e)
+            ),
+            runSeoChecks(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY)
+              .then(s => console.log("Manual SEO:", JSON.stringify(s)))
+          ])
         );
         return json({ ok: true, message: "SEO checks started" }, 200, origin);
       }
@@ -1464,7 +1466,7 @@ const worker = {
         const forms = await res.json() as Array<{ id: string; page_url: string; label: string | null; created_at: string }>;
         const withChecks = await Promise.all(forms.map(async mf => {
           const cr = await fetch(`${env.SUPABASE_URL}/rest/v1/form_checks?monitored_form_id=eq.${mf.id}&order=checked_at.desc&limit=1&select=form_found,fields_count,has_submit,checked_at`, { headers: h });
-          const checks = cr.ok ? await cr.json() : [];
+          const checks = cr.ok ? await cr.json() as Array<{ form_found: boolean; fields_count: number; has_submit: boolean; checked_at: string }> : [];
           return { ...mf, lastCheck: checks[0] ?? null };
         }));
         return json(withChecks, 200, origin);
@@ -1508,11 +1510,6 @@ const worker = {
       if (!auth.ok) return json({ error: auth.status === 401 ? "Unauthorized" : "Forbidden" }, auth.status!, origin);
 
       const h = { ...supabaseHeaders(env), "Prefer": "count=exact", "Accept": "application/json" };
-      const tables = ["profiles", "sites", "uptime_checks"];
-      const statusFilters = [
-        { table: "subscriptions", filter: "status=eq.trialing" },
-        { table: "subscriptions", filter: "status=eq.active" },
-      ];
 
       const [usersRes, sitesRes, checksRes, trialsRes, paidRes] = await Promise.all([
         fetch(`${env.SUPABASE_URL}/rest/v1/profiles?select=id`, { headers: { ...h, "Range-Unit": "items", "Range": "0-0" } }),
@@ -1546,7 +1543,7 @@ const worker = {
   },
 
   // ── Cron handler ──────────────────────────────────────────────
-  async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Promise<void> {
+  async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     // 0 3 * * * — щодня о 3:00: швидкість + SEO + конкуренти
     if (event.cron === "0 3 * * *") {
       const [speedSummary, seoSummary, competitorSummary, automationsSummary] = await Promise.all([
