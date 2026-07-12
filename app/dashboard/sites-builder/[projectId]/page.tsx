@@ -14,9 +14,6 @@ export default async function ProjectEditorPage({ params }: { params: Promise<{ 
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
 
-  const { data: { session } } = await supabase.auth.getSession();
-  const accessToken = session?.access_token ?? "";
-
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
       <header className="sticky top-0 z-40" style={{ background: "rgba(10,10,10,0.8)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
@@ -31,7 +28,7 @@ export default async function ProjectEditorPage({ params }: { params: Promise<{ 
       </header>
 
       <main className="mx-auto max-w-5xl px-6 sm:px-8 py-8">
-        <ProjectEditorUI projectId={projectId} accessToken={accessToken} />
+        <ProjectEditorUI projectId={projectId} />
       </main>
     </div>
   );

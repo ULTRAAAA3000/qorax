@@ -26,9 +26,6 @@ export default async function SitesBuilderPage() {
     .single();
   if (!membership) redirect("/dashboard");
 
-  const { data: { session } } = await supabase.auth.getSession();
-  const accessToken = session?.access_token ?? "";
-
   const platformModules = await getPlatformModules(membership.organization_id);
 
   return (
@@ -58,7 +55,7 @@ export default async function SitesBuilderPage() {
             </p>
           </div>
 
-          <ProjectsListUI organizationId={membership.organization_id} accessToken={accessToken} />
+          <ProjectsListUI organizationId={membership.organization_id} />
         </main>
       </div>
     </div>

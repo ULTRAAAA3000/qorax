@@ -58,6 +58,7 @@ import {
   handleProjectUnpublish,
   handleSitesContentPublic,
 } from "./lib/sitesBuilderHandler";
+import { handleProjectPageAiGenerate } from "./lib/sitesAiHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGscAuth,
@@ -846,6 +847,10 @@ const worker = {
     }
     if (projectPageItemMatch && request.method === "DELETE") {
       return handleProjectPageDelete(request, env, corsHeaders(origin), projectPageItemMatch[1], projectPageItemMatch[2]);
+    }
+    const projectPageAiGenerateMatch = url.pathname.match(/^\/api\/projects\/([^/]+)\/pages\/([^/]+)\/ai-generate$/);
+    if (projectPageAiGenerateMatch && request.method === "POST") {
+      return handleProjectPageAiGenerate(request, env, corsHeaders(origin), projectPageAiGenerateMatch[1], projectPageAiGenerateMatch[2]);
     }
     // Публічний, без авторизації — SSR-рендеринг опублікованого проекту
     const sitesContentMatch = url.pathname.match(/^\/api\/sites-content\/([^/]+)$/);

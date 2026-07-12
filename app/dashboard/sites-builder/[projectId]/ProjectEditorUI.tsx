@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Plus, Trash2, Globe, GlobeLock, Save, X, ExternalLink, ChevronUp, ChevronDown } from "lucide-react";
+import { Loader2, Plus, Trash2, Globe, GlobeLock, Save, X, ExternalLink, ChevronUp, ChevronDown, Sparkles } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 
 interface Block {
@@ -34,7 +34,6 @@ interface ProjectData {
 
 interface Props {
   projectId: string;
-  accessToken: string;
 }
 
 const BLOCK_TYPES: Array<{ type: string; label: string }> = [
@@ -52,7 +51,20 @@ function emptyBlock(type: string): Block {
   return { type, heading: "", body: "" };
 }
 
-export function ProjectEditorUI({ projectId, accessToken }: Props) {
+async function getFreshToken(): Promise<string> {
+  try {
+    const { createClient } = await import("@/app/lib/supabase/client");
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    return refreshed.session?.access_token ?? "";
+  } catch {
+    return "";
+  }
+}
+
+export function ProjectEditorUI({ projectId }: Props) {
   const [project, setProject] = useState<ProjectData | null>(null);
   const [pages, setPages] = useState<ProjectPage[] | null>(null);
   const [activePageId, setActivePageId] = useState<string | null>(null);
@@ -68,11 +80,28 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
   const [showNewPage, setShowNewPage] = useState(false);
   const [newPageSlug, setNewPageSlug] = useState("");
 
-  const authHeaders = { Authorization: `Bearer ${accessToken}` };
+  const [aiGenerating, setAiGenerating] = useState(false);
+  const [showAiPrompt, setShowAiPrompt] = useState(false);
+  const [aiTopic, setAiTopic] = useState("");
+
+  // ВАЖЛИВО: не кешувати authHeaders одним об'єктом на весь час життя
+  // компонента — Supabase JWT живе ~1 годину, а сторінка редактора може
+  // лишатись відкритою довше. Раніше тут був статичний accessToken-проп
+  // з серверного рендеру (page.tsx), що протухав і давав 401
+  // "Unauthorized" на дії типу "додати сторінку" без зрозумілої причини
+  // для користувача. getAuthHeaders() дістає свіжий токен (з
+  // авто-рефрешем через Supabase client) перед КОЖНИМ запитом — той
+  // самий патерн, що вже використаний в AgentsTab.tsx/AutomationsTab.tsx
+  // (Qorax AI хаб) і RankDetailUI.tsx.
+  async function getAuthHeaders(): Promise<Record<string, string>> {
+    const token = await getFreshToken();
+    return { Authorization: `Bearer ${token}` };
+  }
 
   const loadProject = useCallback(async () => {
     try {
-      const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, { headers: authHeaders });
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}`, { headers });
       if (!res.ok) { setNotFound(true); return; }
       const data = await res.json();
       setProject(data.project);
@@ -84,7 +113,7 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
       setNotFound(true);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId, accessToken]);
+  }, [projectId]);
 
   useEffect(() => { loadProject(); }, [loadProject]);
 
@@ -127,14 +156,44 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
     setDirty(true);
   }
 
+  async function generateWithAi() {
+    if (!activePageId) return;
+    if (dirty && !confirm("Незбережені зміни буде перезаписано згенерованим контентом. Продовжити?")) return;
+
+    setAiGenerating(true);
+    setError(null);
+    try {
+      const headers = await getAuthHeaders();
+      const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/pages/${activePageId}/ai-generate`, {
+        method: "POST",
+        headers: { ...headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ topic: aiTopic.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setError(data.error ?? "Помилка AI-генерації"); return; }
+
+      setBlocks(data.content?.blocks ?? []);
+      setSeoTitle(data.seo_title ?? "");
+      setSeoDescription(data.seo_description ?? "");
+      setDirty(false); // сервер вже зберіг — локальний стан просто синхронізуємо
+      setShowAiPrompt(false);
+      setAiTopic("");
+    } catch {
+      setError("Мережева помилка під час AI-генерації");
+    } finally {
+      setAiGenerating(false);
+    }
+  }
+
   async function savePage() {
     if (!activePageId) return;
     setSaving(true);
     setError(null);
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/pages/${activePageId}`, {
         method: "PATCH",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ content: { blocks }, seo_title: seoTitle, seo_description: seoDescription }),
       });
       const data = await res.json();
@@ -150,9 +209,10 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
     e.preventDefault();
     if (!newPageSlug.trim()) return;
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/pages`, {
         method: "POST",
-        headers: { ...authHeaders, "Content-Type": "application/json" },
+        headers: { ...headers, "Content-Type": "application/json" },
         body: JSON.stringify({ slug: newPageSlug.trim() }),
       });
       const data = await res.json();
@@ -168,9 +228,10 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
   async function deletePage(pageId: string) {
     if (!confirm("Видалити цю сторінку?")) return;
     try {
+      const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/pages/${pageId}`, {
         method: "DELETE",
-        headers: authHeaders,
+        headers,
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Помилка"); return; }
@@ -187,9 +248,10 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
     setError(null);
     try {
       const action = project?.status === "published" ? "unpublish" : "publish";
+      const headers = await getAuthHeaders();
       const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/${action}`, {
         method: "POST",
-        headers: authHeaders,
+        headers,
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error ?? "Помилка"); return; }
@@ -286,6 +348,45 @@ export function ProjectEditorUI({ projectId, accessToken }: Props) {
         {activePageId && (
           <div className="space-y-4">
             <div className="glow-card p-3 space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>SEO та контент сторінки</p>
+                <button
+                  onClick={() => setShowAiPrompt(v => !v)}
+                  disabled={aiGenerating}
+                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg shrink-0 disabled:opacity-50"
+                  style={{ background: "rgba(214,255,63,0.08)", color: "var(--lime)" }}
+                >
+                  {aiGenerating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                  AI-генерація
+                </button>
+              </div>
+
+              {showAiPrompt && (
+                <div className="space-y-1.5 p-2 rounded-lg" style={{ background: "rgba(214,255,63,0.04)", border: "1px solid rgba(214,255,63,0.15)" }}>
+                  <p className="text-xs" style={{ color: "var(--text-secondary)" }}>
+                    Заповнить {" "}
+                    <a href="/dashboard/ai" target="_blank" rel="noopener noreferrer" className="underline">Memory в Qorax AI</a>
+                    {" "}— тоді AI сам врахує ваш бізнес. Або опишіть коротко тут:
+                  </p>
+                  <input
+                    value={aiTopic}
+                    onChange={e => setAiTopic(e.target.value)}
+                    placeholder="Напр.: інтернет-магазин вітамінів для спортсменів"
+                    className="w-full rounded-lg px-3 py-2 text-sm"
+                    style={inputStyle}
+                  />
+                  <button
+                    onClick={generateWithAi}
+                    disabled={aiGenerating}
+                    className="w-full flex items-center justify-center gap-1.5 text-sm px-3 py-2 rounded-lg disabled:opacity-50"
+                    style={{ background: "var(--lime)", color: "#0c111d" }}
+                  >
+                    {aiGenerating ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    Згенерувати всю сторінку
+                  </button>
+                </div>
+              )}
+
               <input
                 value={seoTitle}
                 onChange={e => { setSeoTitle(e.target.value); setDirty(true); }}
