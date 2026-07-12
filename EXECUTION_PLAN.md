@@ -1619,3 +1619,50 @@ routes), `wrangler deploy --dry-run` успішно (605.11 KiB).
 - Сводка на Головній охоплює лише 4 модулі (Audit/CRM/Rank/Qorax AI)
   — Sites/Content/Social/CRO/Academy/Commerce/Translator ще без
   власної картки, якщо Артем захоче розширити список
+
+---
+
+## Custom Hostnames для Sites-конструктора — ВІДКЛАДЕНО (блокер, не забути)
+
+Досліджено технічно (Cloudflare for SaaS / Custom Hostnames API):
+100 безкоштовних хостнеймів на клієнта дійсно є на не-Enterprise
+плані Cloudflare (далі ~$0.10-0.20/домен/міс) — для старту (10,
+навіть 100+ клієнтів) це копійки, підтверджено з Артемом.
+
+**Реальний блокер — не гроші, а інфраструктура:** Custom Hostnames
+вимагає ВЛАСНОЇ зони (домену) в Cloudflare акаунті Артема (напр.
+`qorax.com`), НЕ `*.workers.dev`. Технічний ланцюжок: клієнт CNAME'ить
+свій домен на CNAME target у зоні Артема → Cloudflare видає SSL
+сертифікат через DCV (http/txt/email validation) → трафік іде на
+Fallback Origin (де прописаний qorax-api Worker) → Worker сам
+визначає, якому `project_id` відповідає `Host`-заголовок запиту
+(через `projects.domain` — той самий стовпець, що вже існує в схемі,
+але без жодної логіки навколо нього).
+
+Артем підтвердив: власного домену-зони в Cloudflare поки НЕМАЄ —
+тільки `workers.dev`. Без цього кроку писати код Custom Hostnames
+API безглуздо (нічого не запрацює навіть в тестовому режимі).
+
+**Наступний крок, коли зʼявиться домен:**
+1. Артем купує домен, додає як зону в Cloudflare (сам, поза кодом)
+2. Увімкнути Cloudflare for SaaS для цієї зони (Dashboard)
+3. Fallback Origin → qorax-api Worker (Dashboard, один раз)
+4. Worker route `*/*` на цій зоні → qorax-api (Dashboard, один раз)
+5. Тоді і тільки тоді — писати `worker/src/lib/customHostnames.ts`:
+   `POST /zones/:zone_id/custom_hostnames` при збереженні
+   `projects.domain`, polling статусу SSL, UI з інструкцією для
+   клієнта (CNAME target + статус верифікації)
+6. Роутинг за `Host`-заголовком у `handleSitesContentPublic`
+   (sitesBuilderHandler.ts) — зараз резолвиться тільки за
+   `project_id` з URL, доведеться додати резолв за доменом теж
+
+**Побічно знайдено під час цього дослідження (не стосується Custom
+Hostnames напряму, але варто зафіксувати):** `0061_commerce_module.sql`
+і `0061_translator_module.sql` мають однаковий номер міграції —
+обидва застосуються (Supabase йде за алфавітом імені файлу,
+`commerce` раніше `translator`), конфлікту виконання немає, але це
+порушує правило послідовної нумерації з DATA_MODEL.md розділ 7. Не
+перейменовано заднім числом цим проходом — ризиковано, якщо один із
+файлів вже накочено на реальну Supabase; Артем може перейменувати
+`0061_translator_module.sql` → `0063_translator_module.sql` вручну,
+якщо жоден з двох ще не застосований на проді.
