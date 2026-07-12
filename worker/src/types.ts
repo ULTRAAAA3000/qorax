@@ -33,6 +33,7 @@ export interface Env {
   LS_WEBHOOK_SECRET: string;     // Signing secret з LS Dashboard → Webhooks
   LS_API_KEY: string;            // API key для server-side операцій (portal URL etc.)
   LS_STORE_ID: string;           // Store ID з LS Dashboard
+  LS_COMMERCE_VARIANT_ID?: string; // Universal "Commerce Order" variant для Checkouts API з custom_price (Commerce-модуль, товари клієнтів створюються динамічно, не мають власного variant у LS Dashboard)
 
   // Токен для захищених admin-ендпоінтів
   ADMIN_TOKEN: string;

@@ -1309,3 +1309,79 @@ routes), `wrangler deploy --dry-run` успішно (567.95 KiB).
 - Історія попередніх AI-генерацій сторінки (undo до попередньої
   версії) — зараз генерація одразу перезаписує `content`, без
   збереження попереднього стану десь окремо
+
+---
+
+## Commerce — інтернет-магазини (MODULE_ROADMAP.md розділ 6)
+
+Артем обрав Commerce з двох розблокованих опцій (Commerce vs
+Translator). Точна схема з roadmap, без відхилень: `products`,
+`product_categories`, `product_category_links`, `orders`,
+`order_items`, `coupons` — усі прив'язані до `projects.id`
+(0061_commerce_module.sql), той самий принцип "sites ≠ projects",
+що вже дотриманий у 0058_sites_builder.sql.
+
+**Перший модуль з реальними грошима клієнта.** Всі попередні
+LemonSqueezy-події (`subscription_*`) стосувались підписки на сам
+Qorax. Commerce вводить `order_created` — оплату товару власника
+магазину, не Qorax. Розрізнення в `lemonSqueezyWebhook.ts`:
+`custom_data.order_type = "commerce"` + `qorax_order_id` (наш
+`orders.id`), встановлені при створенні LS checkout-сесії. Будь-який
+`order_created` без цих полів (майбутня one-time покупка самого
+Qorax, вже згадана коментарем на початку файлу) — не наша гілка,
+тихо ігнорується.
+
+**Архітектурна складність, яку довелось розв'язати:** LemonSqueezy
+Checkouts API вимагає заздалегідь створений `variant_id` у Dashboard
+навіть для довільної (custom) ціни — товари клієнтів створюються
+динамічно в Qorax, не мають власного variant у LS. Рішення Артема:
+один універсальний variant "Commerce Order" в LS Dashboard
+(`LS_COMMERCE_VARIANT_ID` — нова опційна змінна в `Env`), кожне
+замовлення передає свою суму через `custom_price` на рівні checkout-
+сесії. **ВАЖЛИВО, ще не зроблено:** Артем створює variant вручну в
+LS Dashboard і додає `LS_COMMERCE_VARIANT_ID` в Cloudflare Workers
+env — без цього кроку `handleCommerceCheckout` повертає 503 з
+чітким повідомленням (`env.LS_COMMERCE_VARIANT_ID` перевіряється на
+самому початку функції, до будь-якої роботи з БД).
+
+**Безпека грошового флоу:**
+- `handleCommerceCheckout` НІКОЛИ не довіряє ціні з клієнта — кошик
+  несе лише `product_id`+`quantity`, реальна ціна підтягується з
+  `products` в БД
+- `orders`/`order_items` INSERT — тільки service role
+  (`commerceCheckout.ts`), RLS явно забороняє прямий INSERT з
+  клієнтського боку навіть для власника проєкту (виключає підробку
+  "оплаченого" замовлення в обхід LemonSqueezy)
+- Rate limit на `/api/checkout/commerce` (10 запитів/хв на IP,
+  `checkRateLimit` з `rateLimit.ts` — той самий helper, що вже
+  захищає lead-magnet ендпоінти)
+- Замовлення створюється зі статусом `pending` ДО виклику
+  LemonSqueezy — якщо покупець закриє checkout не оплативши,
+  лишається "мертвий" pending-запис (видно в дашборді як
+  неоплачене), це прийнятний компроміс, кращий за втрату даних про
+  спробу оплати
+
+**UI:** `/dashboard/commerce` (список проєктів — Commerce керує
+товарами ПРОЄКТУ, вибір веде на конкретний магазин) →
+`/dashboard/commerce/[projectId]` (три вкладки: Товари/Замовлення/
+Купони, той самий tab-паттерн, що `QoraxAiHub.tsx`). Купони — лише
+перегляд на цьому проході (створення з UI — наступна ітерація,
+перевірка коду під час checkout вже працює).
+
+**Свідомо не зроблено (як і в Sites-конструкторі — той самий
+принцип "показати MVP, не все відразу"):**
+- UI створення категорій товарів (`product_categories` існує в
+  схемі, worker-ендпоінтів для CRUD нема)
+- Публічна вітрина магазину (кошик, checkout-форма на самому сайті)
+  — `/sites-builder/preview/:projectId` поки показує тільки сторінки
+  контенту, не товари. Природне продовження, коли буде вирішено, як
+  блок "товари" виглядає в `project_pages.content`
+- Управління запасами (stock_quantity зменшується вручну через
+  PATCH, немає автоматичного списання при оплаті)
+- Купони — створення з UI, знижки на конкретні товари (зараз тільки
+  на всю суму замовлення)
+
+**Перевірено:** `tsc --noEmit` чисто (app), worker typecheck — ті
+самі 9 відомих помилок, нових немає. `npm run build` успішно
+(включно з новими `/dashboard/commerce` роутами), `wrangler deploy
+--dry-run` успішно (575 KiB, gzip 102 KiB).
