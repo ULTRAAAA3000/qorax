@@ -228,3 +228,10 @@ PLATFORM.md). Поки що ПОТРІБНО продовжувати чесно
 маркетингового рішення в PLATFORM.md/MODULE_ROADMAP.md/
 DESIGN_SYSTEM.md — не окрема задача, яку можна "зробити" одним
 проходом.
+
+**Технічна деталізація цієї цілі:** MODULE_ROADMAP.md, розділ
+"Четверта хвиля (довгострокове бачення): Qorax як AI Business
+Operating System" — п'ять напрямків (AI Operating System, Team
+Workspace, Knowledge Graph, Benchmarking, Predictive AI), кожен зі
+схемою БД, worker-логікою, UI і критеріями готовності, у тому ж
+форматі, що й решта модулів платформи.
