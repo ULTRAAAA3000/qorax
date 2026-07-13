@@ -87,6 +87,15 @@ import {
 import { handleCommerceCheckout } from "./lib/commerceCheckout";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
+  handleGa4Authorize,
+  handleGa4Callback,
+  handleGa4PropertiesList,
+  handleGa4Connect,
+  handleGa4Disconnect,
+  handleAnalyticsSummary,
+  runGa4Sync,
+} from "./lib/ga4Handler";
+import {
   handleGscAuth,
   handleGscCallback,
   handleGscStatus,
@@ -673,6 +682,30 @@ const worker = {
     const rankHistoryMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/rank\/history$/);
     if (rankHistoryMatch && request.method === "GET") {
       return handleRankQueryHistory(request, env, corsHeaders(origin), rankHistoryMatch[1]);
+    }
+
+    // ── Analytics routes (MODULE_ROADMAP.md, розділ 3; GA4-only MVP) ──
+    const ga4AuthorizeMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/ga4\/authorize$/);
+    if (ga4AuthorizeMatch && request.method === "GET") {
+      return handleGa4Authorize(request, env, ga4AuthorizeMatch[1]);
+    }
+    if (url.pathname === "/api/ga4/callback" && request.method === "GET") {
+      return handleGa4Callback(request, env);
+    }
+    if (url.pathname === "/api/ga4/properties" && request.method === "GET") {
+      return handleGa4PropertiesList(request);
+    }
+    const ga4ConnectMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/ga4\/connect$/);
+    if (ga4ConnectMatch && request.method === "POST") {
+      return handleGa4Connect(request, env, corsHeaders(origin), ga4ConnectMatch[1]);
+    }
+    const ga4DisconnectMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/ga4\/disconnect$/);
+    if (ga4DisconnectMatch && request.method === "POST") {
+      return handleGa4Disconnect(request, env, corsHeaders(origin), ga4DisconnectMatch[1]);
+    }
+    const analyticsSummaryMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/analytics$/);
+    if (analyticsSummaryMatch && request.method === "GET") {
+      return handleAnalyticsSummary(request, env, corsHeaders(origin), analyticsSummaryMatch[1]);
     }
 
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
@@ -1617,6 +1650,9 @@ const worker = {
           env.APP_URL
         ),
         runGscSync(env),
+        // GA4-синк (MODULE_ROADMAP.md розділ 3) — той самий нічний
+        // тригер, що GSC, щоб не заводити окремий Cloudflare Cron Trigger.
+        runGa4Sync(env),
         // Qorax AI хаб, вкладка Automations (agent_subscriptions) —
         // додано до вже наявного нічного тригера, щоб не вимагати від
         // Артема створювати ще один Cloudflare Cron Trigger вручну.
