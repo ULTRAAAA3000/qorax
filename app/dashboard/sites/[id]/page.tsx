@@ -31,7 +31,7 @@ import { formatRelativeTime } from "@/app/lib/formatRelativeTime";
 import { FixRequestButton } from "./FixRequestButton";
 import {
   KpiTile, Section, SpeedLineChart, CwvBlock, SeoCell, SeoCheckCell,
-  SitemapCell, InsightCard, ReportRow, EmptySlot, fmtDate,
+  SitemapCell, InsightCard, ReportRow, EmptySlot,
 } from "./SiteDetailUI";
 
 export const dynamic = "force-dynamic";
@@ -404,11 +404,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                     Кліки, покази, CTR та позиції у Google — прямо з офіційного API.
                   </p>
                 </div>
-                <a href="/dashboard/upgrade"
+                <Link href="/dashboard/upgrade"
                   className="shrink-0 text-sm font-semibold px-4 py-2 rounded-xl"
                   style={{ background: "var(--lime)", color: "#0a0a0a" }}>
                   Upgrade →
-                </a>
+                </Link>
               </div>
             )}
           </Section>

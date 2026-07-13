@@ -387,6 +387,21 @@ export async function handleSitesContentPublic(request: Request, env: Env, corsH
   );
   const languages = languagesRes.data ?? [];
 
+  // Commerce (0061_commerce_module.sql): якщо в проєкті є опубліковані
+  // товари, повертаємо їх у тій самій відповіді — публічна сторінка
+  // (SitePreviewRenderer, блок 'products') рендерить сітку товарів без
+  // окремого мережевого запиту з клієнта. Тільки status='published' і
+  // тільки поля, потрібні для вітрини — не віддаємо sku/seo_title/
+  // seo_description (внутрішні деталі керування каталогом, не для
+  // публічного перегляду).
+  const productsRes = await selectRows<{ id: string; title: string; description: string | null; price_cents: number; currency: string; image_urls: string[] | null; stock_quantity: number | null }>(
+    "products",
+    `select=id,title,description,price_cents,currency,image_urls,stock_quantity&project_id=eq.${encodeURIComponent(projectId)}&status=eq.published&order=created_at.desc`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const products = productsRes.data ?? [];
+
   let pages = pagesRes.data ?? [];
 
   // ?locale=xx — підміняємо title/description/content на переклад,
@@ -418,5 +433,5 @@ export async function handleSitesContentPublic(request: Request, env: Env, corsH
     }
   }
 
-  return json({ project: { id: project.id, name: project.name }, pages, languages }, 200, corsHeaders);
+  return json({ project: { id: project.id, name: project.name }, pages, languages, products }, 200, corsHeaders);
 }

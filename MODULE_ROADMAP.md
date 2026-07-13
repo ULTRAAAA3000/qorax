@@ -201,6 +201,55 @@ MVP обмежується тільки GA4 (найцінніше джерело
 **Оцінка обсягу:** найбільший з "дешевих" модулів через OAuth-флоу.
 2-3 таблиці, OAuth + cron + 2 API-інтеграції, 1 сторінка UI.
 
+**Статус реалізації — GA4-only MVP (окрема сесія):** Крок 5 обраний
+свідомо — Cloudflare Analytics залишається другою ітерацією. Реалізовано:
+- Схема (`0064_analytics_module.sql`): `ga4_connections` +
+  `analytics_daily_snapshot`, RLS повторює патерн `gsc_connections`/
+  `gsc_metrics` (0011_row_level_security.sql), той самий
+  `user_organization_ids()`/`is_platform_admin()` guard. `analytics`
+  вже був зареєстрований у `platform_modules` з 0039_platform_foundation.sql
+  (sort_order 60, статус `coming_soon`) — нова реєстрація не знадобилась,
+  Артем перемикає в `live` вручну через /dashboard/admin.
+- Worker (`ga4Handler.ts`): OAuth flow — точна копія структури
+  `gscHandler.ts` (AES-GCM шифрування, `access_type=offline&prompt=consent`).
+  Одна суттєва відмінність від GSC: GA4 property не відомий заздалегідь
+  (юзер може мати кілька GA4-акаунтів/властивостей), тому після
+  `/api/ga4/callback` є проміжний крок — редірект на
+  `/dashboard/analytics/:siteId/connect` з токеном у URL fragment (не
+  query string — не потрапляє в server logs/Referer), фронт показує
+  список властивостей (`accountSummaries` Admin API) для вибору, і
+  тільки після вибору викликає `/api/sites/:siteId/ga4/connect`, який
+  вже й зберігає зв'язок. Дані тягнуться через Data API `runReport`
+  (dimensions: `date`; metrics: `sessions`, `conversions`, `bounceRate`)
+  за rolling 7-денне вікно щодня (GA4-дані за останню добу можуть
+  допрацьовуватись, на відміну від GSC, де досить синкати "вчора").
+  Синк підключено до вже наявного нічного крону `0 3 * * *` в index.ts
+  (`runGa4Sync`), а не окремого — той самий підхід, що GSC/Automations,
+  щоб не вимагати від Артема заводити ще один Cloudflare Cron Trigger.
+- Всі ендпоінти прив'язані до `site_id` (не `project_id`) через
+  `requireOrgAccessForSite` — той самий патерн, що Rank/Audit
+  (DATA_MODEL.md розділ 2.1), а не `requireOrgAccessForProject`, як у
+  Commerce/Sites.
+- UI: `/dashboard/analytics` (список сайтів, розділені на
+  підключено/не підключено — копія `rank/page.tsx` з `ga4_connections`
+  замість `gsc_connections`) → `/dashboard/analytics/:siteId`
+  (`AnalyticsDetailUI.tsx`: статус підключення, Connect/Disconnect,
+  проміжний UI вибору property після OAuth, SVG-графік сесій —
+  копія `PositionChart` з `rank/[siteId]/RankDetailUI.tsx`, тільки
+  вісь Y не інвертована).
+- Що свідомо не зроблено: Cloudflare Analytics (друга ітерація за
+  роадмапом); тарифний гейт Growth+/Agency (Крок 4) — ендпоінти зараз
+  доступні будь-якому тарифу, гейтинг додати окремо, коли Артем вирішить
+  фінальні межі тарифів для Analytics.
+- Помічено, але НЕ виправлено як поза межами цієї задачі: у
+  `index.ts` scheduled-хендлері (`0 3 * * *` блок) деструктуризація
+  `const [speedSummary, seoSummary, competitorSummary, automationsSummary]`
+  бере лише 4 змінні з 5 (тепер 6) елементів `Promise.all` — існувало
+  до цієї сесії, `automationsSummary` фактично отримує результат
+  `runGscSync`, а не `runDueAgentAutomations`. Впливає лише на
+  `console.log`-мітку в логах, не на логіку — але варто поправити
+  окремо.
+
 ---
 
 ## 4. Sites — конструктор сайтів
@@ -511,6 +560,32 @@ MVP: каталог + категорії + кошик + LemonSqueezy checkout + 
 розширення вебхука платежів, новий checkout-флоу, найбільший UI після
 Sites. Залежність від Sites (товари прив'язані до `project_id`) —
 Commerce без готового сайту-вітрини не має де відображатись.
+
+**Статус реалізації — категорії товарів (UI категорій, окрема сесія):**
+`product_categories`/`product_category_links` існували в схемі з самого
+початку (0061_commerce_module.sql), але не мали ні worker-ендпоінтів, ні
+UI — товар не можна було віднести до категорії. Додано:
+- Worker (`commerceCatalog.ts`): `GET/POST /api/projects/:id/categories`,
+  `PATCH/DELETE /api/projects/:id/categories/:categoryId`,
+  `GET/PUT /api/projects/:id/products/:productId/categories` (PUT приймає
+  повний список `category_ids` і замінює зв'язки — простіше для UI з
+  чекбоксами, ніж окремі add/remove на кожну категорію). `parent_id` і
+  `category_ids` завжди звіряються з `project_id` з path — той самий
+  guard, що і в решті Commerce-ендпоінтів, проти підстановки чужого id.
+  Категорія не може бути власним `parent_id` (простий guard від прямого
+  циклу; глибші цикли через кілька рівнів свідомо не перевіряються —
+  дерево категорій дрібне і редагується вручну, не масовим імпортом).
+- UI (`CommerceDashboardUI.tsx`): новий таб "Категорії" — дерево з
+  відступами по глибині (`buildCategoryTree`, рекурсивний обхід по
+  `parent_id`), інлайн-редагування назви, вибір батьківської категорії
+  при створенні, видалення (дочірні категорії стають кореневими через
+  `on delete set null` у схемі, не видаляються каскадно). У табі
+  "Товари" — кнопка на картці товару розкриває пікер категорій
+  (чекбокси по тому ж дереву), зберігається одразу при кліку через
+  PUT-ендпоінт вище.
+- Що свідомо не зроблено на цій ітерації: перевірка глибших циклів у
+  дереві категорій; масове призначення категорій кільком товарам одразу
+  (тільки по одному товару за раз через картку).
 
 ---
 

@@ -92,5 +92,9 @@ export function searchDocsArticles(query: string): DocsArticleMeta[] {
 
   return getAllDocsArticles()
     .filter(a => a.title.toLowerCase().includes(q) || a.content.toLowerCase().includes(q))
-    .map(({ content: _content, ...meta }) => meta);
+    .map((a): DocsArticleMeta => {
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars -- відкидаємо content, лишаємо тільки мету
+      const { content, ...meta } = a;
+      return meta;
+    });
 }

@@ -29,6 +29,13 @@ function fmtDatetime(iso: string): string {
   });
 }
 
+// Non-component helper, щоб react-hooks/purity не ловив Date.now()
+// у тілі компонента (статичний матч за іменем виклику, не за
+// фактичною чистотою — тут server component без re-render).
+function currentTimestamp(): number {
+  return Date.now();
+}
+
 function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString("uk-UA", { day: "numeric", month: "long" });
 }
@@ -144,7 +151,7 @@ export function IncidentTimeline({ incidents, isUp }: Props) {
             const duration = incident.duration_seconds != null
               ? fmtDuration(incident.duration_seconds)
               : isOpen
-              ? `${Math.round((Date.now() - new Date(incident.started_at).getTime()) / 60000)} хв (триває)`
+              ? `${Math.round((currentTimestamp() - new Date(incident.started_at).getTime()) / 60000)} хв (триває)`
               : incident.resolved_at
               ? fmtDuration(Math.round((new Date(incident.resolved_at).getTime() - new Date(incident.started_at).getTime()) / 1000))
               : "—";

@@ -34,7 +34,7 @@ export default async function CompetitorPage({ params }: { params: Promise<{ id:
         .single()
     : { data: null };
 
-  // @ts-expect-error
+  // @ts-expect-error — Supabase повертає nested join як масив без !inner, тип не співпадає з фактичним об'єктом
   const planCode = subscription?.plans?.code ?? "starter";
   const isGrowthPlus = ["growth", "agency", "admin"].includes(planCode);
 

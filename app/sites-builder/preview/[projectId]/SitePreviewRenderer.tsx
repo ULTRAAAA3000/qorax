@@ -6,10 +6,14 @@
 // Нейтральна, чиста верстка — контент належить клієнту, не Qorax.
 //
 // Підтримувані типи блоків (той самий формат, що project_templates
-// seed, 0059_sites_builder_templates.sql): hero, text, image, cta, faq.
-// Невідомий/зламаний тип блоку — пропускається мовчки (safe rendering
-// на публічній сторінці важливіший за показ помилки відвідувачу).
+// seed, 0059_sites_builder_templates.sql): hero, text, image, cta, faq,
+// products (Commerce-вітрина, додано окремо — не в seed-шаблонах,
+// підключається вручну в редакторі). Невідомий/зламаний тип блоку —
+// пропускається мовчки (safe rendering на публічній сторінці важливіший
+// за показ помилки відвідувачу).
 // ============================================================
+
+import { ProductShowcase, type PublicProduct } from "./ProductShowcase";
 
 interface Block {
   type?: string;
@@ -30,14 +34,14 @@ interface PageData {
   seo_description: string | null;
 }
 
-export function SitePreviewRenderer({ page, projectName }: { page: PageData; projectName: string }) {
+export function SitePreviewRenderer({ page, projectName, projectId, products }: { page: PageData; projectName: string; projectId: string; products: PublicProduct[] }) {
   const blocks = page.content?.blocks ?? [];
 
   return (
     <div style={{ fontFamily: "system-ui, -apple-system, sans-serif", color: "#1a1a1a", background: "#fff", minHeight: "100vh" }}>
       <main style={{ maxWidth: 720, margin: "0 auto", padding: "0 24px" }}>
         {blocks.map((block, i) => (
-          <BlockRenderer key={i} block={block} />
+          <BlockRenderer key={i} block={block} projectId={projectId} products={products} />
         ))}
 
         {blocks.length === 0 && (
@@ -57,7 +61,7 @@ export function SitePreviewRenderer({ page, projectName }: { page: PageData; pro
   );
 }
 
-function BlockRenderer({ block }: { block: Block }) {
+function BlockRenderer({ block, projectId, products }: { block: Block; projectId: string; products: PublicProduct[] }) {
   switch (block.type) {
     case "hero":
       return (
@@ -120,6 +124,9 @@ function BlockRenderer({ block }: { block: Block }) {
           </div>
         </section>
       );
+
+    case "products":
+      return <ProductShowcase projectId={projectId} heading={block.heading} products={products} />;
 
     default:
       return null;

@@ -71,7 +71,6 @@ export function ProjectsListUI({ organizationId }: Props) {
     } catch {
       setProjects([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [organizationId]);
 
   const loadTemplates = useCallback(async () => {
@@ -83,7 +82,6 @@ export function ProjectsListUI({ organizationId }: Props) {
     } catch {
       setTemplates([]);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {

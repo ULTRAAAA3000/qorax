@@ -190,3 +190,40 @@ export async function updateRows(
     return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
   }
 }
+/**
+ * PATCH з поверненням оновлених рядків (Prefer: return=representation) —
+ * потрібно там, де важливо знати, чи фільтр РЕАЛЬНО щось оновив (наприклад
+ * "перевести замовлення в paid, тільки якщо воно ще pending" — атомарний
+ * guard від подвійної обробки одного webhook-ретраю без окремої таблиці
+ * ідемпотентності: якщо рядків повернулось 0, значить фільтр не збігся —
+ * хтось вже обробив цю подію раніше, нічого додатково робити не треба).
+ */
+export async function updateRowsReturning<T = Record<string, unknown>>(
+  table: string,
+  filterQuery: string,
+  patch: Record<string, unknown>,
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<{ ok: boolean; data: T[]; error?: string }> {
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${table}?${filterQuery}`, {
+      method: "PATCH",
+      headers: {
+        ...authHeaders(serviceRoleKey),
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify(patch),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return { ok: false, data: [], error: `Update ${table} failed: ${response.status} ${text}` };
+    }
+
+    const data = (await response.json()) as T[];
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, data: [], error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}

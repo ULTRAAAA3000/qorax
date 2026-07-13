@@ -4,7 +4,6 @@ import { QoraxLogo } from "@/app/components/QoraxLogo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Clock, Zap, Settings, LogOut, Plus, Gift } from "lucide-react";
-import { SiteCard } from "./SiteCard";
 import { SitesListControls } from "./SitesListControls";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 import { PortfolioHealthCard } from "./PortfolioHealthCard";
@@ -17,6 +16,16 @@ function trialDaysLeft(trialEndsAt: string | null): number {
   if (!trialEndsAt) return 0;
   const ms = new Date(trialEndsAt).getTime() - Date.now();
   return Math.max(0, Math.ceil(ms / (1000 * 60 * 60 * 24)));
+}
+
+// Серверний компонент нижче виконує кілька БД-запитів і потребує
+// "поточний момент" один раз на весь запит (не рендер у React-сенсі,
+// це async Server Component без клієнтського re-render). Обгортання
+// в окрему non-component функцію прибирає хибне спрацювання
+// react-hooks/purity, яке лінтер застосовує статично за іменем
+// Date.now(), не розрізняючи server vs client компоненти.
+function currentTimestamp(): number {
+  return Date.now();
 }
 
 export default async function DashboardPage({
@@ -71,7 +80,7 @@ export default async function DashboardPage({
 
   const downSiteIds = new Set((openIncidents ?? []).map(i => i.site_id));
 
-  const now = Date.now();
+  const now = currentTimestamp();
   const sitesWithStatus = (sites ?? []).map(site => {
     const inMaintenance = !!site.maintenance_until && new Date(site.maintenance_until).getTime() > now;
     const isDown = !inMaintenance && downSiteIds.has(site.id);
@@ -122,8 +131,8 @@ export default async function DashboardPage({
   } | null = null;
 
   if (siteIds.length >= 2) {
-    const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+    const twoWeeksAgo = new Date(now - 14 * 24 * 60 * 60 * 1000).toISOString();
 
     const [{ data: uptimeChecks }, { data: incidents }, { data: speedChecks }, { data: prevSpeedChecks }] = await Promise.all([
       supabase
