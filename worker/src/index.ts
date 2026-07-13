@@ -95,6 +95,7 @@ import {
   handleAnalyticsSummary,
   runGa4Sync,
 } from "./lib/ga4Handler";
+import { runPredictiveDetectors, handlePredictionsList, handlePredictionDismiss } from "./lib/predictiveEngine";
 import {
   handleGscAuth,
   handleGscCallback,
@@ -706,6 +707,16 @@ const worker = {
     const analyticsSummaryMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/analytics$/);
     if (analyticsSummaryMatch && request.method === "GET") {
       return handleAnalyticsSummary(request, env, corsHeaders(origin), analyticsSummaryMatch[1]);
+    }
+
+    // ── Predictive AI: Risk/Opportunity (MODULE_ROADMAP.md розділ 16) ──
+    const predictionsListMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/predictions$/);
+    if (predictionsListMatch && request.method === "GET") {
+      return handlePredictionsList(request, env, corsHeaders(origin), predictionsListMatch[1]);
+    }
+    const predictionDismissMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/predictions\/([^/]+)\/dismiss$/);
+    if (predictionDismissMatch && request.method === "POST") {
+      return handlePredictionDismiss(request, env, corsHeaders(origin), predictionDismissMatch[1], predictionDismissMatch[2]);
     }
 
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
@@ -1623,7 +1634,7 @@ const worker = {
   async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     // 0 3 * * * — щодня о 3:00: швидкість + SEO + конкуренти
     if (event.cron === "0 3 * * *") {
-      const [speedSummary, seoSummary, competitorSummary, gscSyncResult, ga4SyncResult, automationsSummary] = await Promise.all([
+      const [speedSummary, seoSummary, competitorSummary, gscSyncResult, ga4SyncResult, automationsSummary, predictiveSummary] = await Promise.all([
         runSpeedChecks(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
@@ -1659,6 +1670,10 @@ const worker = {
         // Найчастіший пресет розкладу зараз — 'daily', раз на добу
         // достатньо для перевірки.
         runDueAgentAutomations(env),
+        // Predictive AI Risk/Opportunity Detection (MODULE_ROADMAP.md
+        // розділ 16) — той самий нічний тригер, що решта, щоб не
+        // заводити окремий Cloudflare Cron Trigger.
+        runPredictiveDetectors(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
       ]);
       console.log("Speed:", JSON.stringify(speedSummary));
       console.log("SEO:", JSON.stringify(seoSummary));
@@ -1666,6 +1681,7 @@ const worker = {
       console.log("GSC sync:", JSON.stringify(gscSyncResult));
       console.log("GA4 sync:", JSON.stringify(ga4SyncResult));
       console.log("Automations:", JSON.stringify(automationsSummary));
+      console.log("Predictive:", JSON.stringify(predictiveSummary));
       return;
     }
 

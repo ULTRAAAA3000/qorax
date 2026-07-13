@@ -1709,6 +1709,20 @@ AI-поясненням знизу кожної картки.
 сильніше, ніж її відсутність — тому МВП свідомо вужчий, ніж
 "Predictive Planner" з оригінального бачення.**
 
+**Статус: MVP реалізовано (Risk/Opportunity Detection, Крок 5 нижче).**
+`worker/src/lib/predictiveEngine.ts` — два детектори, обидва
+переформулювання вже наявних даних, не нова ML/статистична логіка:
+падіння/зростання позиції tracked-запиту (`gsc_metrics.average_position`,
+поріг ≥3 позиції) і деградація швидкості (той самий поріг, що вже
+перевірений `checkSpeedDegradation`). Підключено до нічного крону
+`0 3 * * *` (не окремий тригер). Схема — `0066_ai_predictions.sql`
+(тільки `ai_predictions`, без `ai_roadmap_milestones` — foreign key
+на `ai_goals`, якої ще нема). UI — `PredictiveInsightsPanel.tsx` на
+сторінці сайту (вкладка "AI Прогнози"), з позначкою "оцінка на
+основі тренду, не гарантія". Traffic/Ranking/Revenue Forecast і
+Predictive Planner — НЕ зроблено (наступні ітерації, як і
+задокументовано в Кроці 5 нижче).
+
 #### Крок 1 — Схема БД
 ```sql
 create table ai_predictions (

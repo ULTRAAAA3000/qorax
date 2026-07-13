@@ -5,7 +5,7 @@ import { redirect, notFound } from "next/navigation";
 import {
   Activity, Zap, Shield, AlertTriangle, CheckCircle,
   Clock, ExternalLink, Sparkles,
-  FileText, Search, Eye, ArrowLeft, Code, TrendingUp,
+  FileText, Search, Eye, ArrowLeft, Code, TrendingUp, TrendingDown,
 } from "lucide-react";
 import { ReportButton } from "./ReportButton";
 import { LiveUptimePanel } from "./LiveUptimePanel";
@@ -26,6 +26,7 @@ import { ExportIncidentsButton } from "./ExportIncidentsButton";
 import { UptimeBadgeSection } from "./UptimeBadgeSection";
 import { SidebarNavLink } from "./SidebarNavLink";
 import { IncidentTimeline } from "./IncidentTimeline";
+import { PredictiveInsightsPanel } from "./PredictiveInsightsPanel";
 import { getSiteDetailData } from "./getSiteDetailData";
 import { formatRelativeTime } from "@/app/lib/formatRelativeTime";
 import { FixRequestButton } from "./FixRequestButton";
@@ -62,6 +63,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
 
   const navItems = [
     { id: "uptime",      label: "Uptime",          icon: <Activity size={14} />,    badge: isUp ? "ОК" : "DOWN", badgeRed: !isUp },
+    { id: "predictions", label: "AI Прогнози",     icon: <TrendingDown size={14} /> },
     { id: "speed",       label: "Швидкість",        icon: <TrendingUp size={14} />,  badge: latestSpeed ? fmtMs(latestSpeed.load_time_ms) : undefined },
     { id: "heatmap",     label: "Heatmap",          icon: <Clock size={14} /> },
     { id: "pagespeed",   label: "PageSpeed",        icon: <Zap size={14} />,         badge: mobileCwv?.performance_score != null ? String(mobileCwv.performance_score) : undefined },
@@ -253,6 +255,11 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
                 workerUrl={workerUrl}
               />
             </div>
+          </Section>
+
+          {/* ── Predictive AI: Risk/Opportunity ── */}
+          <Section id="predictions" icon={<TrendingDown size={14} />} title="AI Прогнози">
+            <PredictiveInsightsPanel siteId={site.id} accessToken={accessToken} />
           </Section>
 
           {/* ── Incident Timeline ── */}
