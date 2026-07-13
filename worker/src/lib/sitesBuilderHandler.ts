@@ -20,7 +20,8 @@
 // ============================================================
 
 import type { Env } from "../types";
-import { selectRows, insertRow, updateRows } from "./supabase";
+import { selectRows, insertRow, insertRowReturning, updateRows } from "./supabase";
+import { upsertNode } from "./knowledgeGraph";
 import { json } from "./httpUtils";
 import { requireOrgAccess, requireOrgAccessForProject } from "./orgAuth";
 import { checkRateLimit, getClientIp } from "./rateLimit";
@@ -137,7 +138,7 @@ export async function handleProjectCreate(request: Request, env: Env, corsHeader
     );
     const defaultPages = templateRes.data?.[0]?.default_pages ?? [];
     for (const page of defaultPages) {
-      await insertRow(
+      const pageInsertRes = await insertRowReturning<{ id: string }>(
         "project_pages",
         {
           project_id: project.id,
@@ -149,15 +150,25 @@ export async function handleProjectCreate(request: Request, env: Env, corsHeader
         env.SUPABASE_URL,
         env.SUPABASE_SERVICE_ROLE_KEY
       );
+      const newPageId = pageInsertRes.data?.[0]?.id;
+      if (newPageId) {
+        // Knowledge Graph (MODULE_ROADMAP.md, хвиля 4, розділ 14) — не блокує
+        // основний потік створення проекту, помилка тут ігнорується
+        await upsertNode(organizationId, "page", `${project.name}: ${page.slug}`, "project_pages", newPageId, env);
+      }
     }
   } else {
     // Без шаблону — порожня сторінка index, щоб редактор завжди мав з чого почати
-    await insertRow(
+    const pageInsertRes = await insertRowReturning<{ id: string }>(
       "project_pages",
       { project_id: project.id, slug: "index", content: { blocks: [] } },
       env.SUPABASE_URL,
       env.SUPABASE_SERVICE_ROLE_KEY
     );
+    const newPageId = pageInsertRes.data?.[0]?.id;
+    if (newPageId) {
+      await upsertNode(organizationId, "page", `${project.name}: index`, "project_pages", newPageId, env);
+    }
   }
 
   return json({ ok: true, project }, 201, corsHeaders);
@@ -245,13 +256,18 @@ export async function handleProjectPageCreate(request: Request, env: Env, corsHe
   const slug = body.slug?.trim().toLowerCase().replace(/[^a-z0-9-]/g, "-");
   if (!slug) return json({ error: "slug обов'язковий" }, 400, corsHeaders);
 
-  const insertRes = await insertRow(
+  const insertRes = await insertRowReturning<{ id: string }>(
     "project_pages",
     { project_id: projectId, slug, content: { blocks: [] } },
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   if (!insertRes.ok) return json({ error: insertRes.error?.includes("duplicate") ? "Сторінка з таким slug вже існує" : insertRes.error }, 400, corsHeaders);
+
+  const newPageId = insertRes.data?.[0]?.id;
+  if (newPageId && access.organizationId) {
+    await upsertNode(access.organizationId, "page", slug, "project_pages", newPageId, env);
+  }
 
   return json({ ok: true }, 201, corsHeaders);
 }

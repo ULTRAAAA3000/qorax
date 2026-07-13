@@ -1,6 +1,7 @@
 import type { Env } from "../types";
-import { selectRows, insertRow } from "./supabase";
+import { selectRows, insertRowReturning } from "./supabase";
 import { getUserIdFromToken, getOrgIdForSite } from "./gscHandler";
+import { upsertNode } from "./knowledgeGraph";
 
 /**
  * Модуль Rank (MODULE_ROADMAP.md, розділ 1). Читає позиції з уже наявних
@@ -90,7 +91,7 @@ export async function handleRankQueryCreate(request: Request, env: Env, corsHead
     return json({ error: `Максимум ${MAX_TRACKED_QUERIES} запитів на сайт` }, 400, corsHeaders);
   }
 
-  const insertRes = await insertRow(
+  const insertRes = await insertRowReturning<{ id: string }>(
     "rank_tracked_queries",
     { site_id: siteId, query, target_url: body.target_url?.trim() || null },
     env.SUPABASE_URL,
@@ -99,6 +100,13 @@ export async function handleRankQueryCreate(request: Request, env: Env, corsHead
   if (!insertRes.ok) {
     // unique(site_id, query) конфлікт — запит вже відстежується
     return json({ error: insertRes.error?.includes("duplicate") ? "Цей запит вже відстежується" : insertRes.error }, 400, corsHeaders);
+  }
+
+  const newQueryId = insertRes.data?.[0]?.id;
+  if (newQueryId) {
+    // Knowledge Graph (MODULE_ROADMAP.md, хвиля 4, розділ 14) — не блокує
+    // основний потік, помилка ігнорується
+    await upsertNode(orgId, "keyword", query, "rank_tracked_queries", newQueryId, env);
   }
 
   return json({ ok: true }, 201, corsHeaders);

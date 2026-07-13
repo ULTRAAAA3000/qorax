@@ -35,6 +35,7 @@
 
 import { selectRows, insertRow } from "./supabase";
 import { buildMemoryContext } from "./memoryHandler";
+import { buildGraphContext } from "./knowledgeGraph";
 import type { Env } from "../types";
 import { corsHeaders as sharedCorsHeaders } from "./cors";
 
@@ -540,12 +541,16 @@ async function buildSiteScopedPrompt(siteId: string, env: Env): Promise<PromptRe
   // і промпт лишається таким самим, як до інтеграції Memory.
   const memoryContext = await buildMemoryContext(site.organization_id, env);
 
+  // Knowledge Graph (MODULE_ROADMAP.md, хвиля 4, розділ 14) — той
+  // самий опційний патерн, що Memory: null якщо граф ще порожній.
+  const graphContext = await buildGraphContext(site.organization_id, env);
+
   const hostname = safeHostname(site.url);
   const prompt = `Ти — Qoraxus, AI-асистент платформи Qorax для моніторингу сайтів.
 Ти аналізуєш конкретний сайт і даєш рекомендації власнику малого бізнесу.
 
 САЙТ: ${site.display_name} (${hostname})
-${memoryContext ? `\nКОНТЕКСТ ПРО БІЗНЕС КОРИСТУВАЧА:\n${memoryContext}\n` : ""}
+${memoryContext ? `\nКОНТЕКСТ ПРО БІЗНЕС КОРИСТУВАЧА:\n${memoryContext}\n` : ""}${graphContext ? `\nСТРУКТУРА БІЗНЕСУ (сторінки/товари/ліди/ключові слова і зв'язки між ними):\n${graphContext}\n` : ""}
 ПОТОЧНІ ДАНІ МОНІТОРИНГУ:
 ${context}
 
@@ -576,12 +581,16 @@ async function buildOrgScopedPrompt(organizationId: string, env: Env): Promise<P
   const memoryContext = await buildMemoryContext(organizationId, env);
   const memoryBlock = memoryContext ? `\nКОНТЕКСТ ПРО БІЗНЕС КОРИСТУВАЧА:\n${memoryContext}\n` : "";
 
+  // Knowledge Graph (MODULE_ROADMAP.md, хвиля 4, розділ 14)
+  const graphContext = await buildGraphContext(organizationId, env);
+  const graphBlock = graphContext ? `\nСТРУКТУРА БІЗНЕСУ (сторінки/товари/ліди/ключові слова і зв'язки між ними):\n${graphContext}\n` : "";
+
   if (sites.length === 0) {
     return {
       ok: true,
       prompt: `Ти — Qorax AI, асистент платформи Qorax для моніторингу сайтів.
 У цієї організації ще немає жодного сайту на моніторингу.
-${memoryBlock}
+${memoryBlock}${graphBlock}
 ${STYLE_INSTRUCTIONS}
 
 Запропонуй користувачу додати перший сайт, щоб почати отримувати дані.`,
@@ -636,7 +645,7 @@ ${STYLE_INSTRUCTIONS}
   const prompt = `Ти — Qorax AI, асистент платформи Qorax для моніторингу сайтів.
 Ти бачиш дані ВСІХ сайтів організації користувача і допомагаєш з питаннями
 на рівні всього портфоліо (не тільки одного сайту).
-${memoryBlock}
+${memoryBlock}${graphBlock}
 ПОРТФОЛІО САЙТІВ:
 ${lines.join("\n")}
 

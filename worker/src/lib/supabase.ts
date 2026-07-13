@@ -161,6 +161,41 @@ export async function upsertRow(
   }
 }
 
+/**
+ * INSERT з поверненням створеного рядка (Prefer: return=representation) —
+ * потрібно там, де далі треба знати id щойно створеного запису (напр.
+ * knowledgeGraph.ts прив'язує kg_nodes.ref_id до реального рядка одразу
+ * після створення, без додаткового SELECT-запиту навздогін).
+ */
+export async function insertRowReturning<T = Record<string, unknown>>(
+  table: string,
+  row: Record<string, unknown>,
+  supabaseUrl: string,
+  serviceRoleKey: string
+): Promise<{ ok: boolean; data: T[]; error?: string }> {
+  try {
+    const response = await fetch(`${supabaseUrl}/rest/v1/${table}`, {
+      method: "POST",
+      headers: {
+        ...authHeaders(serviceRoleKey),
+        "Content-Type": "application/json",
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify(row),
+    });
+
+    if (!response.ok) {
+      const text = await response.text();
+      return { ok: false, data: [], error: `Insert into ${table} failed: ${response.status} ${text}` };
+    }
+
+    const data = (await response.json()) as T[];
+    return { ok: true, data };
+  } catch (err) {
+    return { ok: false, data: [], error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
 /** PATCH — частичное обновление строк, подходящих под фильтр (например, закрытие инцидента). */
 export async function updateRows(
   table: string,

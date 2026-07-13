@@ -11,7 +11,8 @@
 // ============================================================
 
 import type { Env } from "../types";
-import { selectRows, insertRow, updateRows } from "./supabase";
+import { selectRows, insertRow, insertRowReturning, updateRows } from "./supabase";
+import { upsertNode } from "./knowledgeGraph";
 import { json } from "./httpUtils";
 import { requireOrgAccess } from "./orgAuth";
 import { dispatchAlert } from "./monitoring";
@@ -96,7 +97,7 @@ export async function handleCrmContactCreate(
   const limitCheck = await checkContactLimit(organizationId, env);
   if (!limitCheck.ok) return json({ error: limitCheck.error }, 402, corsHeaders);
 
-  const insertRes = await insertRow(
+  const insertRes = await insertRowReturning<{ id: string }>(
     "crm_contacts",
     {
       organization_id: organizationId,
@@ -110,6 +111,15 @@ export async function handleCrmContactCreate(
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   if (!insertRes.ok) return json({ error: insertRes.error }, 400, corsHeaders);
+
+  const newContactId = insertRes.data?.[0]?.id;
+  if (newContactId) {
+    // Knowledge Graph (MODULE_ROADMAP.md, хвиля 4, розділ 14) — node_type
+    // 'customer' спрощено охоплює і лідів, і клієнтів: на рівні crm_contacts
+    // немає окремого розмежування (стадія лишається властивістю crm_deals,
+    // не контакту) — не блокує основний потік, помилка ігнорується
+    await upsertNode(organizationId, "customer", name ?? email ?? phone ?? "Контакт", "crm_contacts", newContactId, env);
+  }
 
   return json({ ok: true }, 201, corsHeaders);
 }
