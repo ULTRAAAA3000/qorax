@@ -1623,7 +1623,7 @@ const worker = {
   async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     // 0 3 * * * — щодня о 3:00: швидкість + SEO + конкуренти
     if (event.cron === "0 3 * * *") {
-      const [speedSummary, seoSummary, competitorSummary, automationsSummary] = await Promise.all([
+      const [speedSummary, seoSummary, competitorSummary, gscSyncResult, ga4SyncResult, automationsSummary] = await Promise.all([
         runSpeedChecks(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
@@ -1663,6 +1663,8 @@ const worker = {
       console.log("Speed:", JSON.stringify(speedSummary));
       console.log("SEO:", JSON.stringify(seoSummary));
       console.log("Competitors:", JSON.stringify(competitorSummary));
+      console.log("GSC sync:", JSON.stringify(gscSyncResult));
+      console.log("GA4 sync:", JSON.stringify(ga4SyncResult));
       console.log("Automations:", JSON.stringify(automationsSummary));
       return;
     }
