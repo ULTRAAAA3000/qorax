@@ -34,6 +34,7 @@ import {
   buildSslExpirySlack,
 } from "./slack";
 import { generateSiteInsights } from "./aiInsights";
+import { addInboxItem } from "./aiInbox";
 
 interface SiteRow {
   id: string;
@@ -42,6 +43,11 @@ interface SiteRow {
   monitoring_enabled: boolean;
   response_time_alert_threshold_ms: number | null;
   maintenance_until: string | null;
+  // Опційне — заповнюється лише в тих SELECT, звідки веде шлях до
+  // checkSingleSiteSpeed -> generateSiteInsights -> AI Inbox
+  // (MODULE_ROADMAP.md хвиля 4, розділ 12); решта запитів SiteRow
+  // не потребують organization_id і не додають його в select=.
+  organization_id?: string;
 }
 
 interface OpenIncidentRow {
@@ -774,7 +780,7 @@ export async function runSpeedChecks(
 
   const sitesResult = await selectRows<SiteRow>(
     "sites",
-    "select=id,url,display_name,monitoring_enabled&monitoring_enabled=eq.true",
+    "select=id,url,display_name,monitoring_enabled,organization_id&monitoring_enabled=eq.true",
     supabaseUrl,
     serviceRoleKey
   );
@@ -822,7 +828,7 @@ export async function runSpeedCheckForSite(
 ): Promise<number> {
   const siteResult = await selectRows<SiteRow>(
     "sites",
-    `select=id,url,display_name,monitoring_enabled&id=eq.${encodeURIComponent(siteId)}`,
+    `select=id,url,display_name,monitoring_enabled,organization_id&id=eq.${encodeURIComponent(siteId)}`,
     supabaseUrl,
     serviceRoleKey
   );
@@ -1426,4 +1432,17 @@ export async function checkSpeedDegradation(
     headers: { ...h, "Content-Type": "application/json", Prefer: "return=minimal" },
     body: JSON.stringify({ site_id: siteId, speed_ms: currentSpeedMs, avg_ms: Math.round(avg), alerted_at: new Date().toISOString() }),
   });
+
+  // AI Inbox (MODULE_ROADMAP.md, хвиля 4, розділ 12)
+  await addInboxItem(
+    {
+      organizationId: site.organization_id,
+      siteId: site.id,
+      title: `${site.display_name}: швидкість впала до ${fmtMs(currentSpeedMs)}`,
+      reason: `Норма за 7 днів — ${fmtMs(Math.round(avg))}, поточне значення вдвічі гірше`,
+      source: "audit",
+      suggestedAgentId: "seo",
+    },
+    { SUPABASE_URL: supabaseUrl, SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey }
+  );
 }

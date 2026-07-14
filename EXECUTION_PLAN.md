@@ -2043,3 +2043,73 @@ generic-граф (не окрема таблиця під кожен тип зв
 міграції `0065` в Supabase SQL Editor (ручний крок Артема, як і
 завжди) — конфлікт нумерації `0061` (commerce/translator) також
 досі не розв'язаний, лишається окремим пунктом.
+
+---
+
+## Хвиля 4: AI Inbox — перший шматок AI Operating System (MVP)
+
+MODULE_ROADMAP.md, розділ 12 "AI Operating System". Реалізовано
+найдешевший шматок з "Крок 5" того розділу — без AI Goals/Planner
+(друга ітерація, значно більший обсяг і ризик).
+
+**Схема БД (`0066_ai_inbox.sql`):** `ai_inbox_items` — джерело
+(`rank`/`audit`/`cro`/`ceo_agent`), запропонований агент, статус
+(`new`/`accepted`/`dismissed`). RLS тим самим патерном, що
+`kg_nodes`/`crm_contacts`.
+
+**Worker (`worker/src/lib/aiInbox.ts`, новий):** `addInboxItem()` —
+не кидає виняток, дедуплікує (не створює новий запис, якщо схожий
+уже висить зі статусом `new`, інакше щоденний аудит заспамив би
+той самий запис щодня). `handleInboxListRequest`/
+`handleInboxUpdateRequest` — GET/PATCH ендпоінти, `organizationId`
+з JWT (той самий патерн, що `taskHandler.ts`), не query-параметр.
+
+**Підключено до 2 джерел (мінімум із плану "Rank + Audit"):**
+- `aiInsights.ts` — тільки `severity === 'critical'` знахідки
+  аудиту (щоб не заспамити warning/info щодня) → `source: 'audit'`,
+  `suggestedAgentId: 'seo'`
+- `monitoring.ts` `checkSpeedDegradation` → `source: 'audit'`,
+  `suggestedAgentId: 'seo'`
+- `gscHandler.ts` `syncGscForSite` — нова проста перевірка (не
+  ML-модель): позиція tracked-запиту погіршала на 5+ і раніше була
+  в топ-20 → `source: 'rank'`, `suggestedAgentId: 'rank'`
+
+**Знайдено й виправлено дорогою реальний ризик:** перша версія
+хука в `gscHandler.ts` використовувала `forEach` + `.then()`
+("fire-and-forget") — функція повертала `{ ok: true, rows: saved }`
+раніше, ніж встигали виконатись асинхронні виклики `addInboxItem`
+всередині. Той самий клас бага, що вже чинився в
+`ctx.waitUntil(a, b, c)` тижнем раніше — виправлено на
+`Promise.all(trackedHistories.map(async ...))` з явним `await`.
+
+**UI:** `AiInboxCard.tsx` (новий, `/dashboard/home`) — клієнтський
+компонент за патерном `TasksTab.tsx` (той самий `getFreshToken()`).
+Показується тільки якщо є нерозглянуті записи (`status='new'`) і
+модуль AI — `live`; порожній інбокс не рендериться зовсім, на
+відміну від інших карток головної сторінки. Кожен запис має
+"Перейти" (на `/dashboard/rank` для Rank-джерела, на
+`/dashboard/sites/[id]` для Audit-джерела) і "Приховати" (PATCH
+`status=dismissed`).
+
+**Свідомо НЕ зроблено (задокументовано і в самому коді, і тут):**
+- **"Accept" не запускає агента автоматично.** У платформі немає
+  єдиної функції `runAgent(agentId)` — є окремі per-agent HTTP-
+  хендлери в `agentHandler.ts` (`handleRunSeoAgentRequest` тощо),
+  кожен очікує повноцінний `Request` з власною авторизацією й
+  лімітами кредитів. Дублювати цю логіку в `aiInbox.ts` — зайвий
+  ризик розсинхронізації двох копій. PATCH `status=accepted` лише
+  фіксує згоду користувача; UI веде на потрібний модуль, де агент
+  запускається звичайним шляхом. Побудова спільного `runAgent()` —
+  окрема задача, потрібна і для майбутнього AI Planner (розділ 12,
+  друга ітерація).
+- CRO як джерело — агента `cro` ще немає в довіднику `agents`
+  (тільки `content`/`seo`/`rank`, `0057`/`0060`) — додається разом
+  з появою CRO-агента, не раніше.
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд),
+`npm run build` успішно (усі роути), `wrangler deploy --dry-run`
+успішно (654.98 KiB, gzip 115.40 KiB, +8.71 KiB відносно
+Knowledge Graph).
+
+**Не зроблено в цьому проході:** застосування міграції `0066` в
+Supabase SQL Editor (ручний крок Артема).

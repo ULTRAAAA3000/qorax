@@ -1,5 +1,6 @@
 import type { Env } from "../types";
 import { selectRows, upsertRow, updateRows } from "./supabase";
+import { addInboxItem } from "./aiInbox";
 
 const SCOPES = [
   "https://www.googleapis.com/auth/webmasters.readonly",
@@ -371,6 +372,50 @@ async function syncGscForSite(siteId: string, accessToken: string, propertyUrl: 
     }
 
     await updateRows("gsc_connections", `site_id=eq.${encodeURIComponent(siteId)}`, { last_synced_at: new Date().toISOString() }, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+
+    // AI Inbox (MODULE_ROADMAP.md, хвиля 4, розділ 12) — просте порівняння
+    // "вчора vs сьогодні" по кожному tracked-запиту, не нова ML-модель:
+    // якщо позиція погіршала на 5+ і запит раніше входив у топ-20 (був
+    // сенс його відстежувати), додаємо запис в інбокс. Не блокує sync —
+    // помилки тут ігноруються (addInboxItem сам не кидає виняток), але
+    // await обов'язковий: без нього функція повертається раніше, ніж
+    // запис в inbox встигає піти (той самий клас бага, що ctx.waitUntil
+    // з кількома аргументами замість Promise.all).
+    let siteForInboxCache: { organization_id: string; display_name: string } | null = null;
+    await Promise.all(
+      trackedHistories.map(async (history, i) => {
+        const query = trackedQueries[i].query;
+        const sorted = (history.rows ?? []).slice().sort((a, b) => a.keys[0].localeCompare(b.keys[0]));
+        if (sorted.length < 2) return;
+        const previous = sorted[sorted.length - 2];
+        const latest = sorted[sorted.length - 1];
+        const drop = latest.position - previous.position;
+        if (drop < 5 || previous.position > 20) return;
+
+        if (!siteForInboxCache) {
+          const siteRes = await selectRows<{ organization_id: string; display_name: string }>(
+            "sites",
+            `select=organization_id,display_name&id=eq.${encodeURIComponent(siteId)}&limit=1`,
+            env.SUPABASE_URL,
+            env.SUPABASE_SERVICE_ROLE_KEY
+          );
+          siteForInboxCache = siteRes.data?.[0] ?? null;
+        }
+        if (!siteForInboxCache) return;
+
+        await addInboxItem(
+          {
+            organizationId: siteForInboxCache.organization_id,
+            siteId,
+            title: `${siteForInboxCache.display_name}: «${query}» впав з позиції ${Math.round(previous.position)} на ${Math.round(latest.position)}`,
+            reason: `Падіння на ${Math.round(drop)} позицій за останній день`,
+            source: "rank",
+            suggestedAgentId: "rank",
+          },
+          { SUPABASE_URL: env.SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY }
+        );
+      })
+    ).catch(e => console.warn("[gscHandler] rank drop inbox hook failed:", e));
 
     return { ok: true, rows: saved };
   } catch (e) {

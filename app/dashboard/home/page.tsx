@@ -3,6 +3,7 @@ import { signOut } from "@/app/lib/auth-actions";
 import { QoraxLogo } from "@/app/components/QoraxLogo";
 import { PlatformSidebar } from "@/app/dashboard/PlatformSidebar";
 import { getPlatformModules } from "@/app/lib/getPlatformModules";
+import { AiInboxCard } from "./AiInboxCard";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import {
@@ -153,6 +154,10 @@ export default async function DashboardHomePage() {
               Ось що відбувається у вашому акаунті Qorax зараз.
             </p>
           </div>
+
+          {/* AI Inbox (MODULE_ROADMAP.md, хвиля 4, розділ 12) — сама картка
+              вирішує, чи є що показувати (повертає null, якщо порожньо) */}
+          {liveModuleKeys.has("ai") && <AiInboxCard />}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {auditSummary && (

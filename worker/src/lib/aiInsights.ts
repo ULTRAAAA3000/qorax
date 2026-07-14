@@ -12,11 +12,13 @@
 import type { BasicCheckResult } from "./basicCheck";
 import type { PageSpeedResult } from "./pageSpeed";
 import { insertRow, updateRows } from "./supabase";
+import { addInboxItem } from "./aiInbox";
 
 interface SiteRow {
   id: string;
   url: string;
   display_name: string;
+  organization_id?: string;
 }
 
 const GEMINI_ENDPOINT =
@@ -75,6 +77,24 @@ export async function generateSiteInsights(
       serviceRoleKey
     );
     if (result.ok) saved++;
+
+    // AI Inbox (MODULE_ROADMAP.md, хвиля 4, розділ 12) — тільки critical,
+    // щоб не заспамити інбокс щоденними warning/info знахідками;
+    // organization_id опційний (не всі select-запити SiteRow його містять) —
+    // якщо відсутній, addInboxItem просто не викликається
+    if (result.ok && finding.severity === "critical" && site.organization_id) {
+      await addInboxItem(
+        {
+          organizationId: site.organization_id,
+          siteId: site.id,
+          title: `${site.display_name}: ${finding.problemSummary}`,
+          reason: finding.plainExplanation,
+          source: "audit",
+          suggestedAgentId: "seo",
+        },
+        { SUPABASE_URL: supabaseUrl, SUPABASE_SERVICE_ROLE_KEY: serviceRoleKey }
+      );
+    }
   }
 
   return saved;

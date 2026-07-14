@@ -46,6 +46,7 @@ import {
   handleTaskUpdateRequest,
   handleTaskDeleteRequest,
 } from "./lib/taskHandler";
+import { handleInboxListRequest, handleInboxUpdateRequest } from "./lib/aiInbox";
 import {
   handleProjectsList,
   handleProjectTemplatesList,
@@ -874,6 +875,15 @@ const worker = {
     }
     if (taskMatch && request.method === "DELETE") {
       return handleTaskDeleteRequest(request, taskMatch[1], env, origin, corsHeaders(origin));
+    }
+
+    // ── AI Inbox routes (MODULE_ROADMAP.md, хвиля 4, розділ 12 "AI Operating System") ──
+    if (url.pathname === "/api/ai/inbox" && request.method === "GET") {
+      return handleInboxListRequest(request, env, origin, corsHeaders(origin));
+    }
+    const inboxMatch = url.pathname.match(/^\/api\/ai\/inbox\/([^/]+)$/);
+    if (inboxMatch && request.method === "PATCH") {
+      return handleInboxUpdateRequest(request, inboxMatch[1], env, origin, corsHeaders(origin));
     }
 
     // ── Sites-конструктор routes (MODULE_ROADMAP.md розділ 4; EXECUTION_PLAN.md Фаза 3.1) ──
