@@ -20,6 +20,7 @@ import { selectRows, insertRow, updateRows } from "./supabase";
 import { json } from "./httpUtils";
 import { requireOrgAccessForProject } from "./orgAuth";
 import { callGemini } from "./contentGeneration";
+import { checkAiCredits, deductAiCredits } from "./aiCredits";
 
 interface ProjectLanguageRow {
   id: string;
@@ -245,15 +246,11 @@ export async function handleTranslate(request: Request, env: Env, corsHeaders: R
   const page = pageRes.data?.[0];
   if (!page) return json({ error: "Сторінку не знайдено" }, 404, corsHeaders);
 
-  // Той самий credit-check ДО виклику Gemini, що AI/Content і Social
-  const creditsRes = await selectRows<{ credits_remaining: number }>(
-    "ai_credits",
-    `select=credits_remaining&organization_id=eq.${encodeURIComponent(access.organizationId!)}`,
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  const credits = creditsRes.data?.[0]?.credits_remaining ?? 0;
-  if (credits <= 0) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  // aiCredits.ts (спільний helper) — той самий credit-check, що
+  // AI/Content і Social, з безлімітом для адмінської організації.
+  const organizationId = access.organizationId!;
+  const creditsCheck = await checkAiCredits(organizationId, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
 
   const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
   if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
@@ -265,13 +262,7 @@ export async function handleTranslate(request: Request, env: Env, corsHeaders: R
   const { title, description } = parseTranslationResponse(result.text);
   if (!title && !description) return json({ error: "AI не повернув очікуваний формат — спробуйте ще раз" }, 502, corsHeaders);
 
-  await updateRows(
-    "ai_credits",
-    `organization_id=eq.${encodeURIComponent(access.organizationId!)}`,
-    { credits_remaining: credits - 1 },
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  const creditsRemaining = await deductAiCredits(organizationId, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
 
   // upsert через select-then-insert/update (не PostgREST on_conflict —
   // потрібно повернути id для UI, upsertRow() в supabase.ts повертає
@@ -296,7 +287,7 @@ export async function handleTranslate(request: Request, env: Env, corsHeaders: R
     );
   }
 
-  return json({ ok: true, title, description, credits_remaining: credits - 1 }, 200, corsHeaders);
+  return json({ ok: true, title, description, credits_remaining: creditsRemaining, unlimited: creditsCheck.unlimited }, 200, corsHeaders);
 }
 
 // ── PATCH /api/translations/:id ── ручне редагування, переставляє

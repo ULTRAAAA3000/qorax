@@ -15,6 +15,7 @@ import { selectRows, insertRow, updateRows } from "./supabase";
 import { json } from "./httpUtils";
 import { requireOrgAccess } from "./orgAuth";
 import { sendTelegramMessage } from "./telegram";
+import { checkAiCredits, deductAiCredits } from "./aiCredits";
 
 // ── AES-GCM (копія з gscHandler.ts — див. коментар вище) ────────────
 
@@ -400,15 +401,10 @@ export async function handleSocialGenerate(
   const topic = body.topic?.trim();
   if (!topic || topic.length > 500) return json({ error: "Опишіть тему (до 500 символів)" }, 400, corsHeaders);
 
-  // Той самий credit-check ДО виклику Gemini, що contentGeneration.ts
-  const creditsRes = await selectRows<{ credits_remaining: number }>(
-    "ai_credits",
-    `select=credits_remaining&organization_id=eq.${encodeURIComponent(organizationId)}`,
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  const credits = creditsRes.data?.[0]?.credits_remaining ?? 0;
-  if (credits <= 0) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  // aiCredits.ts (спільний helper) — той самий credit-check, що
+  // contentGeneration.ts, з безлімітом для адмінської організації.
+  const creditsCheck = await checkAiCredits(organizationId, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
 
   const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
   if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
@@ -416,15 +412,9 @@ export async function handleSocialGenerate(
   const result = await callGemini(buildSocialPrompt(topic, body.tone), apiKey);
   if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
 
-  await updateRows(
-    "ai_credits",
-    `organization_id=eq.${encodeURIComponent(organizationId)}`,
-    { credits_remaining: credits - 1 },
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  const creditsRemaining = await deductAiCredits(organizationId, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
 
-  return json({ content: result.text, credits_remaining: credits - 1 }, 200, corsHeaders);
+  return json({ content: result.text, credits_remaining: creditsRemaining, unlimited: creditsCheck.unlimited }, 200, corsHeaders);
 }
 
 // ── Ліміт публікацій на місяць (PRICING.md розділ 4) ─────────────────
