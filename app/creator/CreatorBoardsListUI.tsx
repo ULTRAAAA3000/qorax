@@ -112,7 +112,7 @@ export function CreatorBoardsListUI({ organizationId }: Props) {
           {boards.map(board => (
             <Link
               key={board.id}
-              href={`/dashboard/creator/${board.id}`}
+              href={`/creator/${board.id}`}
               className="glow-card p-4 flex flex-col gap-1 hover:border-white/20 transition-colors"
             >
               <span className="text-sm font-medium truncate">{board.title}</span>

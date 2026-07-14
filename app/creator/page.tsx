@@ -1,0 +1,55 @@
+import { createClient } from "@/app/lib/supabase/server";
+import { QoraxLogo } from "@/app/components/QoraxLogo";
+import { CreatorBoardsListUI } from "./CreatorBoardsListUI";
+import { redirect } from "next/navigation";
+import { LayoutTemplate } from "lucide-react";
+
+export const metadata = { title: "Qorax Creator" };
+
+// Qorax Creator (MODULE_ROADMAP.md, "Qorax Creator — візуальна
+// платформа створення") — ОКРЕМИЙ продукт екосистеми Qorax, той
+// самий рівень, що Dashboard і майбутній Mail: власний топ-левел
+// роут (/creator, не /dashboard/creator), БЕЗ Dashboard-каркасу
+// (PlatformSidebar/platform_modules) — не модуль серед CRM/Commerce
+// в сайдбарі. Дані (canvas_boards, organization_id) лишаються
+// спільними з рештою платформи — саме це і дозволяє Website Mode
+// показувати/редагувати ті самі project_pages, що Sites-конструктор
+// у Dashboard, без дублювання. Основний вхід — майбутній лендінг
+// (Артем зробить окремо); прямі переходи між продуктами — теж
+// пізніший крок, свідомо не додано цим проходом.
+export default async function CreatorPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+  if (!user) redirect("/login");
+
+  const { data: membership } = await supabase
+    .from("organization_members")
+    .select("organization_id")
+    .eq("user_id", user.id)
+    .single();
+  if (!membership) redirect("/dashboard");
+
+  return (
+    <div className="min-h-screen" style={{ background: "var(--bg)" }}>
+      <header className="sticky top-0 z-40" style={{ background: "rgba(10,10,10,0.8)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="mx-auto max-w-6xl px-6 sm:px-8 h-14 flex items-center">
+          <QoraxLogo size="sm" />
+        </div>
+      </header>
+
+      <main className="mx-auto max-w-6xl px-6 sm:px-8 py-8 space-y-6">
+        <div>
+          <div className="flex items-center gap-2.5 mb-1">
+            <LayoutTemplate size={20} style={{ color: "var(--cyan)" }} />
+            <h1 className="font-display text-2xl font-semibold">Qorax Creator</h1>
+          </div>
+          <p className="text-sm text-[var(--text-secondary)]">
+            Візуальне полотно. Website Mode — вбудований Sites-редактор прямо на дошці.
+          </p>
+        </div>
+
+        <CreatorBoardsListUI organizationId={membership.organization_id} />
+      </main>
+    </div>
+  );
+}

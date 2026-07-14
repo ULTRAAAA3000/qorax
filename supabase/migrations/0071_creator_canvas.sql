@@ -85,11 +85,10 @@ create policy "canvas_nodes_all" on canvas_nodes
   );
 
 -- ============================================================
--- Реєстрація в platform_modules — той самий патерн, що
--- team/benchmark (0068/0069): status='coming_soon', Артем сам
--- перемикає на 'live' у /dashboard/admin після особистої перевірки.
+-- НАВМИСНО без реєстрації в platform_modules: Qorax Creator —
+-- окремий топ-левел продукт екосистеми (/creator), той самий рівень,
+-- що сам Dashboard і майбутній Mail, НЕ модуль у Dashboard-сайдбарі
+-- серед CRM/Commerce/Team Workspace. platform_modules — реєстр саме
+-- для плиток усередині Dashboard-каркасу (getPlatformModules.ts,
+-- PlatformSidebar), Creator туди свідомо не додається.
 -- ============================================================
-
-insert into platform_modules (key, label, description, icon, href, status, sort_order) values
-  ('creator', 'Qorax Creator', 'Візуальний canvas-редактор — Website Mode: вбудований Sites-редактор у рамці на полотні', 'LayoutTemplate', '/dashboard/creator', 'coming_soon', 101)
-on conflict (key) do nothing;
