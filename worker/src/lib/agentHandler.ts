@@ -31,6 +31,7 @@ import { buildPrompt, callGemini, type GenerationKind } from "./contentGeneratio
 import { createAgentTask, finishAgentTask } from "./taskHandler";
 import type { Env } from "../types";
 import { corsHeaders as sharedCorsHeaders } from "./cors";
+import { checkAiCredits, deductAiCredits } from "./aiCredits";
 
 const MAX_PAGES_PER_RUN = 5; // ліміт кредитів за один запуск агента
 
@@ -471,16 +472,16 @@ async function runContentAgentCore(site: SiteRow, env: Env): Promise<ContentAgen
   const siteId = site.id;
 
   // ── Перевіряємо кредити ДО важкої роботи ──────────────────
-  const creditsResult = await selectRows<{ credits_remaining: number }>(
-    "ai_credits",
-    `select=credits_remaining&organization_id=eq.${encodeURIComponent(site.organization_id)}`,
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  let creditsRemaining = creditsResult.data[0]?.credits_remaining ?? 0;
-  if (creditsRemaining <= 0) {
+  // aiCredits.ts (спільний helper) — безлімітні кредити для
+  // адмінської організації. Для unlimited=true поріг MAX_PAGES_PER_RUN
+  // лишається (це ліміт "сторінок за один запуск", не кредитний ліміт
+  // сам собою) — просто не звужується додатково залишком кредитів.
+  const creditsCheck = await checkAiCredits(site.organization_id, env);
+  if (!creditsCheck.ok) {
     return { error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу.", status: 402 };
   }
+  let creditsRemaining = creditsCheck.creditsRemaining;
+  const initialCreditsRemaining = creditsRemaining; // незмінне значення для коректного deductAiCredits нижче
 
   const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
   if (!apiKey) return { error: "AI не налаштований", status: 503 };
@@ -494,7 +495,7 @@ async function runContentAgentCore(site: SiteRow, env: Env): Promise<ContentAgen
 
   const problematicPages = auditsResult.data
     .filter((a) => a.issues.some((issue) => issue.includes("title") || issue.includes("Title") || issue.includes("meta description") || issue.includes("Meta description")))
-    .slice(0, Math.min(MAX_PAGES_PER_RUN, creditsRemaining));
+    .slice(0, creditsCheck.unlimited ? MAX_PAGES_PER_RUN : Math.min(MAX_PAGES_PER_RUN, creditsRemaining));
 
   if (problematicPages.length === 0) {
     return { body: { message: "Проблемних сторінок з title/meta description не знайдено — усе гаразд!", generated: [] } };
@@ -593,14 +594,12 @@ async function runContentAgentCore(site: SiteRow, env: Env): Promise<ContentAgen
   }
 
   // ── Списуємо кредити і закриваємо run ───────────────────────
+  // deductAiCredits — no-op для unlimited=true (адмінська організація).
+  // creditsRemaining в пам'яті (для відповіді) лишається пораховане
+  // циклом вище (initialCreditsRemaining - creditsSpent), запис у
+  // ai_credits вважає з того самого initialCreditsRemaining.
   if (creditsSpent > 0) {
-    await updateRows(
-      "ai_credits",
-      `organization_id=eq.${encodeURIComponent(site.organization_id)}`,
-      { credits_remaining: creditsRemaining },
-      env.SUPABASE_URL,
-      env.SUPABASE_SERVICE_ROLE_KEY
-    );
+    await deductAiCredits(site.organization_id, initialCreditsRemaining, creditsCheck.unlimited, env, creditsSpent);
   }
 
   const summary = `Згенеровано ${generated.length} з ${problematicPages.length} пропозицій для сторінок з проблемами SEO.`;

@@ -31,6 +31,7 @@ export function AiContentUI({ accessToken, sites }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [credits, setCredits] = useState<number | null>(null);
+  const [unlimited, setUnlimited] = useState(false);
 
   const loadCredits = useCallback(async () => {
     try {
@@ -39,6 +40,7 @@ export function AiContentUI({ accessToken, sites }: Props) {
       });
       const data = await res.json();
       setCredits(data.credits_remaining ?? 0);
+      setUnlimited(Boolean(data.unlimited));
     } catch {
       setCredits(0);
     }
@@ -66,6 +68,7 @@ export function AiContentUI({ accessToken, sites }: Props) {
       if (!res.ok) { setError(data.error ?? "Помилка генерації"); return; }
       setOutput(data.output);
       setCredits(data.credits_remaining);
+      setUnlimited(Boolean(data.unlimited));
     } catch {
       setError("Не вдалося з'єднатися з сервером");
     } finally {
@@ -88,7 +91,7 @@ export function AiContentUI({ accessToken, sites }: Props) {
           style={{ background: "rgba(214,255,63,0.05)", border: "1px solid rgba(214,255,63,0.15)" }}
         >
           <span className="text-[var(--text-secondary)]">Кредити, що залишились</span>
-          <span className="font-mono font-medium" style={{ color: "var(--lime)" }}>{credits}</span>
+          <span className="font-mono font-medium" style={{ color: "var(--lime)" }}>{unlimited ? "∞" : credits}</span>
         </div>
       )}
 

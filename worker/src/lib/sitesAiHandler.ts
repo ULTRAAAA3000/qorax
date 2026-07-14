@@ -32,6 +32,7 @@ import { selectRows, updateRows } from "./supabase";
 import { json } from "./httpUtils";
 import { requireOrgAccessForProject } from "./orgAuth";
 import { buildMemoryContext } from "./memoryHandler";
+import { checkAiCredits, deductAiCredits } from "./aiCredits";
 
 const GEMINI_ENDPOINT =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
@@ -143,16 +144,10 @@ export async function handleProjectPageAiGenerate(
     );
   }
 
-  // Перевіряємо і списуємо credit ДО виклику Gemini — той самий
-  // підхід, що handleAiGenerate в contentGeneration.ts.
-  const creditsRes = await selectRows<{ credits_remaining: number }>(
-    "ai_credits",
-    `select=credits_remaining&organization_id=eq.${encodeURIComponent(organizationId)}`,
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  const credits = creditsRes.data?.[0]?.credits_remaining ?? 0;
-  if (credits <= 0) {
+  // Перевіряємо і списуємо credit ДО виклику Gemini — aiCredits.ts
+  // (спільний helper), безлімітні кредити для адмінської організації.
+  const creditsCheck = await checkAiCredits(organizationId, env);
+  if (!creditsCheck.ok) {
     return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
   }
 
@@ -264,14 +259,8 @@ ${contextBlock}
   if (!updateRes.ok) return json({ error: updateRes.error }, 500, corsHeaders);
 
   // Списуємо credit лише ПІСЛЯ успішного збереження — не карати
-  // користувача кредитом за збій запису в БД.
-  await updateRows(
-    "ai_credits",
-    `organization_id=eq.${encodeURIComponent(organizationId)}`,
-    { credits_remaining: credits - 1 },
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  // користувача кредитом за збій запису в БД. No-op для unlimited=true.
+  const creditsRemaining = await deductAiCredits(organizationId, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
 
   return json(
     {
@@ -279,7 +268,8 @@ ${contextBlock}
       content: { blocks: mergedBlocks },
       seo_title: generated.seo_title,
       seo_description: generated.seo_description,
-      credits_remaining: credits - 1,
+      credits_remaining: creditsRemaining,
+      unlimited: creditsCheck.unlimited,
     },
     200,
     corsHeaders

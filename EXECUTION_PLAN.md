@@ -2561,3 +2561,65 @@ app/creator/` чисто, `npm run build` успішно (`/creator` і
 `/creator/[boardId]` на місці замість старих `/dashboard/creator*`).
 Worker не займано цим проходом (API-контракт не залежить від
 фронтенд-шляху).
+
+## Безлімітні AI-кредити для адмінської організації
+
+**Запит Артема:** у організації platform_role='admin' (Артем) кредити
+на AI-генерацію в Qorax Business мають бути необмежені — не 0/402 на
+жодному з AI-фіч.
+
+**Виявлено при аналізі:** списання `ai_credits.credits_remaining`
+було продубльоване (той самий блок "select → перевірити <= 0 →
+update -1") у 5 різних місцях: `contentGeneration.ts` (AI/Content),
+`sitesAiHandler.ts` (Sites AI-генерація), `socialHandler.ts` (Social),
+`translatorHandler.ts` (Translator), `agentHandler.ts` (Agents,
+batch-режим). За рішенням Артема — зроблено спільний helper замість
+точкового патчу в кожному місці окремо, щоб жодне майбутнє AI-місце
+не забуло про безліміт.
+
+**`worker/src/lib/aiCredits.ts` (новий файл):**
+- `checkAiCredits(organizationId, env)` — повертає `{ ok, unlimited,
+  creditsRemaining }`. `unlimited=true`, якщо організація має хоча б
+  одного учасника з `profiles.platform_role='admin'` (НЕ плутати з
+  `organization_members.role='admin'` — роллю всередині ОДНІЄЇ
+  організації з enum `member_role`, це геть інше поле)
+- `deductAiCredits(...)` — no-op для `unlimited=true` (реальний
+  залишок в `ai_credits` не чіпається), звичайне списання інакше
+- Перевірка належності робиться ДВОМА простими select-запитами
+  (`organization_members` → `profiles`), не одним embed-запитом
+  через PostgREST nested select — у проєкті немає жодного прецеденту
+  вкладеного `select=table(column)` (перевірено при написанні
+  `benchmarkAggregator.ts` раніше), тож свідомо не покладались на
+  синтаксис, який тут ніде не тестувався
+
+**Усі 5 місць переписано на спільний helper:** `contentGeneration.ts`,
+`sitesAiHandler.ts`, `socialHandler.ts`, `translatorHandler.ts`,
+`agentHandler.ts`. В `agentHandler.ts` (batch, генерує на кілька
+сторінок за раз) окремо виправлено: `MAX_PAGES_PER_RUN` (ліміт
+сторінок за один запуск агента) раніше додатково звужувався залишком
+кредитів (`Math.min(MAX_PAGES_PER_RUN, creditsRemaining)`) — для
+`unlimited=true` це звуження прибрано, ліміт сторінок лишається
+власне `MAX_PAGES_PER_RUN`, не залежить від кредитів.
+
+**API-відповіді** (`/api/ai/generate`, `/api/ai/credits`, Sites AI,
+Social, Translator generate) тепер повертають додаткове поле
+`unlimited: boolean` поряд з `credits_remaining`.
+
+**UI:** `AiContentUI.tsx` (`/dashboard/content`) — показує `∞` замість
+числа, коли `unlimited === true`. Це єдине місце в фронтенді, що
+показує баланс кредитів (перевірено — Sites AI/Social/Translator
+UI кредити окремо не відображають).
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто на змінених файлах, `wrangler deploy --dry-run` успішно
+(701.82 KiB, gzip 122.60 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** UI-індикатор "безліміт" в
+інших AI-фічах (Sites AI/Social/Translator) — там баланс кредитів
+взагалі не відображався в UI до цієї зміни, додавати новий UI-елемент
+не входило в запит; додано лише поле `unlimited` у відповідь API на
+майбутнє. Немає окремої admin-панелі для ручного призначення
+безліміту іншим організаціям (не тільки platform_role='admin') —
+якщо знадобиться клієнтам на "необмеженому" корпоративному тарифі,
+це окрема задача з іншою моделлю (напр. `plans.unlimited_ai_credits`),
+не поточне рішення, зав'язане на глобальну роль адміна.

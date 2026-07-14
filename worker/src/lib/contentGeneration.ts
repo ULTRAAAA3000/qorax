@@ -6,8 +6,9 @@
 // ============================================================
 
 import type { Env } from "../types";
-import { selectRows, insertRow, updateRows } from "./supabase";
+import { selectRows, insertRow } from "./supabase";
 import { getUserIdFromToken } from "./gscHandler";
+import { checkAiCredits, deductAiCredits } from "./aiCredits";
 
 const GEMINI_ENDPOINT =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
@@ -143,15 +144,11 @@ export async function handleAiGenerate(
   if (!topic || topic.length > 500) return json({ error: "Опишіть тему (до 500 символів)" }, 400, corsHeaders);
 
   // Перевіряємо і списуємо credit ДО виклику Gemini — не витрачати квоту
-  // на запит, який все одно буде відхилено через відсутність кредитів
-  const creditsRes = await selectRows<{ credits_remaining: number }>(
-    "ai_credits",
-    `select=credits_remaining&organization_id=eq.${encodeURIComponent(orgId)}`,
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  const credits = creditsRes.data?.[0]?.credits_remaining ?? 0;
-  if (credits <= 0) {
+  // на запит, який все одно буде відхилено через відсутність кредитів.
+  // aiCredits.ts (спільний helper) — безлімітні кредити для organization_id,
+  // де є учасник з profiles.platform_role='admin' (Артем, липень 2026).
+  const creditsCheck = await checkAiCredits(orgId, env);
+  if (!creditsCheck.ok) {
     return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
   }
 
@@ -163,13 +160,7 @@ export async function handleAiGenerate(
   if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
 
   // Списуємо credit і записуємо генерацію в історію
-  await updateRows(
-    "ai_credits",
-    `organization_id=eq.${encodeURIComponent(orgId)}`,
-    { credits_remaining: credits - 1 },
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
+  const creditsRemaining = await deductAiCredits(orgId, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
   await insertRow(
     "ai_generations",
     {
@@ -183,7 +174,7 @@ export async function handleAiGenerate(
     env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  return json({ output: result.text, credits_remaining: credits - 1 }, 200, corsHeaders);
+  return json({ output: result.text, credits_remaining: creditsRemaining, unlimited: creditsCheck.unlimited }, 200, corsHeaders);
 }
 
 // ── Route: GET /api/ai/history?site_id= ──────────────────────────────
@@ -240,6 +231,11 @@ export async function handleAiCredits(
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   const row = res.data?.[0];
+  const creditsCheck = await checkAiCredits(orgId, env);
 
-  return json({ credits_remaining: row?.credits_remaining ?? 0, credits_reset_at: row?.credits_reset_at ?? null }, 200, corsHeaders);
+  return json(
+    { credits_remaining: row?.credits_remaining ?? 0, credits_reset_at: row?.credits_reset_at ?? null, unlimited: creditsCheck.unlimited },
+    200,
+    corsHeaders
+  );
 }
