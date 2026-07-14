@@ -11,6 +11,15 @@ import type { LucideIcon } from "lucide-react";
  * зафіксовані в MODULE_ROADMAP.md як концепції без коду — ці
  * сторінки лише дизайн, переходи на реальні продукти додамо, коли
  * кожен з них реально почне реалізовуватись.
+ *
+ * isLoggedIn — сесія Supabase спільна на весь домен (cookie
+ * path="/", 400 днів — @supabase/ssr за замовчуванням), тому
+ * користувач, який вже увійшов через /dashboard чи /creator, не
+ * повинен бачити тут повідомлення, що натякає на повторний вхід.
+ * Сторінка сама не робить запит до Supabase — той самий
+ * server-side `auth.getUser()`, що вже виконує кожна /app/*-сторінка
+ * продукту, передається сюди пропсом (уникає дублювання клієнта
+ * Supabase в кожному з 3 coming-soon роутів).
  */
 
 interface HighlightItem {
@@ -27,6 +36,7 @@ interface Props {
   description: string;
   accent: "lime" | "cyan" | "purple";
   highlights: HighlightItem[];
+  isLoggedIn?: boolean;
 }
 
 const ACCENT_COLORS = { lime: "var(--lime)", cyan: "var(--cyan)", purple: "#B98CF7" } as const;
@@ -36,7 +46,7 @@ const ACCENT_GLOW = {
   purple: "rgba(185,140,247,0.06)",
 } as const;
 
-export function ProductComingSoon({ activePath, eyebrow, name, tagline, description, accent, highlights }: Props) {
+export function ProductComingSoon({ activePath, eyebrow, name, tagline, description, accent, highlights, isLoggedIn }: Props) {
   const color = ACCENT_COLORS[accent];
 
   return (
@@ -100,10 +110,21 @@ export function ProductComingSoon({ activePath, eyebrow, name, tagline, descript
       <section className="mx-auto max-w-2xl px-6 sm:px-8 pb-24 w-full text-center">
         <Reveal>
           <div className="rounded-2xl p-8" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
-            <p className="text-[var(--text-secondary)] mb-1">Поки що доступна лише</p>
-            <a href="/login" className="inline-flex items-center gap-2 mt-2 text-sm font-medium" style={{ color: "var(--lime)" }}>
-              Qorax Business →
-            </a>
+            {isLoggedIn ? (
+              <>
+                <p className="text-[var(--text-secondary)] mb-1">А поки — ваш акаунт вже готовий у</p>
+                <a href="/dashboard" className="inline-flex items-center gap-2 mt-2 text-sm font-medium" style={{ color: "var(--lime)" }}>
+                  Qorax Business →
+                </a>
+              </>
+            ) : (
+              <>
+                <p className="text-[var(--text-secondary)] mb-1">Поки що доступна лише</p>
+                <a href="/login" className="inline-flex items-center gap-2 mt-2 text-sm font-medium" style={{ color: "var(--lime)" }}>
+                  Qorax Business →
+                </a>
+              </>
+            )}
           </div>
         </Reveal>
       </section>

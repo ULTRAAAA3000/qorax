@@ -1,9 +1,13 @@
 import { ProductComingSoon } from "@/app/components/ProductComingSoon";
+import { createClient } from "@/app/lib/supabase/server";
 import { Sparkles, ScanSearch, FolderOpen } from "lucide-react";
 
 export const metadata = { title: "Qorax Browser — незабаром" };
 
-export default function BrowserPage() {
+export default async function BrowserPage() {
+  const supabase = await createClient();
+  const { data: { user } } = await supabase.auth.getUser();
+
   return (
     <ProductComingSoon
       activePath="/browser"
@@ -12,6 +16,7 @@ export default function BrowserPage() {
       tagline="Досліджуйте інтернет"
       description="Робочий браузер для творців, маркетологів і підприємців: аналізує сайти, збирає ідеї та передає їх у решту екосистеми Qorax."
       accent="cyan"
+      isLoggedIn={!!user}
       highlights={[
         { icon: Sparkles, title: "AI Sidebar", text: "AI на будь-якій сторінці — пояснює сайт, робить SEO-аудит, готує макет чи лист одним запитом." },
         { icon: ScanSearch, title: "Site Inspector", text: "Шрифти, кольори, компоненти, SEO, швидкість і технології будь-якого сайту в один клік." },
