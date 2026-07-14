@@ -85,6 +85,14 @@ import {
   handleProductCategoriesSet,
 } from "./lib/commerceCatalog";
 import { handleCommerceCheckout } from "./lib/commerceCheckout";
+import {
+  handleTeamTasksList,
+  handleTeamTaskCreate,
+  handleTeamTaskStatusUpdate,
+  handleTeamCommentsList,
+  handleTeamCommentCreate,
+  handleActivityFeedList,
+} from "./lib/teamWorkspaceHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGa4Authorize,
@@ -1015,6 +1023,28 @@ const worker = {
     }
     if (url.pathname === "/api/checkout/commerce" && request.method === "POST") {
       return handleCommerceCheckout(request, env, corsHeaders(origin));
+    }
+
+    // ── Team Workspace routes (концептуальний документ "AI Business
+    // Operating System" — п'ять напрямків, MVP-фундамент) ──────────
+    if (url.pathname === "/api/team/tasks" && request.method === "GET") {
+      return handleTeamTasksList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/team/tasks" && request.method === "POST") {
+      return handleTeamTaskCreate(request, env, corsHeaders(origin));
+    }
+    const teamTaskStatusMatch = url.pathname.match(/^\/api\/team\/tasks\/([^/]+)$/);
+    if (teamTaskStatusMatch && request.method === "PATCH") {
+      return handleTeamTaskStatusUpdate(request, env, corsHeaders(origin), teamTaskStatusMatch[1]);
+    }
+    if (url.pathname === "/api/team/comments" && request.method === "GET") {
+      return handleTeamCommentsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/team/comments" && request.method === "POST") {
+      return handleTeamCommentCreate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/team/activity" && request.method === "GET") {
+      return handleActivityFeedList(request, env, corsHeaders(origin));
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту
