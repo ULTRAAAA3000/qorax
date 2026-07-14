@@ -1,7 +1,14 @@
+import Link from "next/link";
 import { QoraxLogo } from "./QoraxLogo";
 
+// isLoggedIn прийнято залишити в пропсах (сторінки, що використовують
+// MarketingHeader, все ще передають user-стан для інших цілей), але
+// шапка більше НЕ показує жодного auth-переходу ("Увійти"/"До
+// дашборду") — вхід тепер відбувається виключно через сторінку
+// конкретного продукту екосистеми (/login веде туди ж, але лінк на
+// нього прибрано з глобальної навігації лендингу).
+
 export function MarketingHeader({
-  isLoggedIn = false,
   activePath = "",
 }: {
   isLoggedIn?: boolean;
@@ -9,7 +16,7 @@ export function MarketingHeader({
 }) {
   const navLinks = [
     { href: "/features", label: "Можливості" },
-    { href: isLoggedIn ? "/dashboard/upgrade" : "/#plans", label: "Тарифи" },
+    { href: "/#plans", label: "Тарифи" },
     { href: "/docs", label: "Документація" },
     { href: "/about", label: "Про нас" },
   ];
@@ -25,9 +32,9 @@ export function MarketingHeader({
       }}
     >
       <div className="mx-auto max-w-6xl px-6 sm:px-8 h-16 flex items-center justify-between">
-        <a href="/">
+        <Link href="/">
           <QoraxLogo size="sm" />
-        </a>
+        </Link>
         <nav className="hidden md:flex items-center gap-7 text-sm text-[var(--text-secondary)]">
           {navLinks.map(({ href, label }) => {
             const isActive = activePath === href;
@@ -47,26 +54,9 @@ export function MarketingHeader({
             );
           })}
         </nav>
-        <div className="flex items-center gap-3">
-          {isLoggedIn ? (
-            <a
-              href="/dashboard/home"
-              className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-3 py-2"
-            >
-              До дашборду
-            </a>
-          ) : (
-            <a
-              href="/login"
-              className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors px-3 py-2"
-            >
-              Увійти
-            </a>
-          )}
-          <a href="/#audit" className="glow-button text-sm !py-2 !px-4">
-            Безкоштовний аудит
-          </a>
-        </div>
+        <Link href="/#audit" className="glow-button text-sm !py-2 !px-4">
+          Безкоштовний аудит
+        </Link>
       </div>
     </header>
   );

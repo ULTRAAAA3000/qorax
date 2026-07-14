@@ -8,6 +8,7 @@ import { HeroGlassCubeLazy as HeroGlassCube } from "./components/HeroGlassCubeLa
 import { StatsStrip } from "./components/StatsStrip";
 import { FeatureBento } from "./components/FeatureBento";
 import { PlatformModulesSection } from "./components/PlatformModulesSection";
+import { EcosystemSection } from "./components/EcosystemSection";
 import { HowItWorksSection } from "./components/HowItWorksSection";
 import { FaqSection } from "./components/FaqSection";
 import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
@@ -101,6 +102,7 @@ export default async function Home() {
       </ProductSection>
 
       <FeatureBento />
+      <EcosystemSection />
       <PlatformModulesSection />
       <HowItWorksSection />
       <PlansSection starterUrl={starterUrl} growthUrl={growthUrl} agencyUrl={agencyUrl} />
