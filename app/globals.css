@@ -1,5 +1,12 @@
 @import "tailwindcss";
 
+/* Creator (Website Mode canvas) — @xyflow/react стилі. Tailwind 4
+   вимагає імпорт у CSS, не в App.tsx (react-flow @dist/style.css
+   в компоненті не спрацює з новим CSS-based конфігом Tailwind 4). */
+@layer base {
+  @import "@xyflow/react/dist/style.css";
+}
+
 /* ============================================================
    QORAX — Design Tokens (Raycast-Inspired Dark Premium)
    ============================================================ */

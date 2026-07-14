@@ -1,0 +1,253 @@
+// ============================================================
+// QORAX — Qorax Creator: canvas_boards / canvas_nodes (MVP Website Mode)
+// ============================================================
+// MODULE_ROADMAP.md, "Qorax Creator — візуальна платформа
+// створення". MVP цього файлу — ТІЛЬКИ Website Mode: дошка з одним
+// node_type='embedded_editor' вузлом, що показує вже наявний
+// Sites-редактор (ProjectEditorUI.tsx) у рамці на canvas. Жодної
+// нової логіки редагування сторінок тут немає — той самий
+// sitesBuilderHandler.ts обслуговує сам контент, цей файл лише
+// керує дошками й розташуванням вузлів на них.
+// ============================================================
+
+import type { Env } from "../types";
+import { selectRows, insertRowReturning, updateRows } from "./supabase";
+import { requireOrgAccess } from "./orgAuth";
+
+function json(data: unknown, status: number, headers: Record<string, string>): Response {
+  return new Response(JSON.stringify(data), { status, headers: { ...headers, "Content-Type": "application/json" } });
+}
+
+function accessErrorResponse(status: number | undefined, corsHeaders: Record<string, string>): Response {
+  if (status === 404) return json({ error: "Не знайдено" }, 404, corsHeaders);
+  if (status === 403) return json({ error: "Немає доступу" }, 403, corsHeaders);
+  return json({ error: "Unauthorized" }, 401, corsHeaders);
+}
+
+interface BoardRow {
+  id: string;
+  organization_id: string;
+  title: string;
+  created_at: string;
+  updated_at: string;
+}
+
+interface NodeRow {
+  id: string;
+  board_id: string;
+  node_type: string;
+  position_x: number;
+  position_y: number;
+  width: number;
+  height: number;
+  data: Record<string, unknown>;
+  ref_table: string | null;
+  ref_id: string | null;
+}
+
+// ── Допоміжне: дістати organization_id дошки, без відомого org
+// наперед (список/деталі дошки викликаються з board_id, не org_id
+// в URL — на відміну від Rank/Analytics, де site_id вже містить
+// organization-контекст неявно через requireOrgAccessForSite). ──
+async function getBoardOrgId(boardId: string, env: Env): Promise<string | null> {
+  const res = await selectRows<{ organization_id: string }>(
+    "canvas_boards",
+    `select=organization_id&id=eq.${encodeURIComponent(boardId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  return res.data?.[0]?.organization_id ?? null;
+}
+
+// ── GET /api/organizations/:id/canvas-boards ── список дощок організації
+
+export async function handleBoardsList(request: Request, env: Env, corsHeaders: Record<string, string>, organizationId: string): Promise<Response> {
+  const access = await requireOrgAccess(request, organizationId, "viewer", env);
+  if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  const res = await selectRows<BoardRow>(
+    "canvas_boards",
+    `select=id,organization_id,title,created_at,updated_at&organization_id=eq.${encodeURIComponent(organizationId)}&order=updated_at.desc`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!res.ok) return json({ error: res.error }, 500, corsHeaders);
+
+  return json({ boards: res.data ?? [] }, 200, corsHeaders);
+}
+
+// ── POST /api/organizations/:id/canvas-boards ── нова дошка
+
+export async function handleBoardCreate(request: Request, env: Env, corsHeaders: Record<string, string>, organizationId: string): Promise<Response> {
+  const access = await requireOrgAccess(request, organizationId, "editor", env);
+  if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  let body: { title?: string };
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
+
+  const insertRes = await insertRowReturning<BoardRow>(
+    "canvas_boards",
+    { organization_id: organizationId, title: body.title?.trim() || "Без назви" },
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!insertRes.ok) return json({ error: insertRes.error }, 500, corsHeaders);
+
+  return json({ ok: true, board: insertRes.data?.[0] ?? null }, 201, corsHeaders);
+}
+
+// ── GET /api/canvas-boards/:id ── дошка + вузли ──────────────────
+
+export async function handleBoardDetail(request: Request, env: Env, corsHeaders: Record<string, string>, boardId: string): Promise<Response> {
+  const orgId = await getBoardOrgId(boardId, env);
+  if (!orgId) return json({ error: "Дошку не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, orgId, "viewer", env);
+  if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  const boardRes = await selectRows<BoardRow>(
+    "canvas_boards",
+    `select=id,organization_id,title,created_at,updated_at&id=eq.${encodeURIComponent(boardId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const board = boardRes.data?.[0];
+  if (!board) return json({ error: "Дошку не знайдено" }, 404, corsHeaders);
+
+  const nodesRes = await selectRows<NodeRow>(
+    "canvas_nodes",
+    `select=id,board_id,node_type,position_x,position_y,width,height,data,ref_table,ref_id&board_id=eq.${encodeURIComponent(boardId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+
+  return json({ board, nodes: nodesRes.data ?? [] }, 200, corsHeaders);
+}
+
+// ── POST /api/canvas-boards/:id/nodes ── новий вузол на дошці ────
+//
+// MVP: тільки node_type='embedded_editor', ref_table='projects'.
+// Інші типи (text/shape/component/live_embed) — наступні режими за
+// планом, не додаються тут навмисно, щоб не проектувати схему під
+// функціонал, якого ще немає.
+
+export async function handleNodeCreate(request: Request, env: Env, corsHeaders: Record<string, string>, boardId: string): Promise<Response> {
+  const orgId = await getBoardOrgId(boardId, env);
+  if (!orgId) return json({ error: "Дошку не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, orgId, "editor", env);
+  if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  let body: { node_type?: string; ref_id?: string; position_x?: number; position_y?: number };
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON" }, 400, corsHeaders);
+  }
+
+  if (body.node_type !== "embedded_editor") {
+    return json({ error: "Підтримується лише node_type='embedded_editor' (Website Mode MVP)" }, 400, corsHeaders);
+  }
+  if (!body.ref_id) return json({ error: "ref_id (project_id) обов'язковий для embedded_editor" }, 400, corsHeaders);
+
+  // Перевірка, що project справді належить тій самій організації —
+  // без цього дошка однієї організації могла б вбудувати Sites-проєкт
+  // чужої (ref_id — м'який зв'язок, не foreign key, БД сама цього не
+  // забороняє).
+  const projectRes = await selectRows<{ id: string; organization_id: string }>(
+    "projects",
+    `select=id,organization_id&id=eq.${encodeURIComponent(body.ref_id)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const project = projectRes.data?.[0];
+  if (!project || project.organization_id !== orgId) {
+    return json({ error: "Проєкт не знайдено або належить іншій організації" }, 404, corsHeaders);
+  }
+
+  const insertRes = await insertRowReturning<NodeRow>(
+    "canvas_nodes",
+    {
+      board_id: boardId,
+      node_type: "embedded_editor",
+      position_x: body.position_x ?? 0,
+      position_y: body.position_y ?? 0,
+      width: 480,
+      height: 360,
+      data: {},
+      ref_table: "projects",
+      ref_id: body.ref_id,
+    },
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!insertRes.ok) return json({ error: insertRes.error }, 500, corsHeaders);
+
+  return json({ ok: true, node: insertRes.data?.[0] ?? null }, 201, corsHeaders);
+}
+
+// ── PATCH /api/canvas-boards/:id/nodes/:nodeId ── позиція/розмір ──
+//
+// Викликається при drag/resize на canvas — часті виклики, тому
+// приймає лише геометрію (position_x/y, width/height), не весь вузол.
+
+export async function handleNodeUpdate(request: Request, env: Env, corsHeaders: Record<string, string>, boardId: string, nodeId: string): Promise<Response> {
+  const orgId = await getBoardOrgId(boardId, env);
+  if (!orgId) return json({ error: "Дошку не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, orgId, "editor", env);
+  if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  let body: { position_x?: number; position_y?: number; width?: number; height?: number };
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invalid JSON" }, 400, corsHeaders);
+  }
+
+  const patch: Record<string, unknown> = { updated_at: new Date().toISOString() };
+  if (typeof body.position_x === "number") patch.position_x = body.position_x;
+  if (typeof body.position_y === "number") patch.position_y = body.position_y;
+  if (typeof body.width === "number") patch.width = body.width;
+  if (typeof body.height === "number") patch.height = body.height;
+
+  const res = await updateRows(
+    "canvas_nodes",
+    `id=eq.${encodeURIComponent(nodeId)}&board_id=eq.${encodeURIComponent(boardId)}`,
+    patch,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!res.ok) return json({ error: res.error }, 500, corsHeaders);
+
+  return json({ ok: true }, 200, corsHeaders);
+}
+
+// ── DELETE /api/canvas-boards/:id/nodes/:nodeId ──────────────────
+
+export async function handleNodeDelete(request: Request, env: Env, corsHeaders: Record<string, string>, boardId: string, nodeId: string): Promise<Response> {
+  const orgId = await getBoardOrgId(boardId, env);
+  if (!orgId) return json({ error: "Дошку не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, orgId, "editor", env);
+  if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  const res = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/canvas_nodes?id=eq.${encodeURIComponent(nodeId)}&board_id=eq.${encodeURIComponent(boardId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        Prefer: "return=minimal",
+      },
+    }
+  );
+  if (!res.ok) return json({ error: `Delete failed: ${res.status}` }, 500, corsHeaders);
+
+  return json({ ok: true }, 200, corsHeaders);
+}

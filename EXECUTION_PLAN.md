@@ -2420,3 +2420,90 @@ Inbox" (розділ 12) і "Predictive AI Risk/Opportunity Detection"
 інбоксу), або (б) навпаки — `AiInboxCard` зникає, а весь потік іде
 через `PredictiveInsightsPanel`/майбутній AI Chat. Рішення для
 наступної сесії, позначено як відомий технічний борг хвилі 4.
+
+---
+
+## Qorax Creator: Website Mode MVP — перший крок нового продукту
+
+MODULE_ROADMAP.md, "Qorax Creator — візуальна платформа створення".
+План явно каже: Creator реалістичний ПІСЛЯ хвилі 4, не поруч з нею
+(Publish-потоки нікуди публікувати без реальних Sites/CRM/Mail
+об'єктів). Перевірено перед стартом: уся хвиля 4 (Team Workspace,
+Knowledge Graph, Benchmarking, Predictive AI) вже реалізована
+паралельними сесіями — ґрунт готовий, можна починати.
+
+**Порядок реалізації з плану:** Website Mode (вже є Sites) → KG
+Visualization → Live Objects → Components/Brand Kit → Smart
+Components → AI Creator → Email/Social/Presentation Publish → History
+→ Developer Mode/Multiplayer/Marketplace останніми. Цей прохід —
+ТІЛЬКИ перший пункт.
+
+**Нова залежність:** `@xyflow/react` (12.11.2) — план явно каже "не
+будувати рушій нескінченного полотна з нуля". Перевірено перед
+встановленням: офіційно підтримує React 19 (пряма заміна
+deprecated `react-flow-renderer`), Tailwind 4 сумісність
+задокументована офіційно (стилі імпортуються в `globals.css` через
+`@layer base`, не в компоненті — інакше не спрацює з CSS-based
+конфігом Tailwind 4, який проєкт вже використовує).
+
+**Схема (`0071_creator_canvas.sql`):** `canvas_boards` +
+`canvas_nodes`, той самий organization-рівня RLS-патерн, що
+`kg_nodes`/`ai_predictions`. `ref_table`/`ref_id` — та сама м'яка
+прив'язка, що вже прийнята для `kg_nodes.ref_table/ref_id` (0065),
+тут вказує на `projects.id`, коли `node_type='embedded_editor'`.
+Навмисно НЕ додано в цій міграції (усі — пізніші кроки за планом):
+- `canvas_edges` — Website Mode не потребує зв'язків між вузлами
+- `bound_ref_table`/`bound_ref_id`/`field_bindings` (Smart
+  Components) — план явно описує це як "генуїнно нову ідею, не
+  перевикористання", окремий крок
+- `creator_components`/`creator_brand_kits` — залежать від AI
+  Creator і Components-бібліотеки, обидва пізніші кроки
+
+Реєстрація в `platform_modules` — той самий патерн, що
+`team`/`benchmark` (0068/0069): `status='coming_soon'`, Артем сам
+перемикає на `live` після особистої перевірки.
+
+**Worker (`creatorHandler.ts`, новий файл):** CRUD дощок
+(`requireOrgAccess`, organization-рівня, той самий рівень доступу,
+що Team Workspace) + CRUD вузлів дошки. MVP навмисно приймає лише
+`node_type='embedded_editor'` при створенні вузла — інші типи
+(text/shape/component/live_embed) з'являться з майбутніми режимами,
+не проектувалась схема під функціонал, якого ще немає. Перевірка
+при створенні вузла: `ref_id` (project_id) повинен належати ТІЙ
+САМІЙ організації, що й дошка — `ref_table`/`ref_id` м'який зв'язок,
+БД сама цього не гарантує (на відміну від foreign key), тож
+перевірка на рівні worker обов'язкова, інакше дошка однієї
+організації могла б вбудувати чужий Sites-проєкт. `handleNodeUpdate`
+приймає лише геометрію (position/width/height) — окремий, частий
+виклик під час drag/resize, не весь вузол. Перевикористано вже
+наявний `insertRowReturning` (не писав новий helper) і вже наявний
+`GET /api/projects?organization_id=` (sitesBuilderHandler.ts) для
+списку проєктів — жодного дубльованого ендпоінту.
+
+**UI (3 нові файли, той самий патерн, що Team Workspace):**
+- `app/dashboard/creator/page.tsx` + `CreatorBoardsListUI.tsx` —
+  список дощок організації, створення нової
+- `app/dashboard/creator/[boardId]/page.tsx` — окремий, безсайдбарний
+  layout (той самий підхід, що `ProjectEditorUI.tsx` сам по собі —
+  canvas потребує максимум простору)
+- `[boardId]/BoardCanvasUI.tsx` — сам `<ReactFlow>` з custom
+  `node_type='embeddedEditor'`: рамка з назвою проєкту й кнопкою
+  видалення, усередині — `ProjectEditorUI` напряму (не iframe,
+  обґрунтування вище). `nodrag`/`nowheel` класи на внутрішньому
+  контейнері — щоб скрол і клік усередині вбудованого редактора не
+  тягнули сам canvas-вузол. Позиція персистується в БД по
+  завершенню drag (`onNodeDragStop`), не на кожен піксель руху.
+  `getFreshToken()` — той самий патерн, що `TeamWorkspaceUI.tsx`/
+  `ProjectEditorUI.tsx` (не кешувати JWT на весь час життя
+  компонента, Supabase-сесія живе ~1 годину).
+
+**Перевірено:** `tsc --noEmit` чисто (worker+app), `npx eslint
+app/dashboard/creator/` чисто, `npm run build` успішно
+(`/dashboard/creator` і `/dashboard/creator/[boardId]` на місці),
+`wrangler deploy --dry-run --config wrangler.toml` успішно
+(700.82 KiB, gzip 122.26 KiB).
+
+**Міграцію `0071_creator_canvas.sql` потрібно накотити на Supabase
+вручну (Артем)** — без неї модуль з'явиться в сайдбарі (як
+`coming_soon`, доки Артем сам не увімкне) але жодна дошка не
+створиться.

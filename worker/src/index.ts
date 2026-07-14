@@ -106,6 +106,14 @@ import {
 } from "./lib/ga4Handler";
 import { runPredictiveDetectors, handlePredictionsList, handlePredictionDismiss } from "./lib/predictiveEngine";
 import {
+  handleBoardsList,
+  handleBoardCreate,
+  handleBoardDetail,
+  handleNodeCreate,
+  handleNodeUpdate,
+  handleNodeDelete,
+} from "./lib/creatorHandler";
+import {
   handleGscAuth,
   handleGscCallback,
   handleGscStatus,
@@ -728,6 +736,30 @@ const worker = {
     const predictionDismissMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/predictions\/([^/]+)\/dismiss$/);
     if (predictionDismissMatch && request.method === "POST") {
       return handlePredictionDismiss(request, env, corsHeaders(origin), predictionDismissMatch[1], predictionDismissMatch[2]);
+    }
+
+    // ── Qorax Creator: Website Mode MVP (MODULE_ROADMAP.md "Qorax Creator") ──
+    const boardsListMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/canvas-boards$/);
+    if (boardsListMatch && request.method === "GET") {
+      return handleBoardsList(request, env, corsHeaders(origin), boardsListMatch[1]);
+    }
+    if (boardsListMatch && request.method === "POST") {
+      return handleBoardCreate(request, env, corsHeaders(origin), boardsListMatch[1]);
+    }
+    const boardDetailMatch = url.pathname.match(/^\/api\/canvas-boards\/([^/]+)$/);
+    if (boardDetailMatch && request.method === "GET") {
+      return handleBoardDetail(request, env, corsHeaders(origin), boardDetailMatch[1]);
+    }
+    const nodesListMatch = url.pathname.match(/^\/api\/canvas-boards\/([^/]+)\/nodes$/);
+    if (nodesListMatch && request.method === "POST") {
+      return handleNodeCreate(request, env, corsHeaders(origin), nodesListMatch[1]);
+    }
+    const nodeItemMatch = url.pathname.match(/^\/api\/canvas-boards\/([^/]+)\/nodes\/([^/]+)$/);
+    if (nodeItemMatch && request.method === "PATCH") {
+      return handleNodeUpdate(request, env, corsHeaders(origin), nodeItemMatch[1], nodeItemMatch[2]);
+    }
+    if (nodeItemMatch && request.method === "DELETE") {
+      return handleNodeDelete(request, env, corsHeaders(origin), nodeItemMatch[1], nodeItemMatch[2]);
     }
 
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
