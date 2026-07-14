@@ -37,6 +37,43 @@ async function requireAuthenticatedUser(request: Request, env: Env): Promise<{ o
   return { ok: true, userId: data.id };
 }
 
+// ── Premium-гейтинг (roadmap Крок 4: "преміум-курси — Academy+
+// підписка чи вищий тариф Qorax") ────────────────────────────────
+//
+// На відміну від canUseCro в croHandler.ts (перевіряє ОДНУ
+// organization_id, бо CRO прив'язаний до конкретного сайту),
+// Academy — profile-рівня (коментар вище) — користувач може
+// належати до кількох організацій. Компроміс: якщо ХОЧА Б ОДНА з
+// організацій користувача має відповідний тариф — преміум-контент
+// доступний. Простіше й щедріше до користувача, ніж вимагати
+// "активний" org-контекст, якого в Academy запитах немає (немає
+// organization_id у GET-запиті курсу, на відміну від POST progress).
+async function hasPremiumAcademyAccess(userId: string, env: Env): Promise<boolean> {
+  const memberRes = await selectRows<{ organization_id: string }>(
+    "organization_members",
+    `select=organization_id&user_id=eq.${encodeURIComponent(userId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const orgIds = (memberRes.data ?? []).map(m => m.organization_id);
+  if (orgIds.length === 0) return false;
+
+  const orgFilter = orgIds.map(id => encodeURIComponent(id)).join(",");
+  const subsRes = await selectRows<{ organization_id: string; status: string; plans: { code: string } }>(
+    "subscriptions",
+    `select=organization_id,status,plans(code)&organization_id=in.(${orgFilter})&status=in.(active,trialing)`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+
+  // Той самий набір тарифів, що canUseCro (Growth+) — преміум-курси
+  // логічно на тому самому рівні, що інші платні фічі-гачки платформи.
+  return (subsRes.data ?? []).some(s => {
+    const planCode = (s.plans as { code: string } | null)?.code;
+    return ["growth", "agency", "admin", "trial"].includes(planCode ?? "");
+  });
+}
+
 interface CourseRow {
   id: string;
   title: string;
@@ -125,6 +162,15 @@ export async function handleAcademyCourseDetail(
   const course = courseRes.data?.[0];
   if (!course) return json({ error: "Курс не знайдено" }, 404, corsHeaders);
 
+  if (course.is_premium && !(await hasPremiumAcademyAccess(access.userId, env))) {
+    // Курс лишається видимим (метадані), але БЕЗ контенту уроків —
+    // каталог показує "закритий" курс (Lock-іконка в AcademyCatalogUI),
+    // не приховує його повністю, узгоджено з коментарем у 0046 про
+    // те, що RLS select курсів/уроків відкритий для всіх — гейтинг
+    // тут, на рівні worker, не на рівні бази.
+    return json({ course, lessons: [], locked: true }, 200, corsHeaders);
+  }
+
   const lessonsRes = await selectRows<LessonRow>(
     "academy_lessons",
     `select=id,course_id,title,slug,content,order_index&course_id=eq.${course.id}&order=order_index.asc`,
@@ -175,6 +221,21 @@ export async function handleAcademyProgress(
   );
   const lesson = lessonRes.data?.[0];
   if (!lesson) return json({ error: "Урок не знайдено" }, 404, corsHeaders);
+
+  // Той самий гейтинг, що handleAcademyCourseDetail — без цієї
+  // перевірки прогрес можна було б позначити напряму через API навіть
+  // не бачивши контенту преміум-уроку (endpoint не пов'язаний з тим,
+  // що GET курсу вже приховав контент, це окремий запит).
+  const courseRes = await selectRows<{ id: string; is_premium: boolean }>(
+    "academy_courses",
+    `select=id,is_premium&id=eq.${encodeURIComponent(lesson.course_id)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const lessonCourse = courseRes.data?.[0];
+  if (lessonCourse?.is_premium && !(await hasPremiumAcademyAccess(access.userId, env))) {
+    return json({ error: "Цей курс доступний на тарифі Growth і вище" }, 403, corsHeaders);
+  }
 
   // organization_id зберігається в academy_progress для RLS-фільтрації
   // (0046 коментар) — беремо першу організацію користувача, той самий

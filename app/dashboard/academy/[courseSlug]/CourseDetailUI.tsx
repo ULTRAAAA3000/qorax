@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, CheckCircle2, Circle, Sparkles, Send, Award } from "lucide-react";
+import Link from "next/link";
+import { Loader2, CheckCircle2, Circle, Sparkles, Send, Award, Lock } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 
 interface Course {
@@ -64,6 +65,7 @@ function renderLessonContent(content: unknown): React.ReactNode {
 export function CourseDetailUI({ courseSlug, accessToken }: Props) {
   const [course, setCourse] = useState<Course | null>(null);
   const [lessons, setLessons] = useState<Lesson[] | null>(null);
+  const [locked, setLocked] = useState(false);
   const [activeLessonId, setActiveLessonId] = useState<string | null>(null);
   const [marking, setMarking] = useState(false);
   const [certificateIssued, setCertificateIssued] = useState(false);
@@ -84,6 +86,7 @@ export function CourseDetailUI({ courseSlug, accessToken }: Props) {
       const data = await res.json();
       setCourse(data.course);
       setLessons(data.lessons ?? []);
+      setLocked(!!data.locked);
       if (data.lessons?.length && !activeLessonId) setActiveLessonId(data.lessons[0].id);
     } catch {
       setNotFound(true);
@@ -153,6 +156,18 @@ export function CourseDetailUI({ courseSlug, accessToken }: Props) {
         </div>
       )}
 
+      {locked ? (
+        <div className="glow-card p-8 text-center space-y-3">
+          <Lock size={24} className="mx-auto" style={{ color: "var(--text-tertiary)" }} />
+          <p className="text-sm text-[var(--text-secondary)]">
+            Цей курс доступний на тарифі Growth і вище.
+          </p>
+          <Link href="/dashboard/upgrade" className="glow-button text-sm !py-2 !px-4 inline-flex">
+            Переглянути тарифи
+          </Link>
+        </div>
+      ) : (
+      <>
       <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
         <div className="space-y-1">
           {lessons.map(lesson => (
@@ -185,6 +200,8 @@ export function CourseDetailUI({ courseSlug, accessToken }: Props) {
           </div>
         )}
       </div>
+      </>
+      )}
 
       {/* ── AI-наставник ── */}
       <div className="glow-card p-4 space-y-3">

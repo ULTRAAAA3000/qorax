@@ -86,6 +86,14 @@ import {
   handleProductCategoriesSet,
 } from "./lib/commerceCatalog";
 import { handleCommerceCheckout } from "./lib/commerceCheckout";
+import {
+  handleTeamTasksList,
+  handleTeamTaskCreate,
+  handleTeamTaskStatusUpdate,
+  handleTeamCommentsList,
+  handleTeamCommentCreate,
+  handleActivityFeedList,
+} from "./lib/teamWorkspaceHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGa4Authorize,
@@ -96,6 +104,7 @@ import {
   handleAnalyticsSummary,
   runGa4Sync,
 } from "./lib/ga4Handler";
+import { runPredictiveDetectors, handlePredictionsList, handlePredictionDismiss } from "./lib/predictiveEngine";
 import {
   handleGscAuth,
   handleGscCallback,
@@ -146,6 +155,8 @@ import {
   handleCroStats,
   runCroAggregate,
 } from "./lib/croHandler";
+import { handleBenchmarkGet } from "./lib/benchmarkHandler";
+import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
   handleAiHistory,
@@ -709,6 +720,16 @@ const worker = {
       return handleAnalyticsSummary(request, env, corsHeaders(origin), analyticsSummaryMatch[1]);
     }
 
+    // ── Predictive AI: Risk/Opportunity (MODULE_ROADMAP.md розділ 16) ──
+    const predictionsListMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/predictions$/);
+    if (predictionsListMatch && request.method === "GET") {
+      return handlePredictionsList(request, env, corsHeaders(origin), predictionsListMatch[1]);
+    }
+    const predictionDismissMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/predictions\/([^/]+)\/dismiss$/);
+    if (predictionDismissMatch && request.method === "POST") {
+      return handlePredictionDismiss(request, env, corsHeaders(origin), predictionDismissMatch[1], predictionDismissMatch[2]);
+    }
+
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
     const croSnippetMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/cro\/snippet$/);
     if (croSnippetMatch && request.method === "GET") {
@@ -720,6 +741,12 @@ const worker = {
     const croStatsMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/cro\/stats$/);
     if (croStatsMatch && request.method === "GET") {
       return handleCroStats(request, env, corsHeaders(origin), croStatsMatch[1]);
+    }
+
+    // ── Benchmarking routes (MODULE_ROADMAP.md, розділ 15) ──
+    const benchmarkMatch = url.pathname.match(/^\/api\/benchmarks\/([^/]+)$/);
+    if (benchmarkMatch && request.method === "GET") {
+      return handleBenchmarkGet(request, env, corsHeaders(origin), benchmarkMatch[1]);
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
@@ -1014,6 +1041,28 @@ const worker = {
     }
     if (url.pathname === "/api/checkout/commerce" && request.method === "POST") {
       return handleCommerceCheckout(request, env, corsHeaders(origin));
+    }
+
+    // ── Team Workspace routes (концептуальний документ "AI Business
+    // Operating System" — п'ять напрямків, MVP-фундамент) ──────────
+    if (url.pathname === "/api/team/tasks" && request.method === "GET") {
+      return handleTeamTasksList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/team/tasks" && request.method === "POST") {
+      return handleTeamTaskCreate(request, env, corsHeaders(origin));
+    }
+    const teamTaskStatusMatch = url.pathname.match(/^\/api\/team\/tasks\/([^/]+)$/);
+    if (teamTaskStatusMatch && request.method === "PATCH") {
+      return handleTeamTaskStatusUpdate(request, env, corsHeaders(origin), teamTaskStatusMatch[1]);
+    }
+    if (url.pathname === "/api/team/comments" && request.method === "GET") {
+      return handleTeamCommentsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/team/comments" && request.method === "POST") {
+      return handleTeamCommentCreate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/team/activity" && request.method === "GET") {
+      return handleActivityFeedList(request, env, corsHeaders(origin));
     }
 
     // POST /api/sites/:id/run-speed — запуск перевірки швидкості для одного сайту
@@ -1633,7 +1682,7 @@ const worker = {
   async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     // 0 3 * * * — щодня о 3:00: швидкість + SEO + конкуренти
     if (event.cron === "0 3 * * *") {
-      const [speedSummary, seoSummary, competitorSummary, automationsSummary] = await Promise.all([
+      const [speedSummary, seoSummary, competitorSummary, gscSyncResult, ga4SyncResult, automationsSummary, predictiveSummary, benchmarkSummary] = await Promise.all([
         runSpeedChecks(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
@@ -1669,11 +1718,25 @@ const worker = {
         // Найчастіший пресет розкладу зараз — 'daily', раз на добу
         // достатньо для перевірки.
         runDueAgentAutomations(env),
+        // Predictive AI Risk/Opportunity Detection (MODULE_ROADMAP.md
+        // розділ 16) — той самий нічний тригер, що решта, щоб не
+        // заводити окремий Cloudflare Cron Trigger.
+        runPredictiveDetectors(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+        // Benchmarking (MODULE_ROADMAP.md розділ 15) — читає вчорашні
+        // speed_checks/cro_daily_stats/ai_generations, тому запускається
+        // тут-таки о 3:00, а не окремим тригером: ці таблиці вже
+        // наповнюються попередніми кроками цього ж Promise.all за
+        // попередню добу (не за сьогоднішній прогін).
+        runBenchmarkAggregation(env),
       ]);
       console.log("Speed:", JSON.stringify(speedSummary));
       console.log("SEO:", JSON.stringify(seoSummary));
       console.log("Competitors:", JSON.stringify(competitorSummary));
+      console.log("GSC sync:", JSON.stringify(gscSyncResult));
+      console.log("GA4 sync:", JSON.stringify(ga4SyncResult));
       console.log("Automations:", JSON.stringify(automationsSummary));
+      console.log("Predictive:", JSON.stringify(predictiveSummary));
+      console.log("Benchmark aggregation:", JSON.stringify(benchmarkSummary));
       return;
     }
 
