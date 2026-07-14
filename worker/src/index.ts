@@ -154,6 +154,8 @@ import {
   handleCroStats,
   runCroAggregate,
 } from "./lib/croHandler";
+import { handleBenchmarkGet } from "./lib/benchmarkHandler";
+import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
   handleAiHistory,
@@ -738,6 +740,12 @@ const worker = {
     const croStatsMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/cro\/stats$/);
     if (croStatsMatch && request.method === "GET") {
       return handleCroStats(request, env, corsHeaders(origin), croStatsMatch[1]);
+    }
+
+    // ── Benchmarking routes (MODULE_ROADMAP.md, розділ 15) ──
+    const benchmarkMatch = url.pathname.match(/^\/api\/benchmarks\/([^/]+)$/);
+    if (benchmarkMatch && request.method === "GET") {
+      return handleBenchmarkGet(request, env, corsHeaders(origin), benchmarkMatch[1]);
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
@@ -1664,7 +1672,7 @@ const worker = {
   async scheduled(event: ScheduledEvent, env: Env, _ctx: ExecutionContext): Promise<void> {
     // 0 3 * * * — щодня о 3:00: швидкість + SEO + конкуренти
     if (event.cron === "0 3 * * *") {
-      const [speedSummary, seoSummary, competitorSummary, gscSyncResult, ga4SyncResult, automationsSummary, predictiveSummary] = await Promise.all([
+      const [speedSummary, seoSummary, competitorSummary, gscSyncResult, ga4SyncResult, automationsSummary, predictiveSummary, benchmarkSummary] = await Promise.all([
         runSpeedChecks(
           env.SUPABASE_URL,
           env.SUPABASE_SERVICE_ROLE_KEY,
@@ -1704,6 +1712,12 @@ const worker = {
         // розділ 16) — той самий нічний тригер, що решта, щоб не
         // заводити окремий Cloudflare Cron Trigger.
         runPredictiveDetectors(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+        // Benchmarking (MODULE_ROADMAP.md розділ 15) — читає вчорашні
+        // speed_checks/cro_daily_stats/ai_generations, тому запускається
+        // тут-таки о 3:00, а не окремим тригером: ці таблиці вже
+        // наповнюються попередніми кроками цього ж Promise.all за
+        // попередню добу (не за сьогоднішній прогін).
+        runBenchmarkAggregation(env),
       ]);
       console.log("Speed:", JSON.stringify(speedSummary));
       console.log("SEO:", JSON.stringify(seoSummary));
@@ -1712,6 +1726,7 @@ const worker = {
       console.log("GA4 sync:", JSON.stringify(ga4SyncResult));
       console.log("Automations:", JSON.stringify(automationsSummary));
       console.log("Predictive:", JSON.stringify(predictiveSummary));
+      console.log("Benchmark aggregation:", JSON.stringify(benchmarkSummary));
       return;
     }
 
