@@ -130,10 +130,31 @@ export async function handleBoardDetail(request: Request, env: Env, corsHeaders:
 
 // ── POST /api/canvas-boards/:id/nodes ── новий вузол на дошці ────
 //
-// MVP: тільки node_type='embedded_editor', ref_table='projects'.
-// Інші типи (text/shape/component/live_embed) — наступні режими за
-// планом, не додаються тут навмисно, щоб не проектувати схему під
-// функціонал, якого ще немає.
+// MVP: 'embedded_editor' (Website Mode) і 'live_embed' (Live Objects,
+// MODULE_ROADMAP.md "Qorax Creator" — "найдешевший спосіб зробити
+// найамбітнішу частину бачення"). Інші типи (text/shape/component)
+// — наступні режими за планом, не додаються тут навмисно.
+
+// Live Objects — iframe на вже наявну Dashboard-сторінку, той самий
+// auth-контекст (спільна Supabase-сесія на одному домені, той самий
+// принцип, що вже підтверджено для переходів між продуктами
+// екосистеми — EXECUTION_PLAN.md "Кешування входу між продуктами").
+// НЕ довільний URL від клієнта — whitelist конкретних шляхів. Без
+// цього обмеження canvas_nodes.data (jsonb, вільна структура) стало
+// б відкритим SSRF/iframe-injection вектором: будь-який користувач
+// з editor-доступом до дошки міг би вбудувати довільний зовнішній
+// URL у iframe на сторінці Creator.
+const LIVE_EMBED_ALLOWED: Record<string, string> = {
+  crm: "/dashboard/crm",
+  analytics: "/dashboard/analytics",
+  ai: "/dashboard/ai",
+  rank: "/dashboard/rank",
+  commerce: "/dashboard/commerce",
+  social: "/dashboard/social",
+  academy: "/dashboard/academy",
+  team: "/dashboard/team",
+  benchmark: "/dashboard/benchmark",
+};
 
 export async function handleNodeCreate(request: Request, env: Env, corsHeaders: Record<string, string>, boardId: string): Promise<Response> {
   const orgId = await getBoardOrgId(boardId, env);
@@ -142,15 +163,47 @@ export async function handleNodeCreate(request: Request, env: Env, corsHeaders: 
   const access = await requireOrgAccess(request, orgId, "editor", env);
   if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
 
-  let body: { node_type?: string; ref_id?: string; position_x?: number; position_y?: number };
+  let body: { node_type?: string; ref_id?: string; live_key?: string; position_x?: number; position_y?: number };
   try {
     body = await request.json();
   } catch {
     return json({ error: "Invalid JSON" }, 400, corsHeaders);
   }
 
+  if (body.node_type === "live_embed") {
+    const liveKey = body.live_key;
+    if (!liveKey || !(liveKey in LIVE_EMBED_ALLOWED)) {
+      return json({ error: `live_key повинен бути одним з: ${Object.keys(LIVE_EMBED_ALLOWED).join(", ")}` }, 400, corsHeaders);
+    }
+
+    const insertRes = await insertRowReturning<NodeRow>(
+      "canvas_nodes",
+      {
+        board_id: boardId,
+        node_type: "live_embed",
+        position_x: body.position_x ?? 0,
+        position_y: body.position_y ?? 0,
+        width: 560,
+        height: 420,
+        // embed_path зберігається в data (jsonb), НЕ приймається як
+        // довільний рядок від клієнта при читанні назад — фронтенд
+        // все одно резолвить live_key через той самий whitelist
+        // (LIVE_EMBED_ALLOWED-еквівалент на клієнті), path тут лише
+        // для зручності дебагу/адміна, не єдине джерело істини.
+        data: { live_key: liveKey, embed_path: LIVE_EMBED_ALLOWED[liveKey] },
+        ref_table: null,
+        ref_id: null,
+      },
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    if (!insertRes.ok) return json({ error: insertRes.error }, 500, corsHeaders);
+
+    return json({ ok: true, node: insertRes.data?.[0] ?? null }, 201, corsHeaders);
+  }
+
   if (body.node_type !== "embedded_editor") {
-    return json({ error: "Підтримується лише node_type='embedded_editor' (Website Mode MVP)" }, 400, corsHeaders);
+    return json({ error: "Підтримується лише node_type='embedded_editor' або 'live_embed'" }, 400, corsHeaders);
   }
   if (!body.ref_id) return json({ error: "ref_id (project_id) обов'язковий для embedded_editor" }, 400, corsHeaders);
 

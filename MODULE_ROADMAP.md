@@ -2202,9 +2202,27 @@ MVP-візуалізації, яку не редагують). Побічно в
 Застосування згенерованої діаграми до реальної БД — свідомо НЕ MVP
 (той самий ризик, що вже позначений для Database Builder).
 
-Наступні кроки за планом: Live Objects (iframe) → Components/Brand
-Kit → Smart Components → AI Creator → ... — жоден з них не в цьому
-проході.
+**Live Objects — реалізовано (третій крок).** `node_type='live_embed'`
+з `data.live_key` (не окрема таблиця/міграція — схема `canvas_nodes`
+вже мала вільне `node_type`/`data jsonb` саме для цього). iframe на
+вже наявну Dashboard-сторінку (CRM/Analytics/AI Chat/Rank/Commerce/
+Social/Academy/Team/Benchmark — 9 модулів), той самий auth-контекст
+через спільну Supabase-сесію на одному домені (задокументовано —
+"Кешування входу між продуктами", жодної додаткової авторизації не
+знадобилось). **Whitelist, не довільний URL:** `LIVE_EMBED_ALLOWED`
+на worker (`creatorHandler.ts`) — єдине джерело істини для безпеки,
+клієнт передає лише короткий `live_key`, не сам шлях; без цього
+`canvas_nodes.data` (вільний jsonb) став би відкритим iframe-
+injection вектором. Той самий whitelist продубльовано на клієнті
+(`LIVE_EMBED_OPTIONS`) лише для читабельних підписів у UI, не для
+безпеки. `embedded_editor` лишається прямим React-рендером (не
+iframe) — `live_embed`, навпаки, саме iframe: CRM/Analytics — це
+повноцінні Dashboard-сторінки з власним `PlatformSidebar`/layout,
+вбудовувати їх напряму означало б тягнути весь Dashboard-каркас
+усередину canvas-вузла.
+
+Наступні кроки за планом: Components/Brand Kit → Smart Components →
+AI Creator → ... — жоден з них не в цьому проході.
 
 **Це не третій окремий запис поруч із Canvas — це те саме бачення,
 розширене Артемом до значно сильнішої ідеї, тому переписую розділ
