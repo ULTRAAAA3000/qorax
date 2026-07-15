@@ -3228,3 +3228,48 @@ HTML").
 Click Actions, AI Compare, Research Mode, Component Extractor,
 Website Timeline, Workspace Tabs, Deep Search, AI Memory, Marketplace
 — решта переліку з roadmap, наступні ітерації за вибором Артема.
+
+## Qorax Browser — Collections (третя ітерація)
+
+**Обсяг:** "вбивця закладок" з roadmap — іменовані колекції
+(проєкти), що групують збережені сайти з нотатками. Третій крок за
+списком (MVP AI Sidebar → Site Inspector → Collections), Артем
+попросив просто йти по списку roadmap далі.
+
+**Міграція `0077_browser_collections.sql`:** нова таблиця
+`browser_collections` (org-scoped, той самий RLS-патерн, що решта
+Browser-таблиць) + `browser_history` отримує nullable
+`collection_id` (FK, `on delete set null` — видалення колекції не
+видаляє саму історію відвідувань, лише розгруповує) і nullable
+`note`. Свідомо НЕ окрема таблиця `collection_items` — це дублювало
+б url/title/ai_summary, які вже є в `browser_history`.
+
+**`worker/src/lib/browserHandler.ts` — нові ендпоінти:**
+- `GET /api/browser/collections` — список колекцій організації
+- `POST /api/browser/collections` — створення
+- `DELETE /api/browser/collections/:id` — видалення (записи в
+  `browser_history` лишаються, лише втрачають `collection_id`)
+- `POST /api/browser/collections/save` — зберігає поточний сайт у
+  колекцію: якщо URL вже є в `browser_history` — оновлює
+  (`collection_id`/`note`), інакше створює новий запис одразу з
+  прив'язкою
+- `handleBrowserHistory` розширено: опціональний `collection_id`
+  query-параметр — без нього повертає загальну історію (як і
+  раніше, останні 20), з ним — усі записи конкретної колекції
+
+**UI:** новий `CollectionsPanel.tsx` — окремий компонент (не додано
+прямо в `BrowserUI.tsx`, той вже великий: URL bar + iframe + AI/
+Inspector таби). Третій таб сайдбару "Колекції". Список колекцій →
+клік відкриває деталі колекції з формою "додати поточний сайт +
+нотатка" і списком уже збережених елементів.
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (766.02 KiB, gzip 131.20 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** Smart Capture (виділення
+конкретного елементу сторінки — hero/текст/товар → відправка в
+Creator/Office/Mail), One Click Actions, AI Compare, Reading Mode,
+Research Mode, Visual Search, Component Extractor, Website Timeline,
+Workspace Tabs, Deep Search, AI Memory, Marketplace — решта списку
+за roadmap, наступні ітерації по порядку.

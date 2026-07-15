@@ -27,7 +27,7 @@
 import type { Env } from "../types";
 import { json } from "./httpUtils";
 import { requireOrgAccess } from "./orgAuth";
-import { insertRow, selectRows } from "./supabase";
+import { insertRow, selectRows, updateRows } from "./supabase";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
 import { callGemini } from "./contentGeneration";
 
@@ -218,14 +218,22 @@ ${truncatedHtml}
 export async function handleBrowserHistory(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
   const url = new URL(request.url);
   const organizationId = url.searchParams.get("organization_id");
+  const collectionId = url.searchParams.get("collection_id");
   if (!organizationId) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
 
   const access = await requireOrgAccess(request, organizationId, "viewer", env);
   if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
 
-  const res = await selectRows<{ id: string; url: string; title: string | null; visited_at: string }>(
+  // Без collection_id — загальна історія (останні 20, як і раніше).
+  // З collection_id — усі записи саме цієї колекції (без ліміту 20,
+  // колекція — свідомо збережений список, не "недавнє").
+  const filter = collectionId
+    ? `collection_id=eq.${encodeURIComponent(collectionId)}`
+    : `order=visited_at.desc&limit=20`;
+
+  const res = await selectRows<{ id: string; url: string; title: string | null; visited_at: string; collection_id: string | null; note: string | null }>(
     "browser_history",
-    `select=id,url,title,visited_at&organization_id=eq.${encodeURIComponent(organizationId)}&order=visited_at.desc&limit=20`,
+    `select=id,url,title,visited_at,collection_id,note&organization_id=eq.${encodeURIComponent(organizationId)}&${filter}`,
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
@@ -399,5 +407,171 @@ export async function handleBrowserInspect(request: Request, env: Env, corsHeade
   };
 
   return json(result, 200, corsHeaders);
+}
+
+// ============================================================
+// Collections (MODULE_ROADMAP.md, "Qorax Browser" — третя ітерація
+// після MVP AI Sidebar → Site Inspector). "Вбивця закладок" — проєкт,
+// що групує вже наявні browser_history записи + нотатки.
+// ============================================================
+
+interface CollectionRow {
+  id: string;
+  organization_id: string;
+  title: string;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+// GET /api/browser/collections?organization_id=...
+export async function handleCollectionsList(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  const url = new URL(request.url);
+  const organizationId = url.searchParams.get("organization_id");
+  if (!organizationId) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, organizationId, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const res = await selectRows<CollectionRow>(
+    "browser_collections",
+    `select=id,organization_id,title,description,created_at,updated_at&organization_id=eq.${encodeURIComponent(organizationId)}&order=updated_at.desc`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!res.ok) return json({ error: res.error }, 500, corsHeaders);
+
+  return json({ collections: res.data }, 200, corsHeaders);
+}
+
+interface CreateCollectionBody {
+  organization_id: string;
+  title: string;
+  description?: string;
+}
+
+// POST /api/browser/collections
+export async function handleCollectionCreate(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: CreateCollectionBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  if (!body.title?.trim()) return json({ error: "Назва колекції обов'язкова" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "editor", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const res = await insertRow(
+    "browser_collections",
+    { organization_id: body.organization_id, title: body.title.trim(), description: body.description?.trim() || null, created_by: access.userId ?? null },
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!res.ok) return json({ error: res.error }, 500, corsHeaders);
+
+  return json({ ok: true }, 200, corsHeaders);
+}
+
+async function getCollectionOrgId(collectionId: string, env: Env): Promise<string | null> {
+  const res = await selectRows<{ organization_id: string }>(
+    "browser_collections",
+    `select=organization_id&id=eq.${encodeURIComponent(collectionId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  return res.data?.[0]?.organization_id ?? null;
+}
+
+// DELETE /api/browser/collections/:id
+export async function handleCollectionDelete(request: Request, env: Env, corsHeaders: Record<string, string>, collectionId: string): Promise<Response> {
+  const organizationId = await getCollectionOrgId(collectionId, env);
+  if (!organizationId) return json({ error: "Колекцію не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, organizationId, "editor", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  // on delete set null на browser_history.collection_id (0077) сам
+  // розгрупує записи — видаляємо лише саму колекцію.
+  const res = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/browser_collections?id=eq.${encodeURIComponent(collectionId)}&organization_id=eq.${encodeURIComponent(organizationId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        Prefer: "return=minimal",
+      },
+    }
+  );
+  if (!res.ok) return json({ error: `Delete failed: ${res.status}` }, 500, corsHeaders);
+
+  return json({ ok: true }, 200, corsHeaders);
+}
+
+interface SaveToCollectionBody {
+  organization_id: string;
+  url: string;
+  title?: string;
+  collection_id: string;
+  note?: string;
+}
+
+// POST /api/browser/collections/save — зберігає поточний сайт у
+// колекцію. Якщо запис з таким url вже є в загальній історії — оновлює
+// його (додає collection_id/note), інакше створює новий запис
+// browser_history одразу з collection_id.
+export async function handleCollectionSaveItem(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: SaveToCollectionBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  if (!body.collection_id) return json({ error: "collection_id обов'язковий" }, 400, corsHeaders);
+  const targetUrl = isValidHttpUrl(body.url ?? "");
+  if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "editor", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const existingRes = await selectRows<{ id: string }>(
+    "browser_history",
+    `select=id&organization_id=eq.${encodeURIComponent(body.organization_id)}&url=eq.${encodeURIComponent(targetUrl.toString())}&order=visited_at.desc&limit=1`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const existing = existingRes.data?.[0];
+
+  if (existing) {
+    const updateRes = await updateRows(
+      "browser_history",
+      `id=eq.${encodeURIComponent(existing.id)}`,
+      { collection_id: body.collection_id, note: body.note?.trim() || null },
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    if (!updateRes.ok) return json({ error: updateRes.error }, 500, corsHeaders);
+  } else {
+    const insertRes = await insertRow(
+      "browser_history",
+      {
+        organization_id: body.organization_id,
+        url: targetUrl.toString(),
+        title: body.title?.trim() || null,
+        collection_id: body.collection_id,
+        note: body.note?.trim() || null,
+        visited_by: access.userId ?? null,
+      },
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    if (!insertRes.ok) return json({ error: insertRes.error }, 500, corsHeaders);
+  }
+
+  return json({ ok: true }, 200, corsHeaders);
 }
 
