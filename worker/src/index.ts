@@ -173,6 +173,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -815,6 +816,17 @@ const worker = {
     const benchmarkMatch = url.pathname.match(/^\/api\/benchmarks\/([^/]+)$/);
     if (benchmarkMatch && request.method === "GET") {
       return handleBenchmarkGet(request, env, corsHeaders(origin), benchmarkMatch[1]);
+    }
+
+    // ── Qorax Browser routes (MODULE_ROADMAP.md, "Qorax Browser") ──
+    if (url.pathname === "/api/browser/proxy" && request.method === "GET") {
+      return handleBrowserProxy(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/analyze" && request.method === "POST") {
+      return handleBrowserAnalyze(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/history" && request.method === "GET") {
+      return handleBrowserHistory(request, env, corsHeaders(origin));
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
