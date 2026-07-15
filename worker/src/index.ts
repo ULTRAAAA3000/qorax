@@ -113,6 +113,7 @@ import {
   handleNodeUpdate,
   handleNodeDelete,
 } from "./lib/creatorHandler";
+import { handleGraphData } from "./lib/knowledgeGraph";
 import {
   handleDocsList,
   handleDocCreate,
@@ -797,6 +798,13 @@ const worker = {
     const docAiWriterMatch = url.pathname.match(/^\/api\/office-documents\/([^/]+)\/ai-writer$/);
     if (docAiWriterMatch && request.method === "POST") {
       return handleAiWriter(request, env, corsHeaders(origin), docAiWriterMatch[1]);
+    }
+
+    // ── Qorax Creator: KG Visualization / Diagram Mode (MODULE_ROADMAP.md "Qorax Creator") ──
+    const knowledgeGraphMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/knowledge-graph$/);
+    if (knowledgeGraphMatch && request.method === "GET") {
+      return handleGraphData(request, env, corsHeaders(origin), knowledgeGraphMatch[1]);
+    }
     }
 
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──

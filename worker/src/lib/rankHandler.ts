@@ -1,7 +1,7 @@
 import type { Env } from "../types";
 import { selectRows, insertRowReturning } from "./supabase";
 import { getUserIdFromToken, getOrgIdForSite } from "./gscHandler";
-import { upsertNode } from "./knowledgeGraph";
+import { upsertNode, addEdge } from "./knowledgeGraph";
 
 /**
  * Модуль Rank (MODULE_ROADMAP.md, розділ 1). Читає позиції з уже наявних
@@ -106,7 +106,36 @@ export async function handleRankQueryCreate(request: Request, env: Env, corsHead
   if (newQueryId) {
     // Knowledge Graph (MODULE_ROADMAP.md, хвиля 4, розділ 14) — не блокує
     // основний потік, помилка ігнорується
-    await upsertNode(orgId, "keyword", query, "rank_tracked_queries", newQueryId, env);
+    const keywordNodeId = await upsertNode(orgId, "keyword", query, "rank_tracked_queries", newQueryId, env);
+
+    // Симетричний зв'язок до того самого, що crmHandler.ts додає в
+    // протилежному порядку (лід → нові keyword-вузли того самого сайту):
+    // тут — нове ключове слово → вже наявні ліди того самого сайту.
+    // Без цього граф залежав би від порядку створення записів (лід
+    // після ключового слова зв'язався б, а до — ні). Той самий ліміт
+    // "3 найновіших", той самий сенс — не розмивати зв'язок на весь
+    // список контактів сайту.
+    if (keywordNodeId) {
+      const contactsRes = await selectRows<{ id: string }>(
+        "crm_contacts",
+        `select=id&site_id=eq.${encodeURIComponent(siteId)}&order=created_at.desc&limit=3`,
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY
+      );
+      const contactIds = (contactsRes.data ?? []).map(c => c.id);
+      if (contactIds.length > 0) {
+        const idsFilter = contactIds.map(id => encodeURIComponent(id)).join(",");
+        const contactNodesRes = await selectRows<{ id: string }>(
+          "kg_nodes",
+          `select=id&organization_id=eq.${encodeURIComponent(orgId)}&ref_table=eq.crm_contacts&ref_id=in.(${idsFilter})`,
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY
+        );
+        for (const contactNode of contactNodesRes.data ?? []) {
+          await addEdge(orgId, contactNode.id, keywordNodeId, "related_to", env);
+        }
+      }
+    }
   }
 
   return json({ ok: true }, 201, corsHeaders);

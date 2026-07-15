@@ -2,7 +2,8 @@ import { createClient } from "@/app/lib/supabase/server";
 import { QoraxLogo } from "@/app/components/QoraxLogo";
 import { CreatorBoardsListUI } from "./CreatorBoardsListUI";
 import { redirect } from "next/navigation";
-import { LayoutTemplate } from "lucide-react";
+import Link from "next/link";
+import { LayoutTemplate, Network } from "lucide-react";
 
 export const metadata = { title: "Qorax Creator" };
 
@@ -46,6 +47,20 @@ export default async function CreatorPage() {
           <p className="text-sm text-[var(--text-secondary)]">
             Візуальне полотно. Website Mode — вбудований Sites-редактор прямо на дошці.
           </p>
+        </div>
+
+        {/* Перемикач режимів — MODULE_ROADMAP.md "Qorax Creator": режими
+            канвасу для різних типів контенту. Website Mode (тут, дошки)
+            і Diagram Mode (/creator/graph, Knowledge Graph) — перші два
+            реалізовані режими, решта (Email/Presentation/Whiteboard/
+            Social) — пізніші кроки, не додано цим проходом. */}
+        <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+          <span className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg" style={{ background: "rgba(140,246,255,0.1)", color: "var(--cyan)" }}>
+            <LayoutTemplate size={14} /> Website
+          </span>
+          <Link href="/creator/graph" className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
+            <Network size={14} /> Diagram
+          </Link>
         </div>
 
         <CreatorBoardsListUI organizationId={membership.organization_id} />
