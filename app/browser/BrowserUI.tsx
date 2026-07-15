@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Globe, Sparkles, Loader2, ArrowRight, Clock, X } from "lucide-react";
+import { Globe, Sparkles, Loader2, ArrowRight, Clock, X, ScanSearch, Zap, Palette, Type, Code2 } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 
 interface HistoryItem {
@@ -9,6 +9,18 @@ interface HistoryItem {
   url: string;
   title: string | null;
   visited_at: string;
+}
+
+interface InspectResult {
+  title: string | null;
+  metaDescription: string | null;
+  h1: string | null;
+  technologies: string[];
+  analytics: string[];
+  colors: string[];
+  fonts: string[];
+  responseTimeMs: number;
+  pageSizeKb: number;
 }
 
 interface Props {
@@ -45,10 +57,14 @@ export function BrowserUI({ organizationId }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarTab, setSidebarTab] = useState<"ai" | "inspect">("ai");
   const [summary, setSummary] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
   const [history, setHistory] = useState<HistoryItem[] | null>(null);
+  const [inspectResult, setInspectResult] = useState<InspectResult | null>(null);
+  const [inspecting, setInspecting] = useState(false);
+  const [inspectError, setInspectError] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const loadHistory = useCallback(async () => {
@@ -76,6 +92,8 @@ export function BrowserUI({ organizationId }: Props) {
     setLoadError(null);
     setSummary(null);
     setAnalyzeError(null);
+    setInspectResult(null);
+    setInspectError(null);
     setAddressInput(normalized);
     setCurrentUrl(normalized);
     setIframeLoading(true);
@@ -108,6 +126,28 @@ export function BrowserUI({ organizationId }: Props) {
       setAnalyzeError("Помилка з'єднання");
     } finally {
       setAnalyzing(false);
+    }
+  }
+
+  async function inspectSite() {
+    if (!currentUrl) return;
+    setInspecting(true);
+    setInspectError(null);
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/browser/inspect?url=${encodeURIComponent(currentUrl)}&organization_id=${organizationId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setInspectError(data.error ?? "Не вдалося перевірити сайт");
+        return;
+      }
+      setInspectResult(data);
+    } catch {
+      setInspectError("Помилка з'єднання");
+    } finally {
+      setInspecting(false);
     }
   }
 
@@ -189,13 +229,25 @@ export function BrowserUI({ organizationId }: Props) {
         </div>
       </div>
 
-      {/* AI Sidebar */}
+      {/* Sidebar: AI + Site Inspector */}
       {sidebarOpen && (
         <aside className="w-80 flex-shrink-0 flex flex-col" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
-          <div className="flex items-center justify-between px-4 py-3" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="flex items-center gap-2">
-              <Sparkles size={14} style={{ color: "var(--cyan)" }} />
-              <h2 className="text-sm font-medium">AI Sidebar</h2>
+          <div className="flex items-center justify-between px-3 py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+            <div className="flex items-center gap-1 rounded-lg p-0.5" style={{ background: "rgba(255,255,255,0.04)" }}>
+              <button
+                onClick={() => setSidebarTab("ai")}
+                className="px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
+                style={{ background: sidebarTab === "ai" ? "rgba(140,246,255,0.1)" : "transparent", color: sidebarTab === "ai" ? "var(--cyan)" : "var(--text-tertiary)" }}
+              >
+                <Sparkles size={12} /> AI
+              </button>
+              <button
+                onClick={() => setSidebarTab("inspect")}
+                className="px-2.5 py-1.5 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors"
+                style={{ background: sidebarTab === "inspect" ? "rgba(198,255,84,0.1)" : "transparent", color: sidebarTab === "inspect" ? "var(--lime)" : "var(--text-tertiary)" }}
+              >
+                <ScanSearch size={12} /> Inspector
+              </button>
             </div>
             <button onClick={() => setSidebarOpen(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
               <X size={14} />
@@ -203,52 +255,162 @@ export function BrowserUI({ organizationId }: Props) {
           </div>
 
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {!currentUrl && (
-              <p className="text-xs text-[var(--text-tertiary)]">Відкрийте сайт, щоб отримати AI-аналіз.</p>
-            )}
-
-            {currentUrl && (
+            {sidebarTab === "ai" && (
               <>
-                <button
-                  onClick={analyzeSite}
-                  disabled={analyzing}
-                  className="w-full glow-button text-xs !py-2 flex items-center justify-center gap-1.5 disabled:opacity-50"
-                >
-                  {analyzing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
-                  {analyzing ? "Аналізую..." : "Що це за сайт?"}
-                </button>
+                {!currentUrl && (
+                  <p className="text-xs text-[var(--text-tertiary)]">Відкрийте сайт, щоб отримати AI-аналіз.</p>
+                )}
 
-                {analyzeError && <p className="text-xs" style={{ color: "#F5675A" }}>{analyzeError}</p>}
+                {currentUrl && (
+                  <>
+                    <button
+                      onClick={analyzeSite}
+                      disabled={analyzing}
+                      className="w-full glow-button text-xs !py-2 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      {analyzing ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                      {analyzing ? "Аналізую..." : "Що це за сайт?"}
+                    </button>
 
-                {summary && (
-                  <div className="rounded-xl p-3.5 text-xs leading-relaxed text-[var(--text-secondary)]" style={{ background: "rgba(140,246,255,0.05)", border: "1px solid rgba(140,246,255,0.15)" }}>
-                    {summary}
+                    {analyzeError && <p className="text-xs" style={{ color: "#F5675A" }}>{analyzeError}</p>}
+
+                    {summary && (
+                      <div className="rounded-xl p-3.5 text-xs leading-relaxed text-[var(--text-secondary)]" style={{ background: "rgba(140,246,255,0.05)", border: "1px solid rgba(140,246,255,0.15)" }}>
+                        {summary}
+                      </div>
+                    )}
+                  </>
+                )}
+
+                {history && history.length > 0 && (
+                  <div className="pt-2">
+                    <p className="text-xs text-[var(--text-tertiary)] flex items-center gap-1.5 mb-2">
+                      <Clock size={11} /> Історія
+                    </p>
+                    <div className="space-y-1">
+                      {history.map(item => (
+                        <button
+                          key={item.id}
+                          onClick={() => navigate(item.url)}
+                          className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs truncate hover:bg-white/5 transition-colors text-[var(--text-secondary)]"
+                        >
+                          {item.title || item.url}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 )}
               </>
             )}
 
-            {history && history.length > 0 && (
-              <div className="pt-2">
-                <p className="text-xs text-[var(--text-tertiary)] flex items-center gap-1.5 mb-2">
-                  <Clock size={11} /> Історія
-                </p>
-                <div className="space-y-1">
-                  {history.map(item => (
-                    <button
-                      key={item.id}
-                      onClick={() => navigate(item.url)}
-                      className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs truncate hover:bg-white/5 transition-colors text-[var(--text-secondary)]"
-                    >
-                      {item.title || item.url}
+            {sidebarTab === "inspect" && (
+              <>
+                {!currentUrl && (
+                  <p className="text-xs text-[var(--text-tertiary)]">Відкрийте сайт, щоб побачити технічний профіль.</p>
+                )}
+
+                {currentUrl && !inspectResult && (
+                  <button
+                    onClick={inspectSite}
+                    disabled={inspecting}
+                    className="w-full glow-button text-xs !py-2 flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    {inspecting ? <Loader2 size={13} className="animate-spin" /> : <ScanSearch size={13} />}
+                    {inspecting ? "Перевіряю..." : "Перевірити сайт"}
+                  </button>
+                )}
+
+                {inspectError && <p className="text-xs" style={{ color: "#F5675A" }}>{inspectError}</p>}
+
+                {inspectResult && (
+                  <div className="space-y-3.5">
+                    <button onClick={inspectSite} disabled={inspecting} className="text-xs text-[var(--text-tertiary)] hover:text-[var(--text-primary)] flex items-center gap-1.5">
+                      {inspecting ? <Loader2 size={11} className="animate-spin" /> : <ScanSearch size={11} />} Перевірити ще раз
                     </button>
-                  ))}
-                </div>
-              </div>
+
+                    <InspectSection icon={Zap} label="Швидкість" color="var(--lime)">
+                      <p className="text-xs text-[var(--text-secondary)]">{inspectResult.responseTimeMs} мс · {inspectResult.pageSizeKb} КБ HTML</p>
+                    </InspectSection>
+
+                    <InspectSection icon={ScanSearch} label="SEO" color="var(--cyan)">
+                      <dl className="space-y-1.5 text-xs">
+                        <InspectField label="Title" value={inspectResult.title} />
+                        <InspectField label="Meta description" value={inspectResult.metaDescription} />
+                        <InspectField label="H1" value={inspectResult.h1} />
+                      </dl>
+                    </InspectSection>
+
+                    {inspectResult.technologies.length > 0 && (
+                      <InspectSection icon={Code2} label="Технології" color="#B98CF7">
+                        <div className="flex flex-wrap gap-1.5">
+                          {inspectResult.technologies.map(tech => <TagPill key={tech}>{tech}</TagPill>)}
+                        </div>
+                      </InspectSection>
+                    )}
+
+                    {inspectResult.analytics.length > 0 && (
+                      <InspectSection icon={Code2} label="Аналітика" color="#B98CF7">
+                        <div className="flex flex-wrap gap-1.5">
+                          {inspectResult.analytics.map(tool => <TagPill key={tool}>{tool}</TagPill>)}
+                        </div>
+                      </InspectSection>
+                    )}
+
+                    {inspectResult.colors.length > 0 && (
+                      <InspectSection icon={Palette} label="Кольори" color="#F4A6A0">
+                        <div className="flex flex-wrap gap-1.5">
+                          {inspectResult.colors.map(color => (
+                            <div key={color} className="flex items-center gap-1.5 px-2 py-1 rounded-md text-[10px] font-mono" style={{ background: "rgba(255,255,255,0.04)" }}>
+                              <span className="w-3 h-3 rounded-full flex-shrink-0" style={{ background: color, border: "1px solid rgba(255,255,255,0.15)" }} />
+                              {color}
+                            </div>
+                          ))}
+                        </div>
+                      </InspectSection>
+                    )}
+
+                    {inspectResult.fonts.length > 0 && (
+                      <InspectSection icon={Type} label="Шрифти" color="var(--text-secondary)">
+                        <div className="flex flex-wrap gap-1.5">
+                          {inspectResult.fonts.map(font => <TagPill key={font}>{font}</TagPill>)}
+                        </div>
+                      </InspectSection>
+                    )}
+                  </div>
+                )}
+              </>
             )}
           </div>
         </aside>
       )}
     </div>
+  );
+}
+
+function InspectSection({ icon: Icon, label, color, children }: { icon: typeof Zap; label: string; color: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <p className="text-xs font-medium flex items-center gap-1.5 mb-2" style={{ color }}>
+        <Icon size={12} /> {label}
+      </p>
+      {children}
+    </div>
+  );
+}
+
+function InspectField({ label, value }: { label: string; value: string | null }) {
+  return (
+    <div>
+      <dt className="text-[var(--text-tertiary)]">{label}</dt>
+      <dd className="text-[var(--text-secondary)] truncate">{value || "—"}</dd>
+    </div>
+  );
+}
+
+function TagPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="px-2 py-1 rounded-md text-[11px]" style={{ background: "rgba(255,255,255,0.04)", color: "var(--text-secondary)" }}>
+      {children}
+    </span>
   );
 }

@@ -3192,3 +3192,39 @@ deploy --dry-run` успішно (753.57 KiB, gzip 129.11 KiB).
 **Досі відкрито:** конфлікт `0061` (`commerce_module`/
 `translator_module`) — старіший, з хвилі 2, ще не розв'язаний,
 лишається окремим пунктом.
+## Qorax Browser — Site Inspector (друга ітерація)
+
+**Обсяг:** технічний профіль сайту — шрифти/кольори/SEO-сигнали/
+технології/аналітика/швидкість. Наступний крок за MVP AI Sidebar,
+обраний Артемом як найпростіший ("перевикористовує вже завантажений
+HTML").
+
+**`worker/src/lib/browserHandler.ts` — `handleBrowserInspect`
+(новий `GET /api/browser/inspect`):**
+- meta/SEO (title/description/H1) і технології/аналітика — той самий
+  regex-підхід по сирому HTML, що вже є в `basicCheck.ts`
+  (`parseHtmlSignals`) — свідомо НЕ новий спосіб парсингу, той самий
+  принцип ("немає DOM-парсера в Cloudflare Workers")
+- технології/CMS/аналітика — сигнатурний детект по характерних
+  шляхах у HTML (WordPress/Shopify/Wix/Squarespace/Webflow/Next.js/
+  React/Vue/Tailwind/Bootstrap; GA/GTM/Facebook Pixel/Hotjar/Clarity)
+- кольори/шрифти — свідомо НЕ regex по inline-стилях сторінки (це
+  давало б неточне наближення), а реальна вибірка з перших 1-2
+  зовнішніх `<link rel="stylesheet">` файлів + inline `<style>` блоки
+  як доповнення. Значно точніше наближення до вигляду сайту, ніж
+  чистий regex по HTML
+
+**UI:** `BrowserUI.tsx` — сайдбар тепер має два таби ("AI" / "Inspector")
+замість окремої другої панелі — простіше для MVP-ітерації, не
+подвоює UI-поверхню. Inspector показує швидкість, SEO-поля,
+технології/аналітику як pill-теги, кольори як свотчі з hex/rgb, шрифти
+як теги.
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (730.04 KiB, gzip 127.13 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** Collections, Smart Capture, One
+Click Actions, AI Compare, Research Mode, Component Extractor,
+Website Timeline, Workspace Tabs, Deep Search, AI Memory, Marketplace
+— решта переліку з roadmap, наступні ітерації за вибором Артема.
