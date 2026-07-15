@@ -132,6 +132,14 @@ import {
   handleSheetAiGenerate,
 } from "./lib/officeSheetsHandler";
 import {
+  handleSlidesDecksList,
+  handleSlidesDeckCreate,
+  handleSlidesDeckDetail,
+  handleSlidesDeckUpdate,
+  handleSlidesDeckDelete,
+  handleSlidesAiGenerate,
+} from "./lib/officeSlidesHandler";
+import {
   handleGscAuth,
   handleGscCallback,
   handleGscStatus,
@@ -829,6 +837,29 @@ const worker = {
     const sheetAiMatch = url.pathname.match(/^\/api\/office-sheets\/([^/]+)\/ai-generate$/);
     if (sheetAiMatch && request.method === "POST") {
       return handleSheetAiGenerate(request, env, corsHeaders(origin), sheetAiMatch[1]);
+    }
+
+    // ── Qorax Office: Slides MVP (MODULE_ROADMAP.md "Qorax Office") ──
+    const slidesDecksListMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/office-slides$/);
+    if (slidesDecksListMatch && request.method === "GET") {
+      return handleSlidesDecksList(request, env, corsHeaders(origin), slidesDecksListMatch[1]);
+    }
+    if (slidesDecksListMatch && request.method === "POST") {
+      return handleSlidesDeckCreate(request, env, corsHeaders(origin), slidesDecksListMatch[1]);
+    }
+    const slidesDeckDetailMatch = url.pathname.match(/^\/api\/office-slides\/([^/]+)$/);
+    if (slidesDeckDetailMatch && request.method === "GET") {
+      return handleSlidesDeckDetail(request, env, corsHeaders(origin), slidesDeckDetailMatch[1]);
+    }
+    if (slidesDeckDetailMatch && request.method === "PATCH") {
+      return handleSlidesDeckUpdate(request, env, corsHeaders(origin), slidesDeckDetailMatch[1]);
+    }
+    if (slidesDeckDetailMatch && request.method === "DELETE") {
+      return handleSlidesDeckDelete(request, env, corsHeaders(origin), slidesDeckDetailMatch[1]);
+    }
+    const slidesAiMatch = url.pathname.match(/^\/api\/office-slides\/([^/]+)\/ai-generate$/);
+    if (slidesAiMatch && request.method === "POST") {
+      return handleSlidesAiGenerate(request, env, corsHeaders(origin), slidesAiMatch[1]);
     }
 
     // ── Qorax Creator: KG Visualization / Diagram Mode (MODULE_ROADMAP.md "Qorax Creator") ──

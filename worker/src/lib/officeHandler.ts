@@ -35,7 +35,7 @@ function accessErrorResponse(status: number | undefined, corsHeaders: Record<str
 // bullet_list/checklist), решта Smart Blocks зі списку в плані —
 // пізніші ітерації, не цей прохід. Той самий "{blocks:[...]}"
 // формат, що project_pages.content (0058).
-type OfficeBlock =
+export type OfficeBlock =
   | { id: string; type: "paragraph"; text: string }
   | { id: string; type: "heading"; level: 1 | 2 | 3; text: string }
   | { id: string; type: "bullet_list"; items: string[] }
