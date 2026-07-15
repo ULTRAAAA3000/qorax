@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { Plus, X, Loader2, FileText, Trash2 } from "lucide-react";
+import { Plus, X, Loader2, FileText, Trash2, LayoutTemplate } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 
 interface Doc {
@@ -10,6 +10,21 @@ interface Doc {
   title: string;
   updated_at: string;
 }
+
+interface Template {
+  id: string;
+  category: string;
+  title: string;
+  description: string | null;
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  contract: "Договір",
+  invoice: "Рахунок",
+  proposal: "Комерційна пропозиція",
+  project_plan: "Планування",
+  sop: "Інструкція",
+};
 
 interface Props {
   organizationId: string;
@@ -33,8 +48,8 @@ async function getFreshToken(): Promise<string> {
 export function OfficeDocsListUI({ organizationId }: Props) {
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
-  const [title, setTitle] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [templates, setTemplates] = useState<Template[] | null>(null);
+  const [creating, setCreating] = useState<string | null>(null); // template_id що зараз створюється, або "blank"
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -52,26 +67,36 @@ export function OfficeDocsListUI({ organizationId }: Props) {
     })();
   }, [load]);
 
-  async function createDoc(e: React.FormEvent) {
-    e.preventDefault();
-    setCreating(true);
+  async function openCreateModal() {
+    setShowCreate(true);
+    if (!templates) {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/organizations/${organizationId}/office-templates`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setTemplates(data.templates ?? []);
+    }
+  }
+
+  async function createDoc(templateId?: string) {
+    setCreating(templateId ?? "blank");
     try {
       const token = await getFreshToken();
       const res = await fetch(`${API_BASE_URL}/api/organizations/${organizationId}/office-documents`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ title: title.trim() || undefined }),
+        body: JSON.stringify(templateId ? { template_id: templateId } : {}),
       });
       const data = await res.json();
-      setTitle("");
-      setShowCreate(false);
       if (data.document?.id) {
         window.location.href = `/office/${data.document.id}`;
         return;
       }
+      setShowCreate(false);
       await load();
     } finally {
-      setCreating(false);
+      setCreating(null);
     }
   }
 
@@ -94,26 +119,59 @@ export function OfficeDocsListUI({ organizationId }: Props) {
 
   return (
     <div className="space-y-4">
-      {!showCreate ? (
-        <button onClick={() => setShowCreate(true)} className="glow-button text-sm !py-2 !px-4 flex items-center gap-1.5">
-          <Plus size={14} /> Новий документ
-        </button>
-      ) : (
-        <form onSubmit={createDoc} className="glow-card p-4 flex items-center gap-2">
-          <input
-            autoFocus
-            type="text" value={title} onChange={e => setTitle(e.target.value)}
-            placeholder="Назва документа (необов'язково)"
-            className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
-          />
-          <button type="submit" disabled={creating} className="glow-button text-sm !py-2 !px-4 disabled:opacity-50">
-            {creating ? <Loader2 size={14} className="animate-spin" /> : "Створити"}
-          </button>
-          <button type="button" onClick={() => setShowCreate(false)} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
-            <X size={14} className="text-[var(--text-tertiary)]" />
-          </button>
-        </form>
+      <button onClick={openCreateModal} className="glow-button text-sm !py-2 !px-4 flex items-center gap-1.5">
+        <Plus size={14} /> Новий документ
+      </button>
+
+      {showCreate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setShowCreate(false)}>
+          <div
+            className="glow-card p-5 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold">Новий документ</h3>
+              <button onClick={() => setShowCreate(false)} className="p-1 rounded-lg hover:bg-white/5">
+                <X size={14} className="text-[var(--text-tertiary)]" />
+              </button>
+            </div>
+
+            <div className="grid gap-2.5 sm:grid-cols-2">
+              <button
+                onClick={() => createDoc()}
+                disabled={creating !== null}
+                className="glow-card p-3.5 text-left hover:border-white/20 transition-colors flex items-start gap-2.5 disabled:opacity-50"
+              >
+                {creating === "blank" ? <Loader2 size={16} className="animate-spin shrink-0 mt-0.5" /> : <FileText size={16} className="shrink-0 mt-0.5 opacity-60" />}
+                <div>
+                  <div className="text-sm font-medium">Порожній документ</div>
+                  <div className="text-xs text-[var(--text-tertiary)] mt-0.5">Почати з чистого аркуша</div>
+                </div>
+              </button>
+
+              {!templates && (
+                <div className="flex items-center justify-center py-6 col-span-full text-sm text-[var(--text-tertiary)] gap-2">
+                  <Loader2 size={14} className="animate-spin" /> Завантаження шаблонів...
+                </div>
+              )}
+
+              {templates?.map(t => (
+                <button
+                  key={t.id}
+                  onClick={() => createDoc(t.id)}
+                  disabled={creating !== null}
+                  className="glow-card p-3.5 text-left hover:border-white/20 transition-colors flex items-start gap-2.5 disabled:opacity-50"
+                >
+                  {creating === t.id ? <Loader2 size={16} className="animate-spin shrink-0 mt-0.5" /> : <LayoutTemplate size={16} className="shrink-0 mt-0.5" style={{ color: "var(--lime)" }} />}
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium truncate">{t.title}</div>
+                    <div className="text-xs text-[var(--text-tertiary)] mt-0.5 line-clamp-2">{t.description ?? CATEGORY_LABELS[t.category] ?? t.category}</div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
       )}
 
       {!docs && (

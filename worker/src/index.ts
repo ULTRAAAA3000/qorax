@@ -120,6 +120,7 @@ import {
   handleDocUpdate,
   handleDocDelete,
   handleAiWriter,
+  handleTemplatesList,
 } from "./lib/officeHandler";
 import {
   handleGscAuth,
@@ -777,6 +778,10 @@ const worker = {
     }
     if (docsListMatch && request.method === "POST") {
       return handleDocCreate(request, env, corsHeaders(origin), docsListMatch[1]);
+    }
+    const templatesListMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/office-templates$/);
+    if (templatesListMatch && request.method === "GET") {
+      return handleTemplatesList(request, env, corsHeaders(origin), templatesListMatch[1]);
     }
     const docDetailMatch = url.pathname.match(/^\/api\/office-documents\/([^/]+)$/);
     if (docDetailMatch && request.method === "GET") {

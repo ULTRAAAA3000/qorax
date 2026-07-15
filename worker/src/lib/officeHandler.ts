@@ -50,6 +50,15 @@ interface DocRow {
   updated_at: string;
 }
 
+interface TemplateRow {
+  id: string;
+  organization_id: string | null;
+  category: string;
+  title: string;
+  description: string | null;
+  content: { blocks: OfficeBlock[] };
+}
+
 async function getDocOrgId(docId: string, env: Env): Promise<string | null> {
   const res = await selectRows<{ organization_id: string }>(
     "office_documents",
@@ -58,6 +67,28 @@ async function getDocOrgId(docId: string, env: Env): Promise<string | null> {
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   return res.data?.[0]?.organization_id ?? null;
+}
+
+// ── GET /api/organizations/:id/office-templates ── бібліотека шаблонів ──
+//
+// Повертає системні (organization_id=null) + власні шаблони
+// організації в одному списку — той самий підхід, що RLS-політика
+// вже дозволяє на рівні бази (0073), тут просто один SELECT без
+// додаткової фільтрації.
+
+export async function handleTemplatesList(request: Request, env: Env, corsHeaders: Record<string, string>, organizationId: string): Promise<Response> {
+  const access = await requireOrgAccess(request, organizationId, "viewer", env);
+  if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  const res = await selectRows<Omit<TemplateRow, "content">>(
+    "office_templates",
+    `select=id,organization_id,category,title,description&or=(organization_id.is.null,organization_id.eq.${encodeURIComponent(organizationId)})&order=category.asc`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!res.ok) return json({ error: res.error }, 500, corsHeaders);
+
+  return json({ templates: res.data ?? [] }, 200, corsHeaders);
 }
 
 // ── GET /api/organizations/:id/office-documents ── список документів ──
@@ -83,18 +114,41 @@ export async function handleDocCreate(request: Request, env: Env, corsHeaders: R
   const access = await requireOrgAccess(request, organizationId, "editor", env);
   if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
 
-  let body: { title?: string };
+  let body: { title?: string; template_id?: string };
   try {
     body = await request.json();
   } catch {
     body = {};
   }
 
+  let title = body.title?.trim() || "Без назви";
+  let content: { blocks: OfficeBlock[] } | undefined;
+
+  if (body.template_id) {
+    const templateRes = await selectRows<TemplateRow>(
+      "office_templates",
+      `select=id,organization_id,title,content&id=eq.${encodeURIComponent(body.template_id)}`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    const template = templateRes.data?.[0];
+    // Шаблон має бути або системним (organization_id null), або
+    // власним для ЦІЄЇ організації — той самий захист, що вже є в
+    // creatorHandler.ts для ref_id проєкту, щоб не можна було
+    // підставити чужий template_id іншої організації.
+    if (!template || (template.organization_id !== null && template.organization_id !== organizationId)) {
+      return json({ error: "Шаблон не знайдено" }, 404, corsHeaders);
+    }
+    if (!body.title?.trim()) title = template.title;
+    content = template.content;
+  }
+
   const insertRes = await insertRowReturning<DocRow>(
     "office_documents",
     {
       organization_id: organizationId,
-      title: body.title?.trim() || "Без назви",
+      title,
+      ...(content ? { content } : {}),
       created_by: access.userId,
     },
     env.SUPABASE_URL,
