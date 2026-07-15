@@ -1,135 +1,140 @@
 "use client";
 
-// Секція лендінгу "Екосистема Qorax" — окремі продукти верхнього
-// рівня (Dashboard, Creator, майбутній Mail), НЕ модулі всередині
-// Dashboard (ті вже показані в PlatformModulesSection нижче на
-// сторінці). Візуально споріднена з PlatformModulesSection (той
-// самий glow-card, той самий Reveal-патерн), але з відчутнішою
-// ієрархією — це вхідні двері в кожен продукт, не рядовий модуль,
-// тож картки крупніші й мають явний статус-бейдж.
-//
-// Лише "live"-продукти клікабельні (зараз Dashboard). "preview" veде
-// на реальний продукт, але позначений як ранній доступ. "soon" не
-// клікабельний — Mail ще не існує технічно, посилання в нікуди було
-// б гірше за його відсутність.
-
-import Link from "next/link";
-import { LayoutDashboard, LayoutTemplate, Mail, ArrowRight } from "lucide-react";
+import { Briefcase, Mail, Palette, FileText, Globe, ArrowUpRight } from "lucide-react";
 import { Reveal } from "./Reveal";
 
-type ProductStatus = "live" | "preview" | "soon";
+/**
+ * EcosystemSection — представляє п'ять продуктів бренду Qorax
+ * (PRODUCT_VISION.md, розділ "П'ять продуктів екосистеми Qorax").
+ * На відміну від PlatformModulesSection (шість МОДУЛІВ всередині
+ * Business), тут — п'ять окремих ПРОДУКТІВ, кожен зі своєю точкою
+ * входу. Business єдиний, що вже частково `live` — веде на реальний
+ * /login. Решта чотирьох (Mail/Creator/Office/Browser) зафіксовані
+ * в roadmap як концепції без коду — сторінки-заглушки існують
+ * (/mail, /creator, /office, /browser), але позначені "Скоро" з
+ * заблокованим переходом, доки продукт реально не існує.
+ */
 
-const PRODUCTS: Array<{
-  name: string;
-  tagline: string;
-  description: string;
-  icon: typeof LayoutDashboard;
-  accent: "lime" | "cyan" | "purple";
-  status: ProductStatus;
-  href?: string;
-}> = [
+const PRODUCTS = [
   {
-    name: "Qorax Dashboard",
-    tagline: "ОСНОВНА ПЛАТФОРМА",
-    description: "Моніторинг, SEO, CRM, комерція, аналітика — усі інструменти для керування бізнесом онлайн в одному місці.",
-    icon: LayoutDashboard,
-    accent: "lime",
-    status: "live",
-    href: "/register",
+    icon: Briefcase,
+    name: "Qorax Business",
+    tagline: "Керуйте бізнесом",
+    description: "Моніторинг, SEO, сайти, CRM та AI-агенти в одній платформі — те, що вже працює сьогодні.",
+    href: "/login",
+    accent: "lime" as const,
+    live: true,
   },
   {
-    name: "Qorax Creator",
-    tagline: "ВІЗУАЛЬНЕ ПОЛОТНО",
-    description: "Створюйте й редагуйте сайти на безмежному canvas. Website Mode вже доступний у ранньому доступі.",
-    icon: LayoutTemplate,
-    accent: "cyan",
-    status: "preview",
-    href: "/creator",
-  },
-  {
-    name: "Qorax Mail",
-    tagline: "ПОШТОВІ РОЗСИЛКИ",
-    description: "Email-кампанії та автоматизація листування, зв'язані з тими самими клієнтами й даними, що й решта Qorax.",
     icon: Mail,
-    accent: "purple",
-    status: "soon",
+    name: "Qorax Mail",
+    tagline: "Спілкуйтесь з клієнтами",
+    description: "Корпоративна пошта, email-маркетинг та AI-агенти для листування — в одному місці.",
+    href: "/mail",
+    accent: "cyan" as const,
+    live: false,
+  },
+  {
+    icon: Palette,
+    name: "Qorax Creator",
+    tagline: "Створюйте візуали",
+    description: "Дизайн, сайти, презентації та банери на одному нескінченному полотні з AI.",
+    href: "/creator",
+    accent: "purple" as const,
+    live: true,
+  },
+  {
+    icon: FileText,
+    name: "Qorax Office",
+    tagline: "Працюйте з документами",
+    description: "Документи, таблиці й презентації з AI, що робить основну роботу за вас.",
+    href: "/office",
+    accent: "lime" as const,
+    live: false,
+  },
+  {
+    icon: Globe,
+    name: "Qorax Browser",
+    tagline: "Досліджуйте інтернет",
+    description: "Робочий браузер: аналізує сайти, збирає ідеї та передає їх у решту екосистеми.",
+    href: "/browser",
+    accent: "cyan" as const,
+    live: false,
   },
 ];
 
-const STATUS_LABEL: Record<ProductStatus, string> = {
-  live: "Доступно",
-  preview: "Ранній доступ",
-  soon: "Скоро",
-};
-
-function accentColor(accent: "lime" | "cyan" | "purple"): string {
-  if (accent === "lime") return "var(--lime)";
-  if (accent === "cyan") return "var(--cyan)";
-  return "var(--purple)";
-}
+const ACCENT_COLORS = { lime: "var(--lime)", cyan: "var(--cyan)", purple: "#B98CF7" } as const;
 
 export function EcosystemSection() {
   return (
-    <section className="relative py-24 sm:py-32">
-      <div className="mx-auto max-w-6xl px-6 sm:px-8">
+    <section className="relative">
+      <div className="gradient-divider" />
+      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-24">
         <Reveal>
-          <p className="text-center text-xs font-mono tracking-[0.2em] uppercase mb-3" style={{ color: "var(--text-tertiary)" }}>
-            Екосистема
-          </p>
+          <div className="text-center mb-4">
+            <span
+              className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono text-[var(--text-tertiary)]"
+              style={{ background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)" }}
+            >
+              ✦ ЕКОСИСТЕМА
+            </span>
+          </div>
+        </Reveal>
+        <Reveal delay={0.04}>
           <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-semibold text-center max-w-2xl mx-auto leading-tight">
-            Один Qorax, кілька продуктів
+            П&apos;ять продуктів.{" "}
+            <span className="gradient-text">Один бренд Qorax</span>
           </h2>
         </Reveal>
-        <Reveal delay={0.1}>
-          <p className="mt-4 text-center text-base sm:text-lg text-[var(--text-secondary)] max-w-xl mx-auto">
-            Кожен продукт працює самостійно, але спирається на ті самі дані — те, що ви створите в одному, видно й готове до роботи в іншому.
+        <Reveal delay={0.08}>
+          <p className="mt-4 text-center text-[var(--text-secondary)] max-w-xl mx-auto">
+            Кожен продукт цінний окремо — і підсилює решту, коли ви використовуєте їх разом.
           </p>
         </Reveal>
 
-        <div className="mt-14 grid sm:grid-cols-3 gap-5">
+        <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {PRODUCTS.map((product, i) => {
-            const color = accentColor(product.accent);
-            const clickable = product.status !== "soon" && product.href;
+            const color = ACCENT_COLORS[product.accent];
             const CardInner = (
-              <div
-                className="glow-card p-7 h-full flex flex-col transition-transform"
-                style={product.status === "soon" ? { opacity: 0.6 } : undefined}
-              >
-                <div className="flex items-start justify-between mb-5">
+              <div className="glow-card p-6 h-full flex flex-col relative overflow-hidden">
+                {!product.live && (
+                  <span
+                    className="absolute top-4 right-4 text-[10px] font-mono px-2 py-0.5 rounded-full"
+                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-tertiary)" }}
+                  >
+                    Скоро
+                  </span>
+                )}
+                <div className="flex items-center gap-3 mb-4">
                   <div
-                    className="h-11 w-11 rounded-xl flex items-center justify-center shrink-0"
+                    className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
                     style={{ background: `${color}14`, border: `1px solid ${color}33` }}
                   >
-                    <product.icon size={20} style={{ color }} strokeWidth={1.5} />
+                    <product.icon size={16} style={{ color }} strokeWidth={1.5} />
                   </div>
-                  <span
-                    className="text-[10px] font-mono uppercase tracking-wide px-2 py-1 rounded-full shrink-0"
-                    style={{ background: `${color}14`, color, border: `1px solid ${color}33` }}
-                  >
-                    {STATUS_LABEL[product.status]}
-                  </span>
+                  <div>
+                    <h3 className="font-display text-base font-semibold leading-tight">{product.name}</h3>
+                    <p className="text-[11px] font-mono" style={{ color }}>{product.tagline}</p>
+                  </div>
                 </div>
-
-                <h3 className="font-display text-lg font-semibold leading-tight mb-1">{product.name}</h3>
-                <p className="text-[11px] font-mono mb-3" style={{ color }}>{product.tagline}</p>
                 <p className="text-sm leading-relaxed text-[var(--text-secondary)] flex-1">{product.description}</p>
-
-                {clickable && (
-                  <div className="mt-5 flex items-center gap-1.5 text-sm font-medium" style={{ color }}>
-                    Перейти <ArrowRight size={14} />
+                {product.live && (
+                  <div className="mt-4 flex items-center gap-1.5 text-xs font-medium" style={{ color }}>
+                    Перейти <ArrowUpRight size={13} />
                   </div>
                 )}
               </div>
             );
-
             return (
-              <Reveal key={product.name} delay={Math.min(i * 0.08, 0.3)}>
-                {clickable ? (
-                  <Link href={product.href!} className="block h-full hover:-translate-y-0.5 transition-transform">
+              <Reveal key={product.name} delay={Math.min(i * 0.05, 0.25)}>
+                {product.live ? (
+                  <a href={product.href} className="block h-full transition-transform hover:-translate-y-0.5">
                     {CardInner}
-                  </Link>
+                  </a>
                 ) : (
-                  CardInner
+                  <a href={product.href} className="block h-full opacity-80 transition-opacity hover:opacity-100">
+                    {CardInner}
+                  </a>
                 )}
               </Reveal>
             );
