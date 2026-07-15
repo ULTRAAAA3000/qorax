@@ -1,15 +1,21 @@
 "use client";
 
-// Qorax Creator — Website Mode MVP (MODULE_ROADMAP.md "Qorax
-// Creator"). Один node_type='embedded_editor' — рендерить вже
-// наявний ProjectEditorUI (Sites-конструктор) НАПРЯМУ як React-
-// компонент усередині canvas-вузла, не через iframe. План описував
-// iframe-підхід для Live Objects (окремий, пізніший пункт — CRM/
-// Analytics/AI Chat як готові Next.js сторінки), але
-// ProjectEditorUI — вже самодостатній клієнтський компонент без
-// власного fullscreen-layout, тож прямий рендер точніше виконує
-// вимогу плану "той самий редактор, не переписаний вдруге", ніж
-// iframe додав би зайвий шар (сесія, комунікація між фреймами).
+// Qorax Creator — Website Mode (embedded_editor, ProjectEditorUI
+// НАПРЯМУ як React-компонент, не iframe — обґрунтування нижче) +
+// Live Objects (live_embed, MODULE_ROADMAP.md "Qorax Creator" —
+// "найдешевший спосіб зробити найамбітнішу частину бачення"): iframe
+// на вже наявну Dashboard-сторінку (CRM/Analytics/AI Chat/тощо),
+// той самий auth-контекст (спільна Supabase-сесія на одному домені).
+//
+// embedded_editor рендериться НАПРЯМУ як компонент, не iframe —
+// ProjectEditorUI вже самодостатній клієнтський компонент без
+// власного fullscreen-layout, прямий рендер точніше виконує вимогу
+// "той самий редактор, не переписаний вдруге". live_embed, навпаки,
+// — саме iframe: план для Live Objects явно описує iframe-підхід
+// (CRM/Analytics/AI Chat — повноцінні Dashboard-сторінки з власним
+// PlatformSidebar/layout, вбудовувати їх напряму як React-компонент
+// означало б тягнути весь Dashboard-каркас усередину canvas-вузла —
+// iframe тут дешевший і саме те, що описує план).
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import {
@@ -24,7 +30,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Loader2, X, Globe } from "lucide-react";
+import { Plus, Loader2, X, Globe, Zap, Users, BarChart3, Sparkles, Search, ShoppingCart, Share2, GraduationCap, Users2, Trophy } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { ProjectEditorUI } from "@/app/dashboard/sites-builder/[projectId]/ProjectEditorUI";
 
@@ -44,6 +50,22 @@ interface ProjectOption {
   id: string;
   name: string;
 }
+
+// Дзеркалить LIVE_EMBED_ALLOWED у worker/src/lib/creatorHandler.ts —
+// джерело істини для безпеки саме там (worker перевіряє live_key
+// проти власного whitelist незалежно від того, що надішле клієнт),
+// тут лише для читабельних підписів і списку вибору в UI.
+const LIVE_EMBED_OPTIONS: Array<{ key: string; label: string; path: string; icon: typeof Users }> = [
+  { key: "crm", label: "CRM", path: "/dashboard/crm", icon: Users },
+  { key: "analytics", label: "Analytics", path: "/dashboard/analytics", icon: BarChart3 },
+  { key: "ai", label: "AI Chat", path: "/dashboard/ai", icon: Sparkles },
+  { key: "rank", label: "Rank", path: "/dashboard/rank", icon: Search },
+  { key: "commerce", label: "Commerce", path: "/dashboard/commerce", icon: ShoppingCart },
+  { key: "social", label: "Social", path: "/dashboard/social", icon: Share2 },
+  { key: "academy", label: "Academy", path: "/dashboard/academy", icon: GraduationCap },
+  { key: "team", label: "Team", path: "/dashboard/team", icon: Users2 },
+  { key: "benchmark", label: "Benchmark", path: "/dashboard/benchmark", icon: Trophy },
+];
 
 interface Props {
   boardId: string;
@@ -96,7 +118,55 @@ function EmbeddedEditorNode({ data }: NodeProps) {
   );
 }
 
-const nodeTypes = { embeddedEditor: EmbeddedEditorNode };
+// ── node_type='live_embed' → iframe на Dashboard-сторінку ─────────
+// Той самий origin (Creator і Dashboard — один Next.js застосунок,
+// один домен), тому iframe успадковує сесію без жодної додаткової
+// авторизації чи передачі токена — браузер сам додає ті самі
+// cookies. embed_path завжди береться з локального LIVE_EMBED_OPTIONS
+// за live_key (не з data.embed_path, яке worker повертає лише для
+// зручності перегляду/дебагу) — той самий принцип подвійного
+// захисту, що описаний у creatorHandler.ts: навіть якщо хтось
+// підмінить значення в БД напряму, фронтенд все одно резолвить шлях
+// через власний whitelist, не довіряючи довільному рядку з відповіді.
+function LiveEmbedNode({ data }: NodeProps) {
+  const liveKey = data.liveKey as string;
+  const onDelete = data.onDelete as () => void;
+  const option = LIVE_EMBED_OPTIONS.find(o => o.key === liveKey);
+  const Icon = option?.icon ?? Zap;
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden flex flex-col"
+      style={{ width: "100%", height: "100%", background: "var(--bg)", border: "1px solid rgba(255,255,255,0.12)" }}
+    >
+      <div
+        className="shrink-0 flex items-center justify-between px-3 py-2 cursor-move"
+        style={{ background: "rgba(255,255,255,0.04)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+      >
+        <div className="flex items-center gap-1.5 min-w-0">
+          <Icon size={12} style={{ color: "var(--lime)" }} />
+          <span className="text-xs font-medium truncate">{option?.label ?? "Live Object"}</span>
+        </div>
+        <button onClick={onDelete} className="shrink-0 p-1 rounded-lg hover:bg-white/10 transition-colors nodrag">
+          <X size={12} className="text-[var(--text-tertiary)]" />
+        </button>
+      </div>
+      <div className="flex-1 min-h-0 nodrag nowheel">
+        {option ? (
+          <iframe
+            src={option.path}
+            className="w-full h-full border-0"
+            title={option.label}
+          />
+        ) : (
+          <div className="h-full flex items-center justify-center text-xs text-[var(--text-tertiary)]">Невідомий модуль</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const nodeTypes = { embeddedEditor: EmbeddedEditorNode, liveEmbed: LiveEmbedNode };
 
 export function BoardCanvasUI({ boardId, organizationId }: Props) {
   const [nodes, setNodes] = useNodesState<Node>([]);
@@ -118,6 +188,20 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
 
   const toFlowNode = useCallback((row: CanvasNodeRow): Node => {
     rawNodesRef.current.set(row.id, row);
+
+    if (row.node_type === "live_embed") {
+      return {
+        id: row.id,
+        type: "liveEmbed",
+        position: { x: row.position_x, y: row.position_y },
+        style: { width: row.width, height: row.height },
+        data: {
+          liveKey: row.data.live_key,
+          onDelete: () => deleteNode(row.id),
+        },
+      };
+    }
+
     return {
       id: row.id,
       type: "embeddedEditor",
@@ -145,7 +229,7 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
     setProjects(projectList);
 
     const rows: CanvasNodeRow[] = boardData.nodes ?? [];
-    setNodes(rows.filter(r => r.node_type === "embedded_editor").map(toFlowNode));
+    setNodes(rows.filter(r => r.node_type === "embedded_editor" || r.node_type === "live_embed").map(toFlowNode));
     setLoading(false);
   }, [boardId, organizationId, setNodes, toFlowNode]);
 
@@ -186,6 +270,18 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
     if (data.node) setNodes(nds => [...nds, toFlowNode(data.node)]);
   }
 
+  async function addLiveEmbedNode(liveKey: string) {
+    setShowAddMenu(false);
+    const token = await getFreshToken();
+    const res = await fetch(`${API_BASE_URL}/api/canvas-boards/${boardId}/nodes`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ node_type: "live_embed", live_key: liveKey, position_x: 40 + nodes.length * 40, position_y: 40 + nodes.length * 40 }),
+    });
+    const data = await res.json();
+    if (data.node) setNodes(nds => [...nds, toFlowNode(data.node)]);
+  }
+
   if (loading) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -214,27 +310,48 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
       <div className="absolute top-4 left-4 z-10">
         {!showAddMenu ? (
           <button onClick={() => setShowAddMenu(true)} className="glow-button text-sm !py-2 !px-4 flex items-center gap-1.5">
-            <Plus size={14} /> Додати сайт на дошку
+            <Plus size={14} /> Додати на дошку
           </button>
         ) : (
-          <div className="glow-card p-2 w-64 max-h-80 overflow-auto space-y-1">
+          <div className="glow-card p-2 w-72 max-h-96 overflow-auto space-y-3">
             <div className="flex items-center justify-between px-2 py-1">
-              <span className="text-xs font-medium text-[var(--text-tertiary)]">Оберіть проєкт Sites</span>
+              <span className="text-xs font-medium text-[var(--text-tertiary)]">Додати на дошку</span>
               <button onClick={() => setShowAddMenu(false)}><X size={13} className="text-[var(--text-tertiary)]" /></button>
             </div>
-            {!projects || projects.length === 0 ? (
-              <p className="text-xs text-[var(--text-tertiary)] px-2 py-3">Немає проєктів у Sites-конструкторі. Створіть проєкт спочатку.</p>
-            ) : (
-              projects.map(p => (
-                <button
-                  key={p.id}
-                  onClick={() => addProjectNode(p.id)}
-                  className="w-full text-left text-sm px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors truncate"
-                >
-                  {p.name}
-                </button>
-              ))
-            )}
+
+            <div>
+              <p className="px-2 text-[10px] font-mono uppercase tracking-wide text-[var(--text-tertiary)] mb-1">Сайт (Website Mode)</p>
+              {!projects || projects.length === 0 ? (
+                <p className="text-xs text-[var(--text-tertiary)] px-2 py-2">Немає проєктів у Sites-конструкторі.</p>
+              ) : (
+                <div className="space-y-1">
+                  {projects.map(p => (
+                    <button
+                      key={p.id}
+                      onClick={() => addProjectNode(p.id)}
+                      className="w-full text-left text-sm px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors truncate flex items-center gap-1.5"
+                    >
+                      <Globe size={12} className="text-[var(--cyan)] shrink-0" /> {p.name}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div>
+              <p className="px-2 text-[10px] font-mono uppercase tracking-wide text-[var(--text-tertiary)] mb-1">Живий об&apos;єкт (Live Objects)</p>
+              <div className="space-y-1">
+                {LIVE_EMBED_OPTIONS.map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => addLiveEmbedNode(opt.key)}
+                    className="w-full text-left text-sm px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors truncate flex items-center gap-1.5"
+                  >
+                    <opt.icon size={12} className="text-[var(--lime)] shrink-0" /> {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         )}
       </div>

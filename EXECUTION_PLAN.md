@@ -2858,3 +2858,248 @@ CSV, AI-панель.
 
 **Не зроблено в цьому проході:** застосування міграції `0074`
 (ручний крок Артема).
+
+---
+
+## Qorax Browser — MVP (перший код продукту)
+
+**Обсяг MVP (узгоджено з Артемом):** лише URL bar + proxy-перегляд
+сайту + AI Sidebar ("що це за сайт?", коротке SEO-спостереження).
+Жодних Collections/Smart Capture/Site Inspector/One Click Actions/
+AI Compare/Research Mode/Component Extractor/Marketplace — усе це з
+повного переліку в MODULE_ROADMAP.md лишається майбутніми
+ітераціями.
+
+**Архітектурне рішення (важливо, відхиляється від roadmap):**
+спершу обговорювали Electron-десктопний застосунок (як писав
+roadmap: "Chromium-based рушій, окремий репозиторій"), але Артем
+уточнив — Browser має бути веб-продуктом ВСЕРЕДИНІ поточного репо,
+відкривається через лендинг натисканням картки в EcosystemSection,
+той самий рівень, що Creator/Office (`/browser`, окремий топ-левел
+роут, БЕЗ Dashboard-каркасу, вхід через Supabase Auth). Це змінює
+технічну реалізацію кардинально — не Electron, а Cloudflare Worker
+proxy + iframe.
+
+**Технічний підхід proxy: `<base href>` rewrite, НЕ повне
+проксування ресурсів.** Worker завантажує лише HTML-документ
+цільового сайту і вставляє `<base href="{origin}/">` в `<head>` —
+усі відносні шляхи (CSS/JS/зображення) автоматично резолвляться в
+абсолютні URL оригінального сайту, браузер користувача вантажить їх
+НАПРЯМУ, не через Worker. X-Frame-Options/CSP-заголовки з upstream-
+відповіді не передаються далі (вони блокують лише сам HTML-документ
+в iframe, не суб-ресурси) — це і є механізм, що дозволяє показати
+чужий сайт у `<iframe>`.
+
+**Відоме обмеження MVP (не баг):** SPA/JS-важкі сайти, сайти з
+жорсткими anti-bot захистами (Cloudflare/DataDome/reCAPTCHA) і
+сайти з CSP `frame-ancestors` на рівні meta-тегу можуть
+відображатись некоректно або не відображатись зовсім. Реалістично
+працює добре на простих/статичних/помірно динамічних сайтах.
+
+**Міграція `0074_browser_workspace.sql`:** одна таблиця
+`browser_history` (org-scoped, той самий RLS-патерн, що
+`canvas_boards`/`office_documents`) — url/title/ai_summary/
+visited_by/visited_at. `ai_summary` — кешована відповідь AI Sidebar,
+щоб не викликати Gemini повторно для того самого URL. Collections
+(проєкти з конкурентами/референсами) — НЕ ця міграція, майбутня
+ітерація. Без реєстрації в `platform_modules` — той самий принцип,
+що Creator/Office (окремий продукт екосистеми, не Dashboard-модуль).
+
+**`worker/src/lib/browserHandler.ts`:**
+- `GET /api/browser/proxy?url=...&organization_id=...` — HTML fetch
+  зі справжнім браузерним User-Agent (Chrome UA, НЕ
+  `DEFAULT_USER_AGENT` з httpUtils.ts — той навмисно бот-агент
+  "QoraxBot/1.0" для чесного SEO-моніторингу, тут навпаки потрібна
+  та сама версія сторінки, що звичайному відвідувачу), `<base href>`
+  rewrite, повертає HTML без frame-blocking заголовків
+- `POST /api/browser/analyze` — AI Sidebar, переюзовує `callGemini`
+  з `contentGeneration.ts` і `checkAiCredits`/`deductAiCredits` з
+  `aiCredits.ts` (той самий credit pool і безліміт для адмінської
+  організації, що решта AI-фіч Business). Кешування: якщо URL вже
+  аналізувався для організації — повертає збережений `ai_summary`
+  без повторного виклику Gemini
+- `GET /api/browser/history?organization_id=...` — останні 20
+  відвіданих сайтів
+
+**UI:** `/browser/page.tsx` (той самий патерн, що Office: незалогінений
+→ `ProductComingSoon`, залогінений → реальний продукт) +
+`BrowserUI.tsx` — URL bar, `<iframe>` на proxy-endpoint, AI Sidebar
+(кнопка "Що це за сайт?", результат аналізу, історія недавніх
+сайтів). Використовує `getFreshToken()` (той самий фікс, що
+`OfficeDocsListUI.tsx`/`CreatorBoardsListUI.tsx` — не кешувати JWT
+на весь час життя компонента).
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто (виправлено `set-state-in-effect` — обгорнуто в async IIFE,
+той самий патерн, що всюди по проєкту), повний `next build` успішно,
+`wrangler deploy --dry-run` успішно (724.47 KiB, gzip 125.84 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** Site Inspector (шрифти/
+кольори/технології сайту), Collections (проєкти з референсами),
+Smart Capture (виділення контенту → відправка в Creator/Office/
+Mail), AI Compare, Research Mode, Component Extractor, Marketplace —
+увесь розширений перелік з roadmap. Рейт-лімітування proxy-запитів
+(захист від зловживання Worker'ом як анонімним HTTP-проксі для
+довільних URL) — не входило в цей прохід, варто розглянути окремо
+перед публічним запуском.
+
+---
+
+## Qorax Creator: Diagram Mode / KG Visualization — другий крок
+
+MODULE_ROADMAP.md, "Qorax Creator", "Порядок реалізації": Website
+Mode (готово) → **KG Visualization як Diagram Mode MVP** (цей прохід)
+→ Live Objects → ... Обраний план явно називає це "найдешевшим
+MVP-кандидатом" — `canvas_nodes.ref_table/ref_id` вже той самий
+Platform Object Bridge, що `kg_nodes.ref_table/ref_id`.
+
+**Архітектурне рішення: без `canvas_boards`.** На відміну від Website
+Mode (кожна дошка — окремий запис, користувач створює скільки хоче),
+Knowledge Graph один на організацію — не артефакт, який хтось
+розкладає вручну, а похідна структура з реальних даних платформи.
+Тому `/creator/graph` рендерить граф організації напряму з
+`kg_nodes`/`kg_edges`, без проміжного запису в `canvas_boards`.
+
+**Побічно виявлено й закрито реальний пробіл:** `addEdge()` в
+`knowledgeGraph.ts` існував від початку (0065), але ніде не
+викликався — граф складався тільки з вузлів, без жодного зв'язку.
+Візуалізація порожнього графа зв'язків не показала б нічого цікавого.
+Додано 2 симетричні виклики:
+- `crmHandler.ts`: при створенні CRM-контакту з `site_id` — зв'язок
+  з до 3 найновіших `keyword`-вузлів, відстежуваних на ТОМУ САМОМУ
+  сайті (`crm_contacts.site_id` і `rank_tracked_queries.site_id` —
+  те саме поле `sites.id`, гарантовано коректне співставлення)
+- `rankHandler.ts`: симетрично — при створенні нового tracked-запиту,
+  зв'язок з до 3 найновіших `customer`-вузлів того самого сайту
+
+Обидва напрями потрібні одночасно — без симетрії граф залежав би від
+порядку створення записів (лід після ключового слова зв'язався б, лід
+до — ні). Ліміт "3 найновіших" з кожного боку — не всі до 30
+(`MAX_TRACKED_QUERIES`) чи всі ліди — щоб зв'язок лишався змістовним
+("цей лід і оце ключове слово того самого сайту"), а не розмивався в
+зірку з десятків ліній на кожен новий запис. Розглядався варіант через
+збіг `target_url`/`project_pages.slug`, відкинуто: `sites` (моніторинг)
+і `projects` (Sites-конструктор) — навмисно окремі сутності без
+foreign key між ними (задокументований принцип платформи), URL-збіг
+був би евристикою з ризиком хибних зв'язків, не гарантованою
+коректністю.
+
+**Worker (`knowledgeGraph.ts`, доповнено):** новий
+`handleGraphData(request, env, corsHeaders, organizationId)` — GET,
+`requireOrgAccess` (organization-рівня, той самий патерн, що
+Creator boards). Повертає `{ nodes, edges }` — до 300 вузлів (щедріший
+ліміт за `buildGraphContext()`'s 60, там обмеження токен-бюджетом
+промпту AI Chat, тут його нема, 300 — розумна стеля проти випадкового
+рендеру тисяч вузлів на одному canvas). Рёбра — тільки для вже
+завантажених вузлів (`from_node_id=in.(...)`), не весь `kg_edges`
+організації.
+
+**UI (`app/creator/graph/`, 2 нові файли):**
+- `page.tsx` — той самий безсайдбарний layout, що
+  `[boardId]/page.tsx`, з перемикачем режимів Website/Diagram у
+  шапці (перший раз, коли з'явилось поняття "режимів" у Creator —
+  той самий перемикач додано і на `/creator` головній сторінці)
+- `GraphCanvasUI.tsx` — `<ReactFlow>` read-only (`nodesDraggable=
+  false`, `nodesConnectable=false`, `elementsSelectable=false` —
+  застосування діаграми до БД свідомо не MVP, тож і драг вузлів не
+  повинен створювати враження, що щось зберігається). Layout —
+  прості концентричні кільця, групування по `node_type` (не
+  dagre/elk: нова залежність не виправдана для MVP-візуалізації,
+  яку ніхто не редагує вручну). Кожен `node_type` має свою іконку/
+  колір (`TYPE_META`) — keyword/customer/page/product/competitor/
+  article/lead/service/category, весь union `KgNodeType`.
+  Порожній граф — окремий, дружній стан з поясненням, звідки він
+  заповнюється (Rank/CRM/Sites), не порожній canvas без контексту.
+
+**Перевірено:** `tsc --noEmit` чисто (worker+app), `npx eslint
+app/creator/` чисто, `npm run build` успішно (`/creator/graph` на
+місці серед 40 роутів), `wrangler deploy --dry-run --config
+wrangler.toml` успішно (706.13 KiB, gzip 123.35 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** UML/Flowchart/BPMN/ER Diagram
+(інші типи Diagram Mode за назвою розділу плану) — цей прохід
+показує ЛИШЕ Knowledge Graph, не довільне малювання діаграм
+користувачем; це окремий, більший функціонал (створення власних
+вузлів/зв'язків руками, не тільки візуалізація вже наявних даних),
+план явно відкладає застосування схеми до БД на пізніше з тієї самої
+причини. Немає ручного репозиціювання вузлів графа (read-only, як і
+задокументовано вище) — якщо знадобиться "закріпити" layout,
+знадобиться зберігати позиції десь (нова колонка чи окрема таблиця),
+не поточне рішення.
+
+---
+
+## Qorax Creator: Live Objects — третій крок
+
+MODULE_ROADMAP.md, "Qorax Creator", порядок реалізації: Website Mode
+→ Diagram Mode (готово) → **Live Objects** (цей прохід) →
+Components/Brand Kit → ... План описує це як "найдешевший спосіб
+зробити найамбітнішу частину бачення" — "живий CRM/Analytics/AI Chat
+прямо на Canvas" звучить як величезний обсяг роботи, але кожен з цих
+модулів УЖЕ працююча сторінка Next.js.
+
+**Жодної нової міграції не знадобилось.** `canvas_nodes` (0071) вже
+мала вільне `node_type text` і `data jsonb` саме на цей випадок
+(задокументовано в коментарі міграції ще під час Website Mode:
+"'embedded_editor' (MVP) | ... | 'live_embed' | ... (майбутні
+режими)"). `node_type='live_embed'`, `data: { live_key, embed_path }`
+— жодних змін схеми.
+
+**Ключове рішення з безпеки: whitelist, не довільний URL.**
+`data jsonb` — вільна структура, яку клієнт частково контролює через
+POST-тіло. Якби worker приймав довільний `embed_url` від клієнта і
+просто зберігав його, будь-який користувач з editor-доступом до
+дошки міг би вбудувати ЗОВНІШНІЙ URL у iframe на сторінці Creator
+(потенційний фішинг/clickjacking вектор — сторінка виглядала б як
+частина Qorax, показуючи довільний зовнішній контент). Замість цього:
+клієнт передає лише короткий `live_key` (напр. `"crm"`), worker
+резолвить його через власний `LIVE_EMBED_ALLOWED` (9 записів:
+crm/analytics/ai/rank/commerce/social/academy/team/benchmark —
+всі вже наявні Dashboard-роути) і сам вирішує, який `/dashboard/...`
+шлях зберегти в `data.embed_path`. Клієнтський `LIVE_EMBED_OPTIONS`
+— дзеркало цього списку лише для читабельних підписів (іконка,
+назва) в UI вибору, НЕ джерело істини для безпеки; навіть якщо
+хтось підмінить `data.embed_path` напряму в базі, фронтенд все одно
+резолвить реальний шлях через `option.path` з власного whitelist за
+`live_key`, не довіряючи значенню з відповіді API.
+
+**Auth-контекст — підтверджено без додаткової роботи.** Той самий
+принцип, що вже задокументовано в записі "Кешування входу між
+продуктами": Creator і Dashboard — один Next.js застосунок на
+одному домені, спільна Supabase-сесія в cookie. iframe на
+`/dashboard/crm` (same-origin) успадковує cookie автоматично —
+жодної передачі токена, окремої авторизації чи спеціальної обробки
+в `middleware.ts` не знадобилось.
+
+**UI (`BoardCanvasUI.tsx`, доповнено, не новий файл):**
+- `LiveEmbedNode` — другий custom node поруч із `EmbeddedEditorNode`.
+  На відміну від Website Mode (прямий React-рендер), тут САМЕ
+  iframe: CRM/Analytics — повноцінні Dashboard-сторінки з власним
+  `PlatformSidebar`, вбудовувати їх напряму як компонент означало б
+  тягнути весь Dashboard-каркас усередину вузла — iframe тут
+  дешевший і саме те, що описує план для цього конкретного випадку
+- Меню "Додати на дошку" перероблено на дві секції: "Сайт (Website
+  Mode)" (як було) + "Живий об'єкт (Live Objects)" (новий список з
+  9 модулів)
+- `toFlowNode`/`load()` тепер розрізняють `node_type` при конвертації
+  рядка БД у React Flow вузол, обидва типи завантажуються разом на
+  одній дошці
+
+**Worker (`creatorHandler.ts`, доповнено):** `handleNodeCreate`
+розгалужується на `live_embed`/`embedded_editor` гілки на самому
+початку. `handleNodeUpdate`/`handleNodeDelete` не потребували змін
+— вони вже працювали з геометрією/id незалежно від `node_type`.
+
+**Перевірено:** `tsc --noEmit` чисто (worker+app), `npx eslint
+app/creator/` чисто, `npm run build` успішно, `wrangler deploy
+--dry-run --config wrangler.toml` успішно (730.56 KiB, gzip 127.15
+KiB). Перевірено відсутність `X-Frame-Options`/CSP
+`frame-ancestors` заголовків, що могли б заблокувати self-embedding
+iframe (немає жодних — за замовчуванням дозволено).
+
+**Свідомо НЕ зроблено цим проходом:** динамічна адаптація вкладеної
+сторінки під розмір рамки (план прямо називає це прийнятним
+компромісом MVP — "виглядає так само, як і в звичайному дашборді").
+Обмеження resize вузла iframe (можна зробити занадто маленьким,
+контент буде обрізаний скролом Dashboard-сторінки — не критично,
+той самий компроміс).

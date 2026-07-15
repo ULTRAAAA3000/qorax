@@ -12,7 +12,7 @@
 
 import type { Env } from "../types";
 import { selectRows, insertRow, insertRowReturning, updateRows } from "./supabase";
-import { upsertNode } from "./knowledgeGraph";
+import { upsertNode, addEdge } from "./knowledgeGraph";
 import { json } from "./httpUtils";
 import { requireOrgAccess } from "./orgAuth";
 import { dispatchAlert } from "./monitoring";
@@ -118,7 +118,37 @@ export async function handleCrmContactCreate(
     // 'customer' спрощено охоплює і лідів, і клієнтів: на рівні crm_contacts
     // немає окремого розмежування (стадія лишається властивістю crm_deals,
     // не контакту) — не блокує основний потік, помилка ігнорується
-    await upsertNode(organizationId, "customer", name ?? email ?? phone ?? "Контакт", "crm_contacts", newContactId, env);
+    const contactNodeId = await upsertNode(organizationId, "customer", name ?? email ?? phone ?? "Контакт", "crm_contacts", newContactId, env);
+
+    // MVP-звʼязок для Diagram Mode (Qorax Creator, "KG Visualization"):
+    // лід ↔ ключові слова, що відстежуються на ТОМУ САМОМУ сайті
+    // (crm_contacts.site_id і rank_tracked_queries.site_id — те саме
+    // поле sites.id, гарантовано коректне співставлення, не URL-евристика).
+    // Обмежено 3 найновішими keyword-вузлами, не всіма (до 30 на сайт,
+    // MAX_TRACKED_QUERIES у rankHandler.ts) — звʼязок "цей лід і ЦЕ
+    // ключове слово того самого сайту" залишається змістовним на
+    // діаграмі, а не розмивається у зірку з 30 ліній на кожен новий лід.
+    if (contactNodeId && body.site_id) {
+      const trackedRes = await selectRows<{ id: string }>(
+        "rank_tracked_queries",
+        `select=id&site_id=eq.${encodeURIComponent(body.site_id)}&order=created_at.desc&limit=3`,
+        env.SUPABASE_URL,
+        env.SUPABASE_SERVICE_ROLE_KEY
+      );
+      const trackedIds = (trackedRes.data ?? []).map(t => t.id);
+      if (trackedIds.length > 0) {
+        const idsFilter = trackedIds.map(id => encodeURIComponent(id)).join(",");
+        const kwNodesRes = await selectRows<{ id: string }>(
+          "kg_nodes",
+          `select=id&organization_id=eq.${encodeURIComponent(organizationId)}&ref_table=eq.rank_tracked_queries&ref_id=in.(${idsFilter})`,
+          env.SUPABASE_URL,
+          env.SUPABASE_SERVICE_ROLE_KEY
+        );
+        for (const kwNode of kwNodesRes.data ?? []) {
+          await addEdge(organizationId, contactNodeId, kwNode.id, "related_to", env);
+        }
+      }
+    }
   }
 
   return json({ ok: true }, 201, corsHeaders);

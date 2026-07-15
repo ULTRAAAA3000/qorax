@@ -14,6 +14,7 @@
 
 import type { Env } from "../types";
 import { selectRows, insertRowReturning } from "./supabase";
+import { requireOrgAccess } from "./orgAuth";
 
 export type KgNodeType =
   | "service"
@@ -199,4 +200,62 @@ export async function buildGraphContext(organizationId: string, env: Env, maxNod
   }
 
   return lines.length > 0 ? lines.join("\n") : null;
+}
+
+// ── GET /api/organizations/:id/knowledge-graph ── для Diagram Mode ──
+//
+// MODULE_ROADMAP.md, "Qorax Creator", KG Visualization — той самий
+// шар даних, що вже споживає AI Chat через buildGraphContext() вище,
+// тепер віддається як структурований JSON для рендеру на canvas
+// (@xyflow/react у BoardCanvasUI.tsx), не текстовий блок для промпту.
+// Ліміт 300 вузлів — щедріший за buildGraphContext (60, для токен-
+// бюджету промпту), бо тут немає такого обмеження, лише розумна
+// стеля проти випадкового рендеру тисяч вузлів на одному canvas.
+
+interface GraphNodeFull {
+  id: string;
+  node_type: KgNodeType;
+  label: string;
+  ref_table: string | null;
+  ref_id: string | null;
+}
+
+interface GraphEdgeFull {
+  id: string;
+  from_node_id: string;
+  to_node_id: string;
+  relation: string;
+  weight: number;
+}
+
+export async function handleGraphData(request: Request, env: Env, corsHeaders: Record<string, string>, organizationId: string): Promise<Response> {
+  const access = await requireOrgAccess(request, organizationId, "viewer", env);
+  if (!access.ok) {
+    const status = access.status ?? 401;
+    const message = status === 404 ? "Не знайдено" : status === 403 ? "Немає доступу" : "Unauthorized";
+    return new Response(JSON.stringify({ error: message }), { status, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+  }
+
+  const nodesRes = await selectRows<GraphNodeFull>(
+    "kg_nodes",
+    `select=id,node_type,label,ref_table,ref_id&organization_id=eq.${encodeURIComponent(organizationId)}&order=created_at.desc&limit=300`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const nodes = nodesRes.data ?? [];
+
+  let edges: GraphEdgeFull[] = [];
+  if (nodes.length > 0) {
+    const nodeIds = nodes.map(n => n.id);
+    const idsFilter = nodeIds.map(id => encodeURIComponent(id)).join(",");
+    const edgesRes = await selectRows<GraphEdgeFull>(
+      "kg_edges",
+      `select=id,from_node_id,to_node_id,relation,weight&organization_id=eq.${encodeURIComponent(organizationId)}&from_node_id=in.(${idsFilter})`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    edges = edgesRes.data ?? [];
+  }
+
+  return new Response(JSON.stringify({ nodes, edges }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
 }

@@ -113,6 +113,7 @@ import {
   handleNodeUpdate,
   handleNodeDelete,
 } from "./lib/creatorHandler";
+import { handleGraphData } from "./lib/knowledgeGraph";
 import {
   handleDocsList,
   handleDocCreate,
@@ -181,6 +182,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -829,6 +831,12 @@ const worker = {
       return handleSheetAiGenerate(request, env, corsHeaders(origin), sheetAiMatch[1]);
     }
 
+    // ── Qorax Creator: KG Visualization / Diagram Mode (MODULE_ROADMAP.md "Qorax Creator") ──
+    const knowledgeGraphMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/knowledge-graph$/);
+    if (knowledgeGraphMatch && request.method === "GET") {
+      return handleGraphData(request, env, corsHeaders(origin), knowledgeGraphMatch[1]);
+    }
+
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
     const croSnippetMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/cro\/snippet$/);
     if (croSnippetMatch && request.method === "GET") {
@@ -846,6 +854,17 @@ const worker = {
     const benchmarkMatch = url.pathname.match(/^\/api\/benchmarks\/([^/]+)$/);
     if (benchmarkMatch && request.method === "GET") {
       return handleBenchmarkGet(request, env, corsHeaders(origin), benchmarkMatch[1]);
+    }
+
+    // ── Qorax Browser routes (MODULE_ROADMAP.md, "Qorax Browser") ──
+    if (url.pathname === "/api/browser/proxy" && request.method === "GET") {
+      return handleBrowserProxy(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/analyze" && request.method === "POST") {
+      return handleBrowserAnalyze(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/history" && request.method === "GET") {
+      return handleBrowserHistory(request, env, corsHeaders(origin));
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
