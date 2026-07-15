@@ -123,6 +123,14 @@ import {
   handleTemplatesList,
 } from "./lib/officeHandler";
 import {
+  handleSheetsList,
+  handleSheetCreate,
+  handleSheetDetail,
+  handleSheetUpdate,
+  handleSheetDelete,
+  handleSheetAiGenerate,
+} from "./lib/officeSheetsHandler";
+import {
   handleGscAuth,
   handleGscCallback,
   handleGscStatus,
@@ -796,6 +804,29 @@ const worker = {
     const docAiWriterMatch = url.pathname.match(/^\/api\/office-documents\/([^/]+)\/ai-writer$/);
     if (docAiWriterMatch && request.method === "POST") {
       return handleAiWriter(request, env, corsHeaders(origin), docAiWriterMatch[1]);
+    }
+
+    // ── Qorax Office: Sheets MVP (MODULE_ROADMAP.md "Qorax Office") ──
+    const sheetsListMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/office-sheets$/);
+    if (sheetsListMatch && request.method === "GET") {
+      return handleSheetsList(request, env, corsHeaders(origin), sheetsListMatch[1]);
+    }
+    if (sheetsListMatch && request.method === "POST") {
+      return handleSheetCreate(request, env, corsHeaders(origin), sheetsListMatch[1]);
+    }
+    const sheetDetailMatch = url.pathname.match(/^\/api\/office-sheets\/([^/]+)$/);
+    if (sheetDetailMatch && request.method === "GET") {
+      return handleSheetDetail(request, env, corsHeaders(origin), sheetDetailMatch[1]);
+    }
+    if (sheetDetailMatch && request.method === "PATCH") {
+      return handleSheetUpdate(request, env, corsHeaders(origin), sheetDetailMatch[1]);
+    }
+    if (sheetDetailMatch && request.method === "DELETE") {
+      return handleSheetDelete(request, env, corsHeaders(origin), sheetDetailMatch[1]);
+    }
+    const sheetAiMatch = url.pathname.match(/^\/api\/office-sheets\/([^/]+)\/ai-generate$/);
+    if (sheetAiMatch && request.method === "POST") {
+      return handleSheetAiGenerate(request, env, corsHeaders(origin), sheetAiMatch[1]);
     }
 
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
