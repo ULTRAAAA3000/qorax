@@ -114,6 +114,14 @@ import {
   handleNodeDelete,
 } from "./lib/creatorHandler";
 import {
+  handleDocsList,
+  handleDocCreate,
+  handleDocDetail,
+  handleDocUpdate,
+  handleDocDelete,
+  handleAiWriter,
+} from "./lib/officeHandler";
+import {
   handleGscAuth,
   handleGscCallback,
   handleGscStatus,
@@ -760,6 +768,29 @@ const worker = {
     }
     if (nodeItemMatch && request.method === "DELETE") {
       return handleNodeDelete(request, env, corsHeaders(origin), nodeItemMatch[1], nodeItemMatch[2]);
+    }
+
+    // ── Qorax Office: Docs MVP (MODULE_ROADMAP.md "Qorax Office") ──
+    const docsListMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/office-documents$/);
+    if (docsListMatch && request.method === "GET") {
+      return handleDocsList(request, env, corsHeaders(origin), docsListMatch[1]);
+    }
+    if (docsListMatch && request.method === "POST") {
+      return handleDocCreate(request, env, corsHeaders(origin), docsListMatch[1]);
+    }
+    const docDetailMatch = url.pathname.match(/^\/api\/office-documents\/([^/]+)$/);
+    if (docDetailMatch && request.method === "GET") {
+      return handleDocDetail(request, env, corsHeaders(origin), docDetailMatch[1]);
+    }
+    if (docDetailMatch && request.method === "PATCH") {
+      return handleDocUpdate(request, env, corsHeaders(origin), docDetailMatch[1]);
+    }
+    if (docDetailMatch && request.method === "DELETE") {
+      return handleDocDelete(request, env, corsHeaders(origin), docDetailMatch[1]);
+    }
+    const docAiWriterMatch = url.pathname.match(/^\/api\/office-documents\/([^/]+)\/ai-writer$/);
+    if (docAiWriterMatch && request.method === "POST") {
+      return handleAiWriter(request, env, corsHeaders(origin), docAiWriterMatch[1]);
     }
 
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──

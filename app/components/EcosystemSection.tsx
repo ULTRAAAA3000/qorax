@@ -50,7 +50,7 @@ const PRODUCTS = [
     description: "Документи, таблиці й презентації з AI, що робить основну роботу за вас.",
     href: "/office",
     accent: "lime" as const,
-    live: false,
+    live: true,
   },
   {
     icon: Globe,
