@@ -805,7 +805,6 @@ const worker = {
     if (knowledgeGraphMatch && request.method === "GET") {
       return handleGraphData(request, env, corsHeaders(origin), knowledgeGraphMatch[1]);
     }
-    }
 
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
     const croSnippetMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/cro\/snippet$/);
