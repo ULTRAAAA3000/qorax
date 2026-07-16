@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Globe, Sparkles, Loader2, ArrowRight, Clock, X, ScanSearch, Zap, Palette, Type, Code2, Layers } from "lucide-react";
+import { Globe, Sparkles, Loader2, ArrowRight, Clock, X, ScanSearch, Zap, Palette, Type, Code2, Layers, FileText } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { CollectionsPanel } from "./CollectionsPanel";
 
@@ -66,6 +66,10 @@ export function BrowserUI({ organizationId }: Props) {
   const [inspectResult, setInspectResult] = useState<InspectResult | null>(null);
   const [inspecting, setInspecting] = useState(false);
   const [inspectError, setInspectError] = useState<string | null>(null);
+  const [capturedText, setCapturedText] = useState<string | null>(null);
+  const [capturing, setCapturing] = useState(false);
+  const [captureError, setCaptureError] = useState<string | null>(null);
+  const [captureSuccess, setCaptureSuccess] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const loadHistory = useCallback(async () => {
@@ -84,6 +88,25 @@ export function BrowserUI({ organizationId }: Props) {
     })();
   }, [loadHistory]);
 
+  // Smart Capture: слухаємо postMessage від скрипта, інжектованого
+  // сервером у проксовану сторінку (browserHandler.ts,
+  // injectSelectionScript) — прямий доступ до iframe.contentWindow
+  // заблоковано cross-origin policy (фронтенд і API_BASE_URL — різні
+  // origin у продакшені), postMessage єдиний надійний міст.
+  useEffect(() => {
+    function handleMessage(event: MessageEvent) {
+      if (event.data?.source !== "qorax-browser" || event.data?.type !== "selection") return;
+      const text = typeof event.data.text === "string" ? event.data.text : "";
+      if (text) {
+        setCapturedText(text);
+        setCaptureError(null);
+        setCaptureSuccess(false);
+      }
+    }
+    window.addEventListener("message", handleMessage);
+    return () => window.removeEventListener("message", handleMessage);
+  }, []);
+
   const navigate = useCallback((rawUrl: string) => {
     const normalized = normalizeUrl(rawUrl);
     if (!normalized) {
@@ -95,6 +118,9 @@ export function BrowserUI({ organizationId }: Props) {
     setAnalyzeError(null);
     setInspectResult(null);
     setInspectError(null);
+    setCapturedText(null);
+    setCaptureError(null);
+    setCaptureSuccess(false);
     setAddressInput(normalized);
     setCurrentUrl(normalized);
     setIframeLoading(true);
@@ -149,6 +175,34 @@ export function BrowserUI({ organizationId }: Props) {
       setInspectError("Помилка з'єднання");
     } finally {
       setInspecting(false);
+    }
+  }
+
+  async function captureToOffice() {
+    if (!capturedText) return;
+    setCapturing(true);
+    setCaptureError(null);
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/browser/capture/office`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organization_id: organizationId,
+          text: capturedText,
+          source_url: currentUrl ?? undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCaptureError(data.error ?? "Не вдалося зберегти в Office");
+        return;
+      }
+      setCaptureSuccess(true);
+    } catch {
+      setCaptureError("Помилка з'єднання");
+    } finally {
+      setCapturing(false);
     }
   }
 
@@ -226,6 +280,37 @@ export function BrowserUI({ organizationId }: Props) {
               onError={() => { setIframeLoading(false); setLoadError("Не вдалося відобразити сайт"); }}
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
             />
+          )}
+
+          {/* Smart Capture: спливає, коли користувач виділив текст
+              усередині проксованої сторінки (postMessage від
+              injectSelectionScript, browserHandler.ts) */}
+          {capturedText && (
+            <div
+              className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-2xl px-4 py-3 flex flex-col gap-2 max-w-lg shadow-2xl"
+              style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }}
+            >
+              <div className="flex items-center gap-3">
+                <p className="text-xs text-[var(--text-secondary)] truncate max-w-[220px]">&ldquo;{capturedText}&rdquo;</p>
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  <button
+                    onClick={captureToOffice}
+                    disabled={capturing || captureSuccess}
+                    className="glow-button text-xs !py-1.5 !px-3 flex items-center gap-1.5 disabled:opacity-50"
+                  >
+                    {capturing ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
+                    {captureSuccess ? "Збережено ✓" : capturing ? "Зберігаю..." : "В Office"}
+                  </button>
+                  <span className="text-[10px] px-2 py-1 rounded-md text-[var(--text-tertiary)]" style={{ background: "rgba(255,255,255,0.04)" }}>
+                    Creator/Mail — скоро
+                  </span>
+                  <button onClick={() => setCapturedText(null)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
+                    <X size={13} />
+                  </button>
+                </div>
+              </div>
+              {captureError && <p className="text-[11px]" style={{ color: "#F5675A" }}>{captureError}</p>}
+            </div>
           )}
         </div>
       </div>

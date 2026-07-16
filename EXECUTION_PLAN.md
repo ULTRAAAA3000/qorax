@@ -3442,3 +3442,58 @@ Drag & Drop (`draggable`/`onDragStart`/`onDragOver`/`onDrop`), без
 `save-as-template` вимагає, щоб уже накочена міграція `0073`
 (`office_templates`) була в базі — жодних нових міграцій цим
 проходом не додано, суто код.
+## Qorax Browser — Smart Capture (четверта ітерація)
+
+**Обсяг (звужено разом з Артемом):** roadmap описує Smart Capture
+як "виділив будь-що → Creator/Office/Mail/Business", але перевірка
+показала — реально готовий приймати довільний текстовий контент
+ззовні лише Office (`office_documents.content.blocks`). Creator має
+лише вузли `embedded_editor`/`live_embed` (не текстові), Mail на
+момент цього проходу лише отримав першу схему (`mail_core`, ще не
+API прийому контенту), CRM вимагає name/email/телефон або прив'язку
+до deal/contact — не підходить для довільної замітки "про сайт".
+Тому цей прохід: лише "виділений текст → Office", Creator/Mail
+позначені в UI "скоро" без активної дії.
+
+**Технічне рішення (найважливіше):** фронтенд (Next.js Worker) і
+`API_BASE_URL` (qorax-api Worker) — РІЗНІ origin у продакшені, тому
+`iframe.contentWindow.getSelection()` з батьківської сторінки
+заблоковано cross-origin policy браузера, ПОПРИ `sandbox=
+"allow-same-origin"` в iframe (той дозволяє iframe поводитись як
+same-origin відносно себе, не дає доступу батьківському вікну при
+реально різних origin). Вирішено інжекцією скрипта на сервері —
+`injectSelectionScript()` в `browserHandler.ts` додає невеликий
+`<script>` перед `</body>` проксованої сторінки (той самий механізм
+інжекції, що вже є `injectBaseHref()`), який слухає
+`selectionchange` і шле `postMessage` батьківському вікну.
+Батьківський `BrowserUI.tsx` слухає ці повідомлення через
+`window.addEventListener("message", ...)`.
+
+**`worker/src/lib/browserHandler.ts`:**
+- `injectSelectionScript()` — другий інжект у `handleBrowserProxy`
+  поряд з `injectBaseHref()`
+- `POST /api/browser/capture/office` (`handleCaptureToOffice`) —
+  формує `office_documents` блоки (heading з назвою джерела,
+  paragraph з URL, paragraph з захопленим текстом) і викликає вже
+  наявний `handleDocCreate` з `officeHandler.ts` через сконструйований
+  `Request` (не дублювання логіки створення документа)
+- `handleDocCreate` (officeHandler.ts) розширено: приймає або
+  `template_id` (як раніше), або прямий `content.blocks` — друге
+  потрібне саме для Smart Capture, перше не зламано
+
+**UI:** `BrowserUI.tsx` — плаваюча панель знизу viewport з'являється
+при отриманні `postMessage` з виділеним текстом: показує уривок
+тексту, кнопку "В Office" (активна), плашку "Creator/Mail — скоро"
+(неактивна, лише інформаційна).
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (768.72 KiB, gzip 131.85 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** захоплення в Creator/Mail
+(технічно неготові приймати довільний контент — окрема майбутня
+задача, не просто "додати кнопку"), захоплення зображень/товарів
+(лише текст), One Click Actions (ПКМ-меню — ширший набір дій, Smart
+Capture лише один із них), AI Compare, Reading Mode, Research Mode,
+Visual Search, Component Extractor, Website Timeline, Workspace
+Tabs, Deep Search, AI Memory, Marketplace.

@@ -30,6 +30,7 @@ import { requireOrgAccess } from "./orgAuth";
 import { insertRow, selectRows, updateRows } from "./supabase";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
 import { callGemini } from "./contentGeneration";
+import { handleDocCreate } from "./officeHandler";
 
 // Справжній браузерний User-Agent — на відміну від DEFAULT_USER_AGENT
 // в httpUtils.ts (той навмисно бот-агент "QoraxBot/1.0" для чесного
@@ -64,6 +65,39 @@ function injectBaseHref(html: string, origin: string): string {
     return html.slice(0, idx) + baseTag + html.slice(idx);
   }
   return baseTag + html;
+}
+
+/**
+ * Smart Capture (MODULE_ROADMAP.md, "Qorax Browser") — вставляє
+ * скрипт, що слухає selectionchange всередині проксованої сторінки
+ * і шле postMessage батьківському вікну з виділеним текстом.
+ *
+ * Навіщо взагалі потрібен цей інжект: фронтенд (Next.js Worker) і
+ * API_BASE_URL (qorax-api Worker) — РІЗНІ origin у продакшені, тому
+ * `iframe.contentWindow.getSelection()` з батьківської сторінки
+ * заблоковано same-origin policy браузера, попри sandbox=
+ * "allow-same-origin" (той дозволяє iframe поводитись як
+ * same-origin ВІДНОСНО СЕБЕ, не дає доступу батьківському вікну,
+ * якщо origin реально різні). postMessage — єдиний надійний міст
+ * між origin в цій ситуації, тому скрипт інжектиться на сервері
+ * (не можна покластись на code в самому чужому сайті).
+ */
+function injectSelectionScript(html: string): string {
+  const script = `<script>
+(function() {
+  document.addEventListener("selectionchange", function() {
+    var text = (document.getSelection() || {}).toString();
+    if (text && text.trim().length > 0) {
+      window.parent.postMessage({ source: "qorax-browser", type: "selection", text: text.trim() }, "*");
+    }
+  });
+})();
+</script>`;
+  const bodyCloseIdx = html.lastIndexOf("</body>");
+  if (bodyCloseIdx !== -1) {
+    return html.slice(0, bodyCloseIdx) + script + html.slice(bodyCloseIdx);
+  }
+  return html + script;
 }
 
 // GET /api/browser/proxy?url=...&organization_id=...
@@ -108,7 +142,8 @@ export async function handleBrowserProxy(request: Request, env: Env, corsHeaders
   }
 
   const html = await upstream.text();
-  const rewritten = injectBaseHref(html, targetUrl.origin);
+  const withBase = injectBaseHref(html, targetUrl.origin);
+  const rewritten = injectSelectionScript(withBase);
 
   // Навмисно НЕ передаємо жодних заголовків з upstream (X-Frame-Options/
   // CSP/тощо) — тільки наші власні corsHeaders + content-type. Це і є
@@ -573,5 +608,59 @@ export async function handleCollectionSaveItem(request: Request, env: Env, corsH
   }
 
   return json({ ok: true }, 200, corsHeaders);
+}
+
+// ============================================================
+// Smart Capture (MODULE_ROADMAP.md, "Qorax Browser" — четверта
+// ітерація після MVP AI Sidebar → Site Inspector → Collections).
+// ============================================================
+// Обсяг узгоджено з Артемом: лише "виділений текст → Office" — єдиний
+// продукт екосистеми, що реально готовий приймати довільний текстовий
+// контент ззовні (office_documents.content.blocks). Creator (лише
+// embedded_editor/live_embed вузли) і Mail (ще заглушка) не мають
+// готового API прийому — залишені майбутньою ітерацією, у UI
+// позначені "скоро" без активної дії.
+
+interface CaptureToOfficeBody {
+  organization_id: string;
+  text: string;
+  source_url?: string;
+  source_title?: string;
+}
+
+// POST /api/browser/capture/office
+export async function handleCaptureToOffice(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: CaptureToOfficeBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  if (!body.text?.trim()) return json({ error: "Немає виділеного тексту" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "editor", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const docTitle = body.source_title?.trim() || (body.source_url ? new URL(body.source_url).hostname : "Захоплений текст");
+
+  const blocks: Array<{ id: string; type: "heading" | "paragraph"; level?: 1; text: string }> = [
+    { id: crypto.randomUUID(), type: "heading", level: 1, text: docTitle },
+  ];
+  if (body.source_url) {
+    blocks.push({ id: crypto.randomUUID(), type: "paragraph", text: `Джерело: ${body.source_url}` });
+  }
+  blocks.push({ id: crypto.randomUUID(), type: "paragraph", text: body.text.trim() });
+
+  // handleDocCreate (officeHandler.ts) читає body через request.json()
+  // із оригінального Request — тому конструюємо новий Request з
+  // потрібним тілом замість дублювання логіки створення документа.
+  const forwardedRequest = new Request(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: JSON.stringify({ title: docTitle, content: { blocks } }),
+  });
+
+  return handleDocCreate(forwardedRequest, env, corsHeaders, body.organization_id);
 }
 
