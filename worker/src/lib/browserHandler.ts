@@ -388,6 +388,48 @@ async function fetchExternalCss(html: string, baseUrl: URL): Promise<string> {
 }
 
 // GET /api/browser/inspect?url=...&organization_id=...
+/** Спільне ядро Site Inspector — виділено з handleBrowserInspect, щоб
+ * AI Compare міг перевикористати той самий аналіз для ДВОХ сайтів
+ * замість дублювання fetch+regex-парсингу вдруге. */
+async function inspectUrl(targetUrl: URL): Promise<InspectResult | null> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let html: string;
+  try {
+    const upstream = await fetch(targetUrl.toString(), {
+      signal: controller.signal,
+      headers: { "User-Agent": BROWSER_USER_AGENT },
+    });
+    html = await upstream.text();
+  } catch {
+    clearTimeout(timeout);
+    return null;
+  }
+  clearTimeout(timeout);
+  const responseTimeMs = Date.now() - startedAt;
+
+  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+  const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i);
+  const h1Match = html.match(/<h1[^>]*>([^<]*)<\/h1>/i);
+
+  const externalCss = await fetchExternalCss(html, targetUrl);
+  const inlineStyles = (html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi) ?? []).join("\n");
+  const cssPool = `${externalCss}\n${inlineStyles}`;
+
+  return {
+    title: titleMatch?.[1]?.trim() || null,
+    metaDescription: descMatch?.[1]?.trim() || null,
+    h1: h1Match?.[1]?.trim() || null,
+    technologies: detectSignatures(html, TECH_SIGNATURES),
+    analytics: detectSignatures(html, ANALYTICS_SIGNATURES),
+    colors: extractColors(cssPool),
+    fonts: extractFonts(cssPool),
+    responseTimeMs,
+    pageSizeKb: Math.round((new TextEncoder().encode(html).length / 1024) * 10) / 10,
+  };
+}
+
 export async function handleBrowserInspect(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
   const url = new URL(request.url);
   const targetUrlRaw = url.searchParams.get("url");
@@ -401,45 +443,8 @@ export async function handleBrowserInspect(request: Request, env: Env, corsHeade
   const targetUrl = isValidHttpUrl(targetUrlRaw);
   if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
 
-  const startedAt = Date.now();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  let html: string;
-  try {
-    const upstream = await fetch(targetUrl.toString(), {
-      signal: controller.signal,
-      headers: { "User-Agent": BROWSER_USER_AGENT },
-    });
-    html = await upstream.text();
-  } catch {
-    clearTimeout(timeout);
-    return json({ error: "Не вдалося завантажити сайт для аналізу" }, 502, corsHeaders);
-  }
-  clearTimeout(timeout);
-  const responseTimeMs = Date.now() - startedAt;
-
-  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-  const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i);
-  const h1Match = html.match(/<h1[^>]*>([^<]*)<\/h1>/i);
-
-  const externalCss = await fetchExternalCss(html, targetUrl);
-  // Inline <style> блоки теж додаємо до пулу для кольорів/шрифтів —
-  // не єдине джерело (як спершу відкидали), а доповнення до
-  // зовнішнього CSS, яке нічого не коштує (вже маємо html в пам'яті).
-  const inlineStyles = (html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi) ?? []).join("\n");
-  const cssPool = `${externalCss}\n${inlineStyles}`;
-
-  const result: InspectResult = {
-    title: titleMatch?.[1]?.trim() || null,
-    metaDescription: descMatch?.[1]?.trim() || null,
-    h1: h1Match?.[1]?.trim() || null,
-    technologies: detectSignatures(html, TECH_SIGNATURES),
-    analytics: detectSignatures(html, ANALYTICS_SIGNATURES),
-    colors: extractColors(cssPool),
-    fonts: extractFonts(cssPool),
-    responseTimeMs,
-    pageSizeKb: Math.round((new TextEncoder().encode(html).length / 1024) * 10) / 10,
-  };
+  const result = await inspectUrl(targetUrl);
+  if (!result) return json({ error: "Не вдалося завантажити сайт для аналізу" }, 502, corsHeaders);
 
   return json(result, 200, corsHeaders);
 }
@@ -782,5 +787,89 @@ ${html}
 
   const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
   return json({ summary: result.text, credits_remaining: creditsRemaining, unlimited: creditsCheck.unlimited }, 200, corsHeaders);
+}
+
+// ============================================================
+// AI Compare (MODULE_ROADMAP.md, "Qorax Browser" — шоста ітерація
+// після MVP AI Sidebar → Site Inspector → Collections → Smart
+// Capture → One Click Actions).
+// ============================================================
+// Roadmap: "свій сайт vs конкурент → різниці → рекомендації".
+// Переюзовує inspectUrl() (спільне ядро з Site Inspector) для ОБОХ
+// сайтів паралельно, потім Gemini порівнює вже структуровані дані
+// (title/meta/technologies/швидкість тощо), а НЕ сирий HTML обох
+// сторінок — дешевше і точніше, ніж просити AI самому парсити два
+// документи HTML в одному промпті.
+
+interface CompareBody {
+  organization_id: string;
+  your_url: string;
+  competitor_url: string;
+}
+
+// POST /api/browser/compare
+export async function handleBrowserCompare(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: CompareBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+
+  const yourUrl = isValidHttpUrl(body.your_url ?? "");
+  const competitorUrl = isValidHttpUrl(body.competitor_url ?? "");
+  if (!yourUrl || !competitorUrl) return json({ error: "Обидва URL мають бути коректними" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+
+  const [yourInspect, competitorInspect] = await Promise.all([inspectUrl(yourUrl), inspectUrl(competitorUrl)]);
+  if (!yourInspect || !competitorInspect) {
+    return json({ error: "Не вдалося завантажити один із сайтів для порівняння" }, 502, corsHeaders);
+  }
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const describeInspect = (label: string, url: URL, r: InspectResult) => `${label} (${url.toString()}):
+- Title: ${r.title ?? "—"}
+- Meta description: ${r.metaDescription ?? "—"}
+- H1: ${r.h1 ?? "—"}
+- Технології: ${r.technologies.join(", ") || "—"}
+- Аналітика: ${r.analytics.join(", ") || "—"}
+- Швидкість відповіді: ${r.responseTimeMs} мс
+- Розмір HTML: ${r.pageSizeKb} КБ`;
+
+  const prompt = `Ти — аналітик Qorax Browser. Порівняй два сайти на основі технічних даних нижче і дай короткі практичні рекомендації українською.
+
+${describeInspect("Ваш сайт", yourUrl, yourInspect)}
+
+${describeInspect("Сайт конкурента", competitorUrl, competitorInspect)}
+
+Напиши структуровано (без markdown-заголовків, простим текстом):
+1. Ключові відмінності (2-4 пункти)
+2. Що конкурент робить краще
+3. Одна конкретна рекомендація, що покращити на вашому сайті
+Без вступних фраз, одразу суть.`;
+
+  const result = await callGemini(prompt, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+  return json(
+    {
+      comparison: result.text,
+      your_site: yourInspect,
+      competitor_site: competitorInspect,
+      credits_remaining: creditsRemaining,
+      unlimited: creditsCheck.unlimited,
+    },
+    200,
+    corsHeaders
+  );
 }
 

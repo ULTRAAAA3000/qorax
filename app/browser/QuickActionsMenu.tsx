@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Zap, ScanSearch, Bookmark, Languages, FileStack, ListChecks, Palette, Mail, Loader2, X } from "lucide-react";
+import { Zap, ScanSearch, Bookmark, Languages, FileStack, ListChecks, Palette, Mail, Loader2, X, Scale } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { AiCompareModal } from "./AiCompareModal";
 
 interface Props {
   organizationId: string;
@@ -28,6 +29,7 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
   const [resultKind, setResultKind] = useState<ResultKind>(null);
   const [resultText, setResultText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [showCompare, setShowCompare] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -98,6 +100,7 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
         >
           <ActionItem icon={ScanSearch} label="Analyze SEO" onClick={() => { setOpen(false); onAnalyze(); }} />
           <ActionItem icon={Bookmark} label="Save to Project" onClick={() => { setOpen(false); onSaveToCollection(); }} />
+          <ActionItem icon={Scale} label="AI Compare" onClick={() => { setOpen(false); setShowCompare(true); }} />
           <ActionItem icon={Languages} label="Translate" onClick={() => runAiAction("translate")} />
           <ActionItem icon={FileStack} label="Summarize" onClick={() => runAiAction("summarize")} />
           <ActionItem icon={ListChecks} label="Add Task" onClick={addTask} />
@@ -105,6 +108,15 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
           <ActionItem icon={Palette} label="Create Design" disabled note="Creator — скоро" />
           <ActionItem icon={Mail} label="Generate Email" disabled note="Mail — скоро" />
         </div>
+      )}
+
+      {showCompare && (
+        <AiCompareModal
+          organizationId={organizationId}
+          competitorUrl={currentUrl}
+          getFreshToken={getFreshToken}
+          onClose={() => setShowCompare(false)}
+        />
       )}
 
       {resultKind && (

@@ -3743,3 +3743,43 @@ app/creator/` чисто, `npm run build` успішно (усі роути на
 - `canvas_node_versions` (append-only історія змін `data`/
   `field_bindings`, згадана в іншій частині розділу плану про
   History) — не Smart Components конкретно, окремий майбутній крок
+## Qorax Browser — AI Compare (шоста ітерація)
+
+**Обсяг:** roadmap — "свій сайт vs конкурент → різниці →
+рекомендації". Наступний крок за списком після One Click Actions.
+
+**Технічне рішення:** переюзано `inspectUrl()` (спільне ядро Site
+Inspector, винесене з `handleBrowserInspect` цим же проходом) для
+ОБОХ сайтів паралельно (`Promise.all`), потім Gemini порівнює вже
+структуровані дані (title/meta/technologies/швидкість/розмір), НЕ
+сирий HTML обох сторінок одразу — дешевше по токенах і точніше, ніж
+просити AI самому парсити два документи в одному промпті.
+
+**`worker/src/lib/browserHandler.ts`:**
+- Рефакторинг: `handleBrowserInspect` розбито на `inspectUrl(url):
+  Promise<InspectResult | null>` (чисте ядро аналізу) +
+  тонкий HTTP-wrapper — Site Inspector і AI Compare тепер
+  використовують один код аналізу, не два дублікати
+- `POST /api/browser/compare` (`handleBrowserCompare`) — приймає
+  `your_url`/`competitor_url`, аналізує обидва, формує Gemini-промпт
+  зі структурованим порівнянням, повертає `comparison` (текст) +
+  `your_site`/`competitor_site` (структуровані InspectResult)
+
+**UI:** новий `AiCompareModal.tsx` — "свій сайт" пропонується зі
+списку `sites` організації (читається напряму через Supabase client,
+той самий підхід, що `dashboard/page.tsx`, не новий worker-ендпоінт
+для простого списку), з можливістю ввести інший URL вручну (варіант
+"конкурент vs конкурент" теж підтримується). Результат показує
+короткі картки обох сайтів (title/швидкість/розмір) + текстове
+порівняння з рекомендаціями. Додано пункт "AI Compare" у
+`QuickActionsMenu.tsx`.
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (806.67 KiB, gzip 137.45 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** Reading Mode (окремий UI-режим
+чистого читання — відрізняється від уже наявного Summarize),
+Research Mode (агентний режим, що сам відкриває N сайтів), Visual
+Search, Component Extractor, Website Timeline, Workspace Tabs, Deep
+Search, AI Memory, Marketplace.
