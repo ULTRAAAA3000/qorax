@@ -104,6 +104,36 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
     else if (e.key === "ArrowLeft" && (e.target as HTMLInputElement).selectionStart === 0) { moveFocus(col - 1, row); }
   }
 
+  // Вставка кількох клітинок разом (з Excel/Google Sheets/іншого
+  // місця в цій же таблиці) — clipboard-текст у таких випадках
+  // рядки розділені \n, колонки — \t (той самий формат, що TSV).
+  // Одноклітинкова вставка (без \t/\n) не перехоплюється — браузер
+  // сам вставляє звичайним чином в input.
+  function onCellPaste(e: React.ClipboardEvent<HTMLInputElement>, col: number, row: number) {
+    const text = e.clipboardData.getData("text");
+    if (!text.includes("\t") && !text.includes("\n")) return; // одна клітинка — стандартна поведінка
+
+    e.preventDefault();
+    const grid = text.replace(/\r/g, "").split("\n").filter((_, i, arr) => !(i === arr.length - 1 && arr[i] === "")).map(line => line.split("\t"));
+
+    setCells(prev => {
+      const next = { ...prev };
+      grid.forEach((line, r) => {
+        line.forEach((val, c) => {
+          const key = cellKey(col + c, row + r);
+          if (val === "") delete next[key];
+          else next[key] = val;
+        });
+      });
+      const neededCols = Math.max(columns, col + Math.max(...grid.map(l => l.length)));
+      const neededRows = Math.max(rows, row + grid.length);
+      if (neededCols !== columns) setColumns(neededCols);
+      if (neededRows !== rows) setRows(neededRows);
+      scheduleSave(next, neededCols, neededRows);
+      return next;
+    });
+  }
+
   function addColumn() {
     const next = columns + 1;
     setColumns(next);
@@ -264,6 +294,7 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
                         onFocus={() => setFocusedKey(key)}
                         onBlur={() => setFocusedKey(null)}
                         onKeyDown={e => onCellKeyDown(e, c, r)}
+                        onPaste={e => onCellPaste(e, c, r)}
                         className="w-full h-full bg-transparent outline-none text-xs px-2"
                         style={{ outlineOffset: -1 }}
                       />

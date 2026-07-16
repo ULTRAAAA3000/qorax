@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Loader2, Sparkles, Heading2, List, CheckSquare, Type, Download } from "lucide-react";
+import { Loader2, Sparkles, Heading2, List, CheckSquare, Type, Download, LayoutTemplate, Check } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow } from "../BlockEditor";
 import { exportDocToPdf } from "../exportPdf";
@@ -40,6 +40,8 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
   const [blocks, setBlocks] = useState<Block[]>(initialContent?.blocks ?? []);
   const [saving, setSaving] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateSaved, setTemplateSaved] = useState(false);
   const [showAiWriter, setShowAiWriter] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -114,6 +116,24 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
     }
   }
 
+  async function handleSaveAsTemplate() {
+    setSavingTemplate(true);
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/office-documents/${docId}/save-as-template`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (res.ok) {
+        setTemplateSaved(true);
+        setTimeout(() => setTemplateSaved(false), 2500);
+      }
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
   async function runAiWriter() {
     if (!aiInstruction.trim()) return;
     setAiLoading(true);
@@ -163,6 +183,14 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
             className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
           >
             {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
+          </button>
+          <button
+            onClick={handleSaveAsTemplate}
+            disabled={savingTemplate}
+            className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
+          >
+            {savingTemplate ? <Loader2 size={12} className="animate-spin" /> : templateSaved ? <Check size={12} style={{ color: "var(--lime)" }} /> : <LayoutTemplate size={12} />}
+            {templateSaved ? "Збережено" : "Як шаблон"}
           </button>
           <button
             onClick={() => setShowAiWriter(v => !v)}

@@ -47,6 +47,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
   const [title, setTitle] = useState(initialTitle);
   const [slides, setSlides] = useState<Slide[]>(initialSlides?.length ? initialSlides : [{ id: newBlockId(), blocks: [] }]);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [presenting, setPresenting] = useState(false);
@@ -115,6 +116,21 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
       return next;
     });
     setActiveIndex(i => Math.max(0, Math.min(i, slides.length - 2)));
+  }
+
+  // Drag-переупорядкування слайдів — нативний HTML5 DnD, без нової
+  // залежності (dnd-kit тощо не виправдано для лінійного списку з
+  // ~10-20 елементів).
+  function reorderSlide(fromIndex: number, toIndex: number) {
+    if (fromIndex === toIndex) return;
+    setSlides(prev => {
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(toIndex, 0, moved);
+      scheduleSave(next);
+      return next;
+    });
+    setActiveIndex(toIndex);
   }
 
   async function runAiGenerate() {
@@ -198,9 +214,21 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
         {slides.map((slide, i) => (
           <button
             key={slide.id}
+            draggable
+            onDragStart={() => setDragIndex(i)}
+            onDragOver={e => e.preventDefault()}
+            onDrop={e => {
+              e.preventDefault();
+              if (dragIndex !== null) reorderSlide(dragIndex, i);
+              setDragIndex(null);
+            }}
+            onDragEnd={() => setDragIndex(null)}
             onClick={() => setActiveIndex(i)}
-            className="w-full text-left rounded-lg p-2.5 group relative transition-colors"
-            style={i === activeIndex ? { background: "rgba(198,255,84,0.08)", border: "1px solid rgba(198,255,84,0.3)" } : { border: "1px solid rgba(255,255,255,0.06)" }}
+            className="w-full text-left rounded-lg p-2.5 group relative transition-colors cursor-grab active:cursor-grabbing"
+            style={{
+              ...(i === activeIndex ? { background: "rgba(198,255,84,0.08)", border: "1px solid rgba(198,255,84,0.3)" } : { border: "1px solid rgba(255,255,255,0.06)" }),
+              opacity: dragIndex === i ? 0.4 : 1,
+            }}
           >
             <div className="text-[10px] text-[var(--text-tertiary)] mb-0.5">{i + 1}</div>
             <div className="text-xs truncate pr-4">{slideLabel(slide, i)}</div>

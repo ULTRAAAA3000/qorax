@@ -122,6 +122,7 @@ import {
   handleDocDelete,
   handleAiWriter,
   handleTemplatesList,
+  handleSaveAsTemplate,
 } from "./lib/officeHandler";
 import {
   handleSheetsList,
@@ -814,6 +815,10 @@ const worker = {
     const docAiWriterMatch = url.pathname.match(/^\/api\/office-documents\/([^/]+)\/ai-writer$/);
     if (docAiWriterMatch && request.method === "POST") {
       return handleAiWriter(request, env, corsHeaders(origin), docAiWriterMatch[1]);
+    }
+    const saveAsTemplateMatch = url.pathname.match(/^\/api\/office-documents\/([^/]+)\/save-as-template$/);
+    if (saveAsTemplateMatch && request.method === "POST") {
+      return handleSaveAsTemplate(request, env, corsHeaders(origin), saveAsTemplateMatch[1]);
     }
 
     // ── Qorax Office: Sheets MVP (MODULE_ROADMAP.md "Qorax Office") ──

@@ -91,6 +91,51 @@ export async function handleTemplatesList(request: Request, env: Env, corsHeader
   return json({ templates: res.data ?? [] }, 200, corsHeaders);
 }
 
+// ── POST /api/office-documents/:id/save-as-template ── власний шаблон ──
+//
+// Схема (organization_id на office_templates) вже це дозволяла з
+// самого початку (0073) — цим ендпоінтом закривається прогалина,
+// зафіксована в EXECUTION_PLAN.md при першій реалізації Templates.
+// Власний шаблон організації, не системний — інші організації його
+// не бачать (RLS office_templates_select вже це гарантує).
+
+export async function handleSaveAsTemplate(request: Request, env: Env, corsHeaders: Record<string, string>, docId: string): Promise<Response> {
+  const docRes = await selectRows<DocRow>(
+    "office_documents",
+    `select=organization_id,title,content&id=eq.${encodeURIComponent(docId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const doc = docRes.data?.[0];
+  if (!doc) return json({ error: "Документ не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, doc.organization_id, "editor", env);
+  if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  let body: { title?: string; description?: string; category?: string };
+  try {
+    body = await request.json();
+  } catch {
+    body = {};
+  }
+
+  const insertRes = await insertRowReturning<TemplateRow>(
+    "office_templates",
+    {
+      organization_id: doc.organization_id, // НЕ null — власний шаблон, не системний
+      category: body.category?.trim() || "custom",
+      title: body.title?.trim() || doc.title,
+      description: body.description?.trim() || null,
+      content: doc.content,
+    },
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!insertRes.ok) return json({ error: insertRes.error }, 500, corsHeaders);
+
+  return json({ ok: true, template: insertRes.data?.[0] ?? null }, 201, corsHeaders);
+}
+
 // ── GET /api/organizations/:id/office-documents ── список документів ──
 
 export async function handleDocsList(request: Request, env: Env, corsHeaders: Record<string, string>, organizationId: string): Promise<Response> {
