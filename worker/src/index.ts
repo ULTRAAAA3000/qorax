@@ -94,6 +94,16 @@ import {
   handleTeamCommentCreate,
   handleActivityFeedList,
 } from "./lib/teamWorkspaceHandler";
+import {
+  handleMailAuth,
+  handleMailCallback,
+  handleMailAccountsList,
+  handleMailThreadsList,
+  handleMailMessagesList,
+  handleMailSyncRequest,
+  handleMailSend,
+  runMailSyncAll,
+} from "./lib/mailHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGa4Authorize,
@@ -492,6 +502,15 @@ const worker = {
         return json({ ok: true, message: "CRM reminders started" }, 200, origin);
       }
 
+      // Qorax Mail — синхронізація всіх активних mail_accounts.
+      if (url.pathname === "/api/admin/run-mail-sync") {
+        ctx.waitUntil(
+          runMailSyncAll(env)
+            .then(s => console.log("Manual mail sync:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "Mail sync started" }, 200, origin);
+      }
+
       if (url.pathname === "/api/admin/env-check") {
         return json({
           SUPABASE_URL: !!env.SUPABASE_URL,
@@ -684,6 +703,32 @@ const worker = {
     }
     if (url.pathname === "/api/gsc/callback" && request.method === "GET") {
       return handleGscCallback(request, env);
+    }
+
+    // ── Mail routes (Qorax Mail — окремий продукт екосистеми,
+    // MODULE_ROADMAP.md). OAuth-flow — той самий патерн, що GSC. ──
+    if (url.pathname === "/api/mail/auth" && request.method === "GET") {
+      return handleMailAuth(request, env);
+    }
+    if (url.pathname === "/api/mail/callback" && request.method === "GET") {
+      return handleMailCallback(request, env);
+    }
+    if (url.pathname === "/api/mail/accounts" && request.method === "GET") {
+      return handleMailAccountsList(request, env, corsHeaders(origin));
+    }
+    const mailSyncMatch = url.pathname.match(/^\/api\/mail\/accounts\/([^/]+)\/sync$/);
+    if (mailSyncMatch && request.method === "POST") {
+      return handleMailSyncRequest(request, env, corsHeaders(origin), mailSyncMatch[1]);
+    }
+    if (url.pathname === "/api/mail/threads" && request.method === "GET") {
+      return handleMailThreadsList(request, env, corsHeaders(origin));
+    }
+    const mailMessagesMatch = url.pathname.match(/^\/api\/mail\/threads\/([^/]+)\/messages$/);
+    if (mailMessagesMatch && request.method === "GET") {
+      return handleMailMessagesList(request, env, corsHeaders(origin), mailMessagesMatch[1]);
+    }
+    if (url.pathname === "/api/mail/send" && request.method === "POST") {
+      return handleMailSend(request, env, corsHeaders(origin));
     }
     if (url.pathname === "/api/gsc/status" && request.method === "GET") {
       return handleGscStatus(request, env, corsHeaders(origin));
@@ -1897,6 +1942,12 @@ const worker = {
     if (event.cron === "*/10 * * * *") {
       const s = await runCroAggregate(env);
       console.log("CRO aggregate run:", JSON.stringify(s));
+      // Qorax Mail — синхронізація всіх активних mail_accounts. Той
+      // самий тригер, що CRO-агрегація (не новий Cloudflare Cron
+      // Trigger) — лист не потребує щохвилинної свіжості, 10 хв
+      // достатньо для MVP Inbox.
+      const mailSync = await runMailSyncAll(env);
+      console.log("Mail sync run:", JSON.stringify(mailSync));
       return;
     }
 
