@@ -5,6 +5,8 @@ import { Plus, Loader2, Sparkles, Trash2, Type, Heading2, List, CheckSquare, Pla
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow, BlockStatic } from "../../BlockEditor";
 import { exportSlidesToPdf } from "../../exportPdf";
+import { usePresence } from "../../usePresence";
+import { PresenceAvatars } from "../../PresenceAvatars";
 
 interface Slide {
   id: string;
@@ -41,6 +43,7 @@ function slideLabel(slide: Slide, index: number): string {
 // сайдбар з мініатюрами замість суцільного скролу. Present-режим —
 // fullscreen, read-only (BlockStatic), навігація стрілками.
 export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
+  const presentUsers = usePresence("office_slides", deckId);
   const [title, setTitle] = useState(initialTitle);
   const [slides, setSlides] = useState<Slide[]>(initialSlides?.length ? initialSlides : [{ id: newBlockId(), blocks: [] }]);
   const [activeIndex, setActiveIndex] = useState(0);
@@ -229,6 +232,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
             className="font-display text-lg font-semibold bg-transparent outline-none min-w-0"
           />
           <div className="flex items-center gap-2">
+            <PresenceAvatars users={presentUsers} />
             {saving && <Loader2 size={14} className="animate-spin text-[var(--text-tertiary)]" />}
             <button
               onClick={handleExportPdf}

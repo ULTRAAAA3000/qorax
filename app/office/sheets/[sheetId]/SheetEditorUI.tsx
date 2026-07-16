@@ -4,6 +4,8 @@ import { useState, useRef, useCallback, useEffect } from "react";
 import { Loader2, Sparkles, Plus, Download, Upload, X } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Cells, cellKey, indexToCol, evaluateCell, cellsToCsv, parseCsv, csvToCells } from "../sheetFormulas";
+import { usePresence } from "../../usePresence";
+import { PresenceAvatars } from "../../PresenceAvatars";
 
 interface SheetData {
   columns: number;
@@ -39,6 +41,7 @@ const CELL_H = 30;
 // ітерації. CSV, не .xlsx — той самий рівень MVP-звуження, що вже
 // прийнятий для Docs (4 типи блоків, не повний Notion).
 export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
+  const presentUsers = usePresence("office_sheets", sheetId);
   const [title, setTitle] = useState(initialTitle);
   const [columns, setColumns] = useState(initialData?.columns ?? 12);
   const [rows, setRows] = useState(initialData?.rows ?? 30);
@@ -182,6 +185,7 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
           className="font-display text-lg font-semibold bg-transparent outline-none min-w-0"
         />
         <div className="flex items-center gap-2 flex-wrap">
+          <PresenceAvatars users={presentUsers} />
           {saving && <Loader2 size={14} className="animate-spin text-[var(--text-tertiary)]" />}
           <button onClick={() => fileInputRef.current?.click()} className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)]">
             <Upload size={12} /> Імпорт CSV

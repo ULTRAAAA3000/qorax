@@ -5,6 +5,8 @@ import { Loader2, Sparkles, Heading2, List, CheckSquare, Type, Download } from "
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow } from "../BlockEditor";
 import { exportDocToPdf } from "../exportPdf";
+import { usePresence } from "../usePresence";
+import { PresenceAvatars } from "../PresenceAvatars";
 
 interface Props {
   docId: string;
@@ -33,6 +35,7 @@ async function getFreshToken(): Promise<string> {
 // не окрема кнопка "Зберегти" — той самий принцип UX, що project_pages
 // редактор Sites-конструктора.
 export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
+  const presentUsers = usePresence("office_documents", docId);
   const [title, setTitle] = useState(initialTitle);
   const [blocks, setBlocks] = useState<Block[]>(initialContent?.blocks ?? []);
   const [saving, setSaving] = useState(false);
@@ -152,6 +155,7 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
           className="font-display text-2xl font-semibold bg-transparent outline-none flex-1 min-w-0"
         />
         <div className="flex items-center gap-3 shrink-0 ml-3">
+          <PresenceAvatars users={presentUsers} />
           {saving && <Loader2 size={14} className="animate-spin text-[var(--text-tertiary)]" />}
           <button
             onClick={handleExportPdf}
