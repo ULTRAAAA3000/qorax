@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { Globe, Sparkles, Loader2, ArrowRight, Clock, X, ScanSearch, Zap, Palette, Type, Code2, Layers, FileText } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { CollectionsPanel } from "./CollectionsPanel";
+import { QuickActionsMenu } from "./QuickActionsMenu";
 
 interface HistoryItem {
   id: string;
@@ -226,6 +227,15 @@ export function BrowserUI({ organizationId }: Props) {
           <button type="submit" className="glow-button text-xs !py-1.5 !px-3 flex items-center gap-1.5">
             Перейти <ArrowRight size={12} />
           </button>
+          {currentUrl && (
+            <QuickActionsMenu
+              organizationId={organizationId}
+              currentUrl={currentUrl}
+              getFreshToken={getFreshToken}
+              onAnalyze={() => { setSidebarOpen(true); setSidebarTab("ai"); }}
+              onSaveToCollection={() => { setSidebarOpen(true); setSidebarTab("collections"); }}
+            />
+          )}
           <button
             type="button"
             onClick={() => setSidebarOpen(v => !v)}

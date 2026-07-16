@@ -664,3 +664,123 @@ export async function handleCaptureToOffice(request: Request, env: Env, corsHead
   return handleDocCreate(forwardedRequest, env, corsHeaders, body.organization_id);
 }
 
+// ============================================================
+// One Click Actions (MODULE_ROADMAP.md, "Qorax Browser" — п'ята
+// ітерація після MVP AI Sidebar → Site Inspector → Collections →
+// Smart Capture).
+// ============================================================
+// Roadmap перелічує: Analyze SEO / Save to Project / Create Design /
+// Generate Email / Translate / Summarize / Export PDF / Create
+// Report / Add Task. Реалізовано лише те, що реально має готовий
+// приймач: Analyze SEO і Save to Project — уже існуючі AI Sidebar/
+// Collections (просто зведені в одне меню на фронтенді, нового
+// backend не потрібно). Translate/Summarize — нові, самодостатні
+// (Gemini, той самий credit pool). Add Task — Business вже має
+// готовий /api/tasks endpoint (taskHandler.ts), просто виклик з
+// контекстом URL. Create Design (Creator) і Generate Email (Mail) —
+// той самий блокер, що Smart Capture: немає готового API прийому
+// довільного контенту, лишаються "скоро" в UI. Export PDF/Create
+// Report — не цей прохід (потребують окремого PDF-рушія на
+// сирому HTML стороннього сайту, вищий ризик поламаного вигляду).
+
+/** Спільний fetch+truncate HTML для Translate/Summarize — той самий
+ * підхід, що вже в handleBrowserAnalyze (15000 символів досить для
+ * hero-контенту, не вимагає вантажити весь документ у промпт). */
+async function fetchAndTruncateHtml(targetUrl: URL): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const upstream = await fetch(targetUrl.toString(), {
+      signal: controller.signal,
+      headers: { "User-Agent": BROWSER_USER_AGENT },
+    });
+    const html = await upstream.text();
+    return html.slice(0, 15_000);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+interface QuickActionBody {
+  organization_id: string;
+  url: string;
+}
+
+// POST /api/browser/translate — переклад видимого тексту сторінки
+// українською (той самий кейс, що людина відкрила іноземний сайт).
+export async function handleBrowserTranslate(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: QuickActionBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const targetUrl = isValidHttpUrl(body.url ?? "");
+  if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+
+  const html = await fetchAndTruncateHtml(targetUrl);
+  if (html === null) return json({ error: "Не вдалося завантажити сайт" }, 502, corsHeaders);
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const prompt = `Ось сирий HTML сторінки ${targetUrl.toString()} (ігноруй розмітку, аналізуй лише текстовий зміст):
+${html}
+
+Витягни основний текстовий контент цієї сторінки (заголовки, абзаци, ключові речення — не меню/футер/рекламу) і переклади його українською. Форматуй як зв'язний текст, збережи структуру заголовків якщо вона є. Без вступних фраз, одразу переклад.`;
+
+  const result = await callGemini(prompt, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+  return json({ translation: result.text, credits_remaining: creditsRemaining, unlimited: creditsCheck.unlimited }, 200, corsHeaders);
+}
+
+// POST /api/browser/summarize — Reading Mode-подібний короткий зміст
+// (roadmap описує Reading Mode як окрему майбутню фічу з очищенням
+// сторінки; ця дія — той самий Gemini-виклик, простіший обсяг:
+// лише текстовий summary без окремого UI-режиму читання).
+export async function handleBrowserSummarize(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: QuickActionBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const targetUrl = isValidHttpUrl(body.url ?? "");
+  if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+
+  const html = await fetchAndTruncateHtml(targetUrl);
+  if (html === null) return json({ error: "Не вдалося завантажити сайт" }, 502, corsHeaders);
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const prompt = `Ось сирий HTML сторінки ${targetUrl.toString()} (ігноруй розмітку, аналізуй лише текстовий зміст):
+${html}
+
+Зроби короткий структурований конспект українською: 3-6 буллет-пунктів з ключовими фактами/тезами сторінки. Без вступних фраз, одразу список.`;
+
+  const result = await callGemini(prompt, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+  return json({ summary: result.text, credits_remaining: creditsRemaining, unlimited: creditsCheck.unlimited }, 200, corsHeaders);
+}
+

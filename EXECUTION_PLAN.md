@@ -3497,3 +3497,48 @@ same-origin відносно себе, не дає доступу батьків
 Capture лише один із них), AI Compare, Reading Mode, Research Mode,
 Visual Search, Component Extractor, Website Timeline, Workspace
 Tabs, Deep Search, AI Memory, Marketplace.
+
+## Qorax Browser — One Click Actions (п'ята ітерація)
+
+**Обсяг (звужено за реальною готовністю приймачів, той самий підхід,
+що Smart Capture):** roadmap перелічує 9 дій (Analyze SEO/Save to
+Project/Create Design/Generate Email/Translate/Summarize/Export PDF/
+Create Report/Add Task). Реалізовано: Analyze SEO і Save to Project
+(перемикають вже наявні AI Sidebar/Collections таби, без нового
+backend), Translate і Summarize (нові Gemini-виклики), Add Task
+(виклик уже наявного `/api/tasks`, taskHandler.ts). Create Design
+(Creator) і Generate Email (Mail) — неактивні "скоро" в меню, той
+самий блокер що Smart Capture (немає готового API прийому). Export
+PDF і Create Report — НЕ цей прохід (вимагають окремого PDF-рушія на
+сирому HTML стороннього сайту, вищий ризик поламаного вигляду,
+складніша задача).
+
+**UX-нюанс:** правий клік усередині iframe недоступний з
+батьківської сторінки (той самий cross-origin блокер, що вже
+задокументовано для Smart Capture) — тому це не класичне ПКМ-меню з
+roadmap, а випадне меню з кнопки "Дії" в toolbar поруч з URL bar.
+
+**`worker/src/lib/browserHandler.ts` — нові ендпоінти:**
+- `POST /api/browser/translate` — переклад основного текстового
+  контенту сторінки українською (Gemini)
+- `POST /api/browser/summarize` — короткий буллет-конспект сторінки
+- Обидва переюзовують спільний `fetchAndTruncateHtml()` helper (той
+  самий підхід обрізання на 15000 символів, що вже в
+  `handleBrowserAnalyze`) і `aiCredits.ts` credit pool
+
+**UI:** новий `QuickActionsMenu.tsx` — випадне меню з кнопки "Дії" в
+toolbar. Translate/Summarize відкривають модалку з результатом. Add
+Task — тиха дія (без модалки, помилка створення задачі не блокує
+перегляд сайту). Analyze SEO/Save to Project — просто перемикають
+`sidebarTab` і відкривають сайдбар, якщо закритий.
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (800.99 KiB, gzip 136.82 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** Create Design/Generate Email
+(технічно неготові приймачі), Export PDF, Create Report, AI Compare,
+Reading Mode (окремий UI-режим читання, відрізняється від Summarize
+відсутністю окремого "чистого" перегляду), Research Mode, Visual
+Search, Component Extractor, Website Timeline, Workspace Tabs, Deep
+Search, AI Memory, Marketplace.
