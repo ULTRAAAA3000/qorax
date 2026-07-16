@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Plus, Loader2, Sparkles, Trash2, Type, Heading2, List, CheckSquare, Play, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Loader2, Sparkles, Trash2, Type, Heading2, List, CheckSquare, Play, X, ChevronLeft, ChevronRight, Download } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow, BlockStatic } from "../../BlockEditor";
+import { exportSlidesToPdf } from "../../exportPdf";
 
 interface Slide {
   id: string;
@@ -44,6 +45,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
   const [slides, setSlides] = useState<Slide[]>(initialSlides?.length ? initialSlides : [{ id: newBlockId(), blocks: [] }]);
   const [activeIndex, setActiveIndex] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
   const [showAi, setShowAi] = useState(false);
@@ -140,6 +142,15 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
     }
   }
 
+  async function handleExportPdf() {
+    setExportingPdf(true);
+    try {
+      await exportSlidesToPdf(title || "Без назви", slides);
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   function startPresenting() {
     setPresentIndex(activeIndex);
     setPresenting(true);
@@ -219,6 +230,13 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
           />
           <div className="flex items-center gap-2">
             {saving && <Loader2 size={14} className="animate-spin text-[var(--text-tertiary)]" />}
+            <button
+              onClick={handleExportPdf}
+              disabled={exportingPdf}
+              className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
+            >
+              {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
+            </button>
             <button onClick={() => setShowAi(v => !v)} className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ background: "rgba(198,255,84,0.08)", border: "1px solid rgba(198,255,84,0.25)", color: "var(--lime)" }}>
               <Sparkles size={12} /> AI
             </button>

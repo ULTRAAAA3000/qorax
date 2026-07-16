@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Loader2, Sparkles, Heading2, List, CheckSquare, Type } from "lucide-react";
+import { Loader2, Sparkles, Heading2, List, CheckSquare, Type, Download } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow } from "../BlockEditor";
+import { exportDocToPdf } from "../exportPdf";
 
 interface Props {
   docId: string;
@@ -35,6 +36,7 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
   const [title, setTitle] = useState(initialTitle);
   const [blocks, setBlocks] = useState<Block[]>(initialContent?.blocks ?? []);
   const [saving, setSaving] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
   const [showAiWriter, setShowAiWriter] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -100,6 +102,15 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
     persist({ title });
   }
 
+  async function handleExportPdf() {
+    setExportingPdf(true);
+    try {
+      await exportDocToPdf(title || "Без назви", blocks);
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
   async function runAiWriter() {
     if (!aiInstruction.trim()) return;
     setAiLoading(true);
@@ -142,6 +153,13 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
         />
         <div className="flex items-center gap-3 shrink-0 ml-3">
           {saving && <Loader2 size={14} className="animate-spin text-[var(--text-tertiary)]" />}
+          <button
+            onClick={handleExportPdf}
+            disabled={exportingPdf}
+            className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
+          >
+            {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
+          </button>
           <button
             onClick={() => setShowAiWriter(v => !v)}
             className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5"
