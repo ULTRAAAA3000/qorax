@@ -1,23 +1,18 @@
 import { createClient } from "@/app/lib/supabase/server";
 import { QoraxLogo } from "@/app/components/QoraxLogo";
-import { GraphCanvasUI } from "./GraphCanvasUI";
+import { ComponentsLibraryUI } from "./ComponentsLibraryUI";
 import { redirect } from "next/navigation";
 import Link from "next/link";
 import { LayoutTemplate, Network, Blocks, ArrowLeft } from "lucide-react";
 
-export const metadata = { title: "Diagram Mode — Qorax Creator" };
+export const metadata = { title: "Компоненти — Qorax Creator" };
 
-// Diagram Mode / KG Visualization (MODULE_ROADMAP.md, "Qorax
-// Creator", "найдешевший MVP-кандидат" серед режимів Canvas) —
-// на відміну від Website Mode, тут немає окремих "дощок" на режим:
-// Knowledge Graph один на організацію (той самий kg_nodes/kg_edges,
-// що вже споживає AI Chat через buildGraphContext), тож ця сторінка
-// показує весь граф організації напряму, без проміжного canvas_boards
-// запису. Read-only на цьому кроці — застосування діаграми до
-// реальної БД (як згадувалось для попередньої версії Database
-// Builder) свідомо НЕ MVP, той самий ризик пошкодження production
-// без рев'ю.
-export default async function GraphModePage() {
+// Components / Brand Kit (MODULE_ROADMAP.md "Qorax Creator",
+// четвертий крок за порядком реалізації). На відміну від Website
+// Mode/Diagram Mode, це НЕ ще один режим canvas — бібліотека
+// перевикористовуваних блоків і бренд-кіт організації, доступні
+// звідусіль (майбутні Smart Components/AI Creator споживатимуть їх).
+export default async function ComponentsPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) redirect("/login");
@@ -45,19 +40,21 @@ export default async function GraphModePage() {
             <Link href="/creator" className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
               <LayoutTemplate size={14} /> Website
             </Link>
-            <span className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg" style={{ background: "rgba(140,246,255,0.1)", color: "var(--cyan)" }}>
+            <Link href="/creator/graph" className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
               <Network size={14} /> Diagram
-            </span>
-            <Link href="/creator/components" className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
-              <Blocks size={14} /> Компоненти
             </Link>
+            <span className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg" style={{ background: "rgba(140,246,255,0.1)", color: "var(--cyan)" }}>
+              <Blocks size={14} /> Компоненти
+            </span>
           </div>
         </div>
       </header>
 
-      <div className="flex-1 min-h-0">
-        <GraphCanvasUI organizationId={membership.organization_id} />
-      </div>
+      <main className="flex-1 min-h-0 overflow-auto">
+        <div className="mx-auto max-w-5xl px-6 sm:px-8 py-8">
+          <ComponentsLibraryUI organizationId={membership.organization_id} />
+        </div>
+      </main>
     </div>
   );
 }

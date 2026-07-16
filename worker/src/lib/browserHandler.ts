@@ -30,6 +30,7 @@ import { requireOrgAccess } from "./orgAuth";
 import { insertRow, selectRows, updateRows } from "./supabase";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
 import { callGemini } from "./contentGeneration";
+import { handleDocCreate } from "./officeHandler";
 
 // Справжній браузерний User-Agent — на відміну від DEFAULT_USER_AGENT
 // в httpUtils.ts (той навмисно бот-агент "QoraxBot/1.0" для чесного
@@ -64,6 +65,39 @@ function injectBaseHref(html: string, origin: string): string {
     return html.slice(0, idx) + baseTag + html.slice(idx);
   }
   return baseTag + html;
+}
+
+/**
+ * Smart Capture (MODULE_ROADMAP.md, "Qorax Browser") — вставляє
+ * скрипт, що слухає selectionchange всередині проксованої сторінки
+ * і шле postMessage батьківському вікну з виділеним текстом.
+ *
+ * Навіщо взагалі потрібен цей інжект: фронтенд (Next.js Worker) і
+ * API_BASE_URL (qorax-api Worker) — РІЗНІ origin у продакшені, тому
+ * `iframe.contentWindow.getSelection()` з батьківської сторінки
+ * заблоковано same-origin policy браузера, попри sandbox=
+ * "allow-same-origin" (той дозволяє iframe поводитись як
+ * same-origin ВІДНОСНО СЕБЕ, не дає доступу батьківському вікну,
+ * якщо origin реально різні). postMessage — єдиний надійний міст
+ * між origin в цій ситуації, тому скрипт інжектиться на сервері
+ * (не можна покластись на code в самому чужому сайті).
+ */
+function injectSelectionScript(html: string): string {
+  const script = `<script>
+(function() {
+  document.addEventListener("selectionchange", function() {
+    var text = (document.getSelection() || {}).toString();
+    if (text && text.trim().length > 0) {
+      window.parent.postMessage({ source: "qorax-browser", type: "selection", text: text.trim() }, "*");
+    }
+  });
+})();
+</script>`;
+  const bodyCloseIdx = html.lastIndexOf("</body>");
+  if (bodyCloseIdx !== -1) {
+    return html.slice(0, bodyCloseIdx) + script + html.slice(bodyCloseIdx);
+  }
+  return html + script;
 }
 
 // GET /api/browser/proxy?url=...&organization_id=...
@@ -108,7 +142,8 @@ export async function handleBrowserProxy(request: Request, env: Env, corsHeaders
   }
 
   const html = await upstream.text();
-  const rewritten = injectBaseHref(html, targetUrl.origin);
+  const withBase = injectBaseHref(html, targetUrl.origin);
+  const rewritten = injectSelectionScript(withBase);
 
   // Навмисно НЕ передаємо жодних заголовків з upstream (X-Frame-Options/
   // CSP/тощо) — тільки наші власні corsHeaders + content-type. Це і є
@@ -353,6 +388,48 @@ async function fetchExternalCss(html: string, baseUrl: URL): Promise<string> {
 }
 
 // GET /api/browser/inspect?url=...&organization_id=...
+/** Спільне ядро Site Inspector — виділено з handleBrowserInspect, щоб
+ * AI Compare міг перевикористати той самий аналіз для ДВОХ сайтів
+ * замість дублювання fetch+regex-парсингу вдруге. */
+async function inspectUrl(targetUrl: URL): Promise<InspectResult | null> {
+  const startedAt = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let html: string;
+  try {
+    const upstream = await fetch(targetUrl.toString(), {
+      signal: controller.signal,
+      headers: { "User-Agent": BROWSER_USER_AGENT },
+    });
+    html = await upstream.text();
+  } catch {
+    clearTimeout(timeout);
+    return null;
+  }
+  clearTimeout(timeout);
+  const responseTimeMs = Date.now() - startedAt;
+
+  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+  const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i);
+  const h1Match = html.match(/<h1[^>]*>([^<]*)<\/h1>/i);
+
+  const externalCss = await fetchExternalCss(html, targetUrl);
+  const inlineStyles = (html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi) ?? []).join("\n");
+  const cssPool = `${externalCss}\n${inlineStyles}`;
+
+  return {
+    title: titleMatch?.[1]?.trim() || null,
+    metaDescription: descMatch?.[1]?.trim() || null,
+    h1: h1Match?.[1]?.trim() || null,
+    technologies: detectSignatures(html, TECH_SIGNATURES),
+    analytics: detectSignatures(html, ANALYTICS_SIGNATURES),
+    colors: extractColors(cssPool),
+    fonts: extractFonts(cssPool),
+    responseTimeMs,
+    pageSizeKb: Math.round((new TextEncoder().encode(html).length / 1024) * 10) / 10,
+  };
+}
+
 export async function handleBrowserInspect(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
   const url = new URL(request.url);
   const targetUrlRaw = url.searchParams.get("url");
@@ -366,45 +443,8 @@ export async function handleBrowserInspect(request: Request, env: Env, corsHeade
   const targetUrl = isValidHttpUrl(targetUrlRaw);
   if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
 
-  const startedAt = Date.now();
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
-  let html: string;
-  try {
-    const upstream = await fetch(targetUrl.toString(), {
-      signal: controller.signal,
-      headers: { "User-Agent": BROWSER_USER_AGENT },
-    });
-    html = await upstream.text();
-  } catch {
-    clearTimeout(timeout);
-    return json({ error: "Не вдалося завантажити сайт для аналізу" }, 502, corsHeaders);
-  }
-  clearTimeout(timeout);
-  const responseTimeMs = Date.now() - startedAt;
-
-  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
-  const descMatch = html.match(/<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i);
-  const h1Match = html.match(/<h1[^>]*>([^<]*)<\/h1>/i);
-
-  const externalCss = await fetchExternalCss(html, targetUrl);
-  // Inline <style> блоки теж додаємо до пулу для кольорів/шрифтів —
-  // не єдине джерело (як спершу відкидали), а доповнення до
-  // зовнішнього CSS, яке нічого не коштує (вже маємо html в пам'яті).
-  const inlineStyles = (html.match(/<style[^>]*>([\s\S]*?)<\/style>/gi) ?? []).join("\n");
-  const cssPool = `${externalCss}\n${inlineStyles}`;
-
-  const result: InspectResult = {
-    title: titleMatch?.[1]?.trim() || null,
-    metaDescription: descMatch?.[1]?.trim() || null,
-    h1: h1Match?.[1]?.trim() || null,
-    technologies: detectSignatures(html, TECH_SIGNATURES),
-    analytics: detectSignatures(html, ANALYTICS_SIGNATURES),
-    colors: extractColors(cssPool),
-    fonts: extractFonts(cssPool),
-    responseTimeMs,
-    pageSizeKb: Math.round((new TextEncoder().encode(html).length / 1024) * 10) / 10,
-  };
+  const result = await inspectUrl(targetUrl);
+  if (!result) return json({ error: "Не вдалося завантажити сайт для аналізу" }, 502, corsHeaders);
 
   return json(result, 200, corsHeaders);
 }
@@ -575,3 +615,400 @@ export async function handleCollectionSaveItem(request: Request, env: Env, corsH
   return json({ ok: true }, 200, corsHeaders);
 }
 
+// ============================================================
+// Smart Capture (MODULE_ROADMAP.md, "Qorax Browser" — четверта
+// ітерація після MVP AI Sidebar → Site Inspector → Collections).
+// ============================================================
+// Обсяг узгоджено з Артемом: лише "виділений текст → Office" — єдиний
+// продукт екосистеми, що реально готовий приймати довільний текстовий
+// контент ззовні (office_documents.content.blocks). Creator (лише
+// embedded_editor/live_embed вузли) і Mail (ще заглушка) не мають
+// готового API прийому — залишені майбутньою ітерацією, у UI
+// позначені "скоро" без активної дії.
+
+interface CaptureToOfficeBody {
+  organization_id: string;
+  text: string;
+  source_url?: string;
+  source_title?: string;
+}
+
+// POST /api/browser/capture/office
+export async function handleCaptureToOffice(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: CaptureToOfficeBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  if (!body.text?.trim()) return json({ error: "Немає виділеного тексту" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "editor", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const docTitle = body.source_title?.trim() || (body.source_url ? new URL(body.source_url).hostname : "Захоплений текст");
+
+  const blocks: Array<{ id: string; type: "heading" | "paragraph"; level?: 1; text: string }> = [
+    { id: crypto.randomUUID(), type: "heading", level: 1, text: docTitle },
+  ];
+  if (body.source_url) {
+    blocks.push({ id: crypto.randomUUID(), type: "paragraph", text: `Джерело: ${body.source_url}` });
+  }
+  blocks.push({ id: crypto.randomUUID(), type: "paragraph", text: body.text.trim() });
+
+  // handleDocCreate (officeHandler.ts) читає body через request.json()
+  // із оригінального Request — тому конструюємо новий Request з
+  // потрібним тілом замість дублювання логіки створення документа.
+  const forwardedRequest = new Request(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: JSON.stringify({ title: docTitle, content: { blocks } }),
+  });
+
+  return handleDocCreate(forwardedRequest, env, corsHeaders, body.organization_id);
+}
+
+// ============================================================
+// One Click Actions (MODULE_ROADMAP.md, "Qorax Browser" — п'ята
+// ітерація після MVP AI Sidebar → Site Inspector → Collections →
+// Smart Capture).
+// ============================================================
+// Roadmap перелічує: Analyze SEO / Save to Project / Create Design /
+// Generate Email / Translate / Summarize / Export PDF / Create
+// Report / Add Task. Реалізовано лише те, що реально має готовий
+// приймач: Analyze SEO і Save to Project — уже існуючі AI Sidebar/
+// Collections (просто зведені в одне меню на фронтенді, нового
+// backend не потрібно). Translate/Summarize — нові, самодостатні
+// (Gemini, той самий credit pool). Add Task — Business вже має
+// готовий /api/tasks endpoint (taskHandler.ts), просто виклик з
+// контекстом URL. Create Design (Creator) і Generate Email (Mail) —
+// той самий блокер, що Smart Capture: немає готового API прийому
+// довільного контенту, лишаються "скоро" в UI. Export PDF/Create
+// Report — не цей прохід (потребують окремого PDF-рушія на
+// сирому HTML стороннього сайту, вищий ризик поламаного вигляду).
+
+/** Спільний fetch+truncate HTML для Translate/Summarize — той самий
+ * підхід, що вже в handleBrowserAnalyze (15000 символів досить для
+ * hero-контенту, не вимагає вантажити весь документ у промпт). */
+async function fetchAndTruncateHtml(targetUrl: URL): Promise<string | null> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const upstream = await fetch(targetUrl.toString(), {
+      signal: controller.signal,
+      headers: { "User-Agent": BROWSER_USER_AGENT },
+    });
+    const html = await upstream.text();
+    return html.slice(0, 15_000);
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+interface QuickActionBody {
+  organization_id: string;
+  url: string;
+}
+
+// POST /api/browser/translate — переклад видимого тексту сторінки
+// українською (той самий кейс, що людина відкрила іноземний сайт).
+export async function handleBrowserTranslate(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: QuickActionBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const targetUrl = isValidHttpUrl(body.url ?? "");
+  if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+
+  const html = await fetchAndTruncateHtml(targetUrl);
+  if (html === null) return json({ error: "Не вдалося завантажити сайт" }, 502, corsHeaders);
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const prompt = `Ось сирий HTML сторінки ${targetUrl.toString()} (ігноруй розмітку, аналізуй лише текстовий зміст):
+${html}
+
+Витягни основний текстовий контент цієї сторінки (заголовки, абзаци, ключові речення — не меню/футер/рекламу) і переклади його українською. Форматуй як зв'язний текст, збережи структуру заголовків якщо вона є. Без вступних фраз, одразу переклад.`;
+
+  const result = await callGemini(prompt, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+  return json({ translation: result.text, credits_remaining: creditsRemaining, unlimited: creditsCheck.unlimited }, 200, corsHeaders);
+}
+
+// POST /api/browser/summarize — Reading Mode-подібний короткий зміст
+// (roadmap описує Reading Mode як окрему майбутню фічу з очищенням
+// сторінки; ця дія — той самий Gemini-виклик, простіший обсяг:
+// лише текстовий summary без окремого UI-режиму читання).
+export async function handleBrowserSummarize(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: QuickActionBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const targetUrl = isValidHttpUrl(body.url ?? "");
+  if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+
+  const html = await fetchAndTruncateHtml(targetUrl);
+  if (html === null) return json({ error: "Не вдалося завантажити сайт" }, 502, corsHeaders);
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const prompt = `Ось сирий HTML сторінки ${targetUrl.toString()} (ігноруй розмітку, аналізуй лише текстовий зміст):
+${html}
+
+Зроби короткий структурований конспект українською: 3-6 буллет-пунктів з ключовими фактами/тезами сторінки. Без вступних фраз, одразу список.`;
+
+  const result = await callGemini(prompt, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+  return json({ summary: result.text, credits_remaining: creditsRemaining, unlimited: creditsCheck.unlimited }, 200, corsHeaders);
+}
+
+// ============================================================
+// AI Compare (MODULE_ROADMAP.md, "Qorax Browser" — шоста ітерація
+// після MVP AI Sidebar → Site Inspector → Collections → Smart
+// Capture → One Click Actions).
+// ============================================================
+// Roadmap: "свій сайт vs конкурент → різниці → рекомендації".
+// Переюзовує inspectUrl() (спільне ядро з Site Inspector) для ОБОХ
+// сайтів паралельно, потім Gemini порівнює вже структуровані дані
+// (title/meta/technologies/швидкість тощо), а НЕ сирий HTML обох
+// сторінок — дешевше і точніше, ніж просити AI самому парсити два
+// документи HTML в одному промпті.
+
+interface CompareBody {
+  organization_id: string;
+  your_url: string;
+  competitor_url: string;
+}
+
+// POST /api/browser/compare
+export async function handleBrowserCompare(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: CompareBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+
+  const yourUrl = isValidHttpUrl(body.your_url ?? "");
+  const competitorUrl = isValidHttpUrl(body.competitor_url ?? "");
+  if (!yourUrl || !competitorUrl) return json({ error: "Обидва URL мають бути коректними" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+
+  const [yourInspect, competitorInspect] = await Promise.all([inspectUrl(yourUrl), inspectUrl(competitorUrl)]);
+  if (!yourInspect || !competitorInspect) {
+    return json({ error: "Не вдалося завантажити один із сайтів для порівняння" }, 502, corsHeaders);
+  }
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const describeInspect = (label: string, url: URL, r: InspectResult) => `${label} (${url.toString()}):
+- Title: ${r.title ?? "—"}
+- Meta description: ${r.metaDescription ?? "—"}
+- H1: ${r.h1 ?? "—"}
+- Технології: ${r.technologies.join(", ") || "—"}
+- Аналітика: ${r.analytics.join(", ") || "—"}
+- Швидкість відповіді: ${r.responseTimeMs} мс
+- Розмір HTML: ${r.pageSizeKb} КБ`;
+
+  const prompt = `Ти — аналітик Qorax Browser. Порівняй два сайти на основі технічних даних нижче і дай короткі практичні рекомендації українською.
+
+${describeInspect("Ваш сайт", yourUrl, yourInspect)}
+
+${describeInspect("Сайт конкурента", competitorUrl, competitorInspect)}
+
+Напиши структуровано (без markdown-заголовків, простим текстом):
+1. Ключові відмінності (2-4 пункти)
+2. Що конкурент робить краще
+3. Одна конкретна рекомендація, що покращити на вашому сайті
+Без вступних фраз, одразу суть.`;
+
+  const result = await callGemini(prompt, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+  return json(
+    {
+      comparison: result.text,
+      your_site: yourInspect,
+      competitor_site: competitorInspect,
+      credits_remaining: creditsRemaining,
+      unlimited: creditsCheck.unlimited,
+    },
+    200,
+    corsHeaders
+  );
+}
+
+
+// ============================================================
+// Reading Mode (MODULE_ROADMAP.md, "Qorax Browser" — сьома
+// ітерація після MVP AI Sidebar → Site Inspector → Collections →
+// Smart Capture → One Click Actions → AI Compare).
+// ============================================================
+// Roadmap: "не просто чистий текст, а AI-стислий зміст, витягнуті
+// факти, автоматичні нотатки" — відрізняється від уже наявного
+// Summarize (One Click Actions) тим, що це ОКРЕМИЙ РЕЖИМ ПЕРЕГЛЯДУ
+// (замінює вигляд сторінки на очищений читабельний layout), а не
+// швидка модалка з конспектом поверх звичайного перегляду.
+//
+// Технічний підхід очищення: той самий принцип, що вже в проєкті —
+// немає DOM-парсера в Cloudflare Workers, тому видалення
+// nav/header/footer/aside/script/style/svg ЦІЛИМИ БЛОКАМИ через
+// regex (не просто strip тегів — інакше текст меню/футера
+// потрапляв би в "читабельний" контент), потім витяг h1-h3/p/li як
+// структурованих блоків.
+
+interface ReadingBlock {
+  type: "heading" | "paragraph" | "list_item";
+  text: string;
+}
+
+interface ReadingModeResult {
+  title: string | null;
+  blocks: ReadingBlock[];
+  keyFacts: string[] | null;
+  notes: string | null;
+}
+
+const NOISE_TAG_PATTERN = /<(script|style|nav|header|footer|aside|svg|noscript|form|iframe)[^>]*>[\s\S]*?<\/\1>/gi;
+
+function stripHtmlTags(fragment: string): string {
+  return fragment.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+}
+
+/** Витягує читабельний контент зі сторінки: видаляє шумові блоки
+ * цілком (nav/header/footer/тощо), потім послідовно проходить
+ * заголовки/параграфи/пункти списків у порядку появи в документі. */
+function extractReadableContent(html: string): ReadingBlock[] {
+  const cleaned = html.replace(NOISE_TAG_PATTERN, "");
+
+  const blocks: ReadingBlock[] = [];
+  const blockPattern = /<(h[1-3]|p|li)[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = blockPattern.exec(cleaned)) !== null) {
+    const tag = match[1].toLowerCase();
+    const text = stripHtmlTags(match[2]);
+    if (!text || text.length < 3) continue; // порожні/декоративні елементи — не текстовий контент
+    blocks.push({ type: tag.startsWith("h") ? "heading" : tag === "li" ? "list_item" : "paragraph", text });
+  }
+  return blocks.slice(0, 80); // достатньо для читабельного викладу однієї сторінки, не безлімітний документ
+}
+
+interface ReadingModeBody {
+  organization_id: string;
+  url: string;
+  with_ai?: boolean;
+}
+
+// POST /api/browser/reading-mode
+export async function handleBrowserReadingMode(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: ReadingModeBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const targetUrl = isValidHttpUrl(body.url ?? "");
+  if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let html: string;
+  try {
+    const upstream = await fetch(targetUrl.toString(), { signal: controller.signal, headers: { "User-Agent": BROWSER_USER_AGENT } });
+    html = await upstream.text();
+  } catch {
+    clearTimeout(timeout);
+    return json({ error: "Не вдалося завантажити сайт" }, 502, corsHeaders);
+  }
+  clearTimeout(timeout);
+
+  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+  const blocks = extractReadableContent(html);
+
+  let keyFacts: string[] | null = null;
+  let notes: string | null = null;
+  let creditsRemaining: number | undefined;
+  let unlimited = false;
+
+  // AI-збагачення (ключові факти + нотатки) — опціональне, окремо
+  // від чистого витягу тексту (той працює завжди безкоштовно, без
+  // AI-виклику, схоже на "просто чистий текст" з roadmap). with_ai
+  // додає саме той шар, що roadmap виділяє як відмінність Reading
+  // Mode від звичайного reader-режиму браузерів.
+  if (body.with_ai) {
+    const creditsCheck = await checkAiCredits(body.organization_id, env);
+    if (!creditsCheck.ok) {
+      return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+    }
+    const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+    if (apiKey && blocks.length > 0) {
+      const plainText = blocks.map(b => b.text).join("\n").slice(0, 12_000);
+      const prompt = `Ось текстовий зміст сторінки ${targetUrl.toString()}:
+${plainText}
+
+Дай дві речі українською:
+1. "ФАКТИ:" — 3-5 ключових конкретних фактів зі сторінки (цифри, назви, дати, якщо є)
+2. "НОТАТКА:" — одне коротке речення-нотатка, чому ця сторінка може бути корисна користувачу
+Формат рівно такий: рядок "ФАКТИ:" далі буллети, потім рядок "НОТАТКА:" далі текст.`;
+      const result = await callGemini(prompt, apiKey);
+      if (result.ok) {
+        const factsMatch = result.text.match(/ФАКТИ:([\s\S]*?)НОТАТКА:/i);
+        const noteMatch = result.text.match(/НОТАТКА:([\s\S]*)/i);
+        keyFacts = factsMatch
+          ? factsMatch[1].split("\n").map(l => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean)
+          : null;
+        notes = noteMatch ? noteMatch[1].trim() : null;
+        creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+        unlimited = creditsCheck.unlimited;
+      }
+    }
+  }
+
+  const result: ReadingModeResult = {
+    title: titleMatch?.[1]?.trim() || null,
+    blocks,
+    keyFacts,
+    notes,
+  };
+
+  return json({ ...result, credits_remaining: creditsRemaining, unlimited }, 200, corsHeaders);
+}

@@ -159,7 +159,7 @@ export async function handleDocCreate(request: Request, env: Env, corsHeaders: R
   const access = await requireOrgAccess(request, organizationId, "editor", env);
   if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
 
-  let body: { title?: string; template_id?: string };
+  let body: { title?: string; template_id?: string; content?: { blocks: OfficeBlock[] } };
   try {
     body = await request.json();
   } catch {
@@ -186,6 +186,16 @@ export async function handleDocCreate(request: Request, env: Env, corsHeaders: R
     }
     if (!body.title?.trim()) title = template.title;
     content = template.content;
+  } else if (body.content?.blocks) {
+    // Прямий content без template_id — Smart Capture з Qorax Browser
+    // (MODULE_ROADMAP.md, "Qorax Browser", Smart Capture: виділений
+    // текст сторінки → напряму в Office). Мінімальна валідація форми
+    // блоків, не повний схема-валідатор — той самий рівень довіри,
+    // що решта worker-ендпоінтів до вже автентифікованого органу.
+    const blocks = body.content.blocks;
+    if (Array.isArray(blocks) && blocks.every(b => b && typeof b === "object" && "type" in b)) {
+      content = { blocks };
+    }
   }
 
   const insertRes = await insertRowReturning<DocRow>(

@@ -3502,3 +3502,388 @@ CSV-експорті/AI-генерації (обидва свідомо прац
 **Залишилось по списку:** діаграми в Sheets, зображення на слайдах
 Slides, .xlsx імпорт/експорт, повний PDF Studio, реальне
 одночасне редагування (CRDT).
+
+---
+
+## Qorax Browser — Smart Capture (четверта ітерація)
+
+**Обсяг (звужено разом з Артемом):** roadmap описує Smart Capture
+як "виділив будь-що → Creator/Office/Mail/Business", але перевірка
+показала — реально готовий приймати довільний текстовий контент
+ззовні лише Office (`office_documents.content.blocks`). Creator має
+лише вузли `embedded_editor`/`live_embed` (не текстові), Mail на
+момент цього проходу лише отримав першу схему (`mail_core`, ще не
+API прийому контенту), CRM вимагає name/email/телефон або прив'язку
+до deal/contact — не підходить для довільної замітки "про сайт".
+Тому цей прохід: лише "виділений текст → Office", Creator/Mail
+позначені в UI "скоро" без активної дії.
+
+**Технічне рішення (найважливіше):** фронтенд (Next.js Worker) і
+`API_BASE_URL` (qorax-api Worker) — РІЗНІ origin у продакшені, тому
+`iframe.contentWindow.getSelection()` з батьківської сторінки
+заблоковано cross-origin policy браузера, ПОПРИ `sandbox=
+"allow-same-origin"` в iframe (той дозволяє iframe поводитись як
+same-origin відносно себе, не дає доступу батьківському вікну при
+реально різних origin). Вирішено інжекцією скрипта на сервері —
+`injectSelectionScript()` в `browserHandler.ts` додає невеликий
+`<script>` перед `</body>` проксованої сторінки (той самий механізм
+інжекції, що вже є `injectBaseHref()`), який слухає
+`selectionchange` і шле `postMessage` батьківському вікну.
+Батьківський `BrowserUI.tsx` слухає ці повідомлення через
+`window.addEventListener("message", ...)`.
+
+**`worker/src/lib/browserHandler.ts`:**
+- `injectSelectionScript()` — другий інжект у `handleBrowserProxy`
+  поряд з `injectBaseHref()`
+- `POST /api/browser/capture/office` (`handleCaptureToOffice`) —
+  формує `office_documents` блоки (heading з назвою джерела,
+  paragraph з URL, paragraph з захопленим текстом) і викликає вже
+  наявний `handleDocCreate` з `officeHandler.ts` через сконструйований
+  `Request` (не дублювання логіки створення документа)
+- `handleDocCreate` (officeHandler.ts) розширено: приймає або
+  `template_id` (як раніше), або прямий `content.blocks` — друге
+  потрібне саме для Smart Capture, перше не зламано
+
+**UI:** `BrowserUI.tsx` — плаваюча панель знизу viewport з'являється
+при отриманні `postMessage` з виділеним текстом: показує уривок
+тексту, кнопку "В Office" (активна), плашку "Creator/Mail — скоро"
+(неактивна, лише інформаційна).
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (768.72 KiB, gzip 131.85 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** захоплення в Creator/Mail
+(технічно неготові приймати довільний контент — окрема майбутня
+задача, не просто "додати кнопку"), захоплення зображень/товарів
+(лише текст), One Click Actions (ПКМ-меню — ширший набір дій, Smart
+Capture лише один із них), AI Compare, Reading Mode, Research Mode,
+Visual Search, Component Extractor, Website Timeline, Workspace
+Tabs, Deep Search, AI Memory, Marketplace.
+
+## Qorax Browser — One Click Actions (п'ята ітерація)
+
+**Обсяг (звужено за реальною готовністю приймачів, той самий підхід,
+що Smart Capture):** roadmap перелічує 9 дій (Analyze SEO/Save to
+Project/Create Design/Generate Email/Translate/Summarize/Export PDF/
+Create Report/Add Task). Реалізовано: Analyze SEO і Save to Project
+(перемикають вже наявні AI Sidebar/Collections таби, без нового
+backend), Translate і Summarize (нові Gemini-виклики), Add Task
+(виклик уже наявного `/api/tasks`, taskHandler.ts). Create Design
+(Creator) і Generate Email (Mail) — неактивні "скоро" в меню, той
+самий блокер що Smart Capture (немає готового API прийому). Export
+PDF і Create Report — НЕ цей прохід (вимагають окремого PDF-рушія на
+сирому HTML стороннього сайту, вищий ризик поламаного вигляду,
+складніша задача).
+
+**UX-нюанс:** правий клік усередині iframe недоступний з
+батьківської сторінки (той самий cross-origin блокер, що вже
+задокументовано для Smart Capture) — тому це не класичне ПКМ-меню з
+roadmap, а випадне меню з кнопки "Дії" в toolbar поруч з URL bar.
+
+**`worker/src/lib/browserHandler.ts` — нові ендпоінти:**
+- `POST /api/browser/translate` — переклад основного текстового
+  контенту сторінки українською (Gemini)
+- `POST /api/browser/summarize` — короткий буллет-конспект сторінки
+- Обидва переюзовують спільний `fetchAndTruncateHtml()` helper (той
+  самий підхід обрізання на 15000 символів, що вже в
+  `handleBrowserAnalyze`) і `aiCredits.ts` credit pool
+
+**UI:** новий `QuickActionsMenu.tsx` — випадне меню з кнопки "Дії" в
+toolbar. Translate/Summarize відкривають модалку з результатом. Add
+Task — тиха дія (без модалки, помилка створення задачі не блокує
+перегляд сайту). Analyze SEO/Save to Project — просто перемикають
+`sidebarTab` і відкривають сайдбар, якщо закритий.
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (800.99 KiB, gzip 136.82 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** Create Design/Generate Email
+(технічно неготові приймачі), Export PDF, Create Report, AI Compare,
+Reading Mode (окремий UI-режим читання, відрізняється від Summarize
+відсутністю окремого "чистого" перегляду), Research Mode, Visual
+Search, Component Extractor, Website Timeline, Workspace Tabs, Deep
+Search, AI Memory, Marketplace.
+
+## EcosystemSection — знято "Скоро" з Mail і Browser (обидва вже live)
+
+**Запит Артема:** перевірити всі 5 продуктів екосистеми на предмет
+заглушок — чи справді кожен відкривається з мінімальним функціоналом.
+
+**Перевірено кожен `page.tsx` окремо:** Business (`/login`), Mail
+(`MailApp` для залогінених), Creator (`CreatorBoardsListUI`), Office
+(`OfficeDocsListUI`), Browser (`BrowserUI`) — усі п'ять реально
+відкриваються з робочим мінімальним функціоналом для залогінених
+користувачів. Жодних "заглушок замість продукту" не знайдено.
+
+**Знайдена й виправлена реальна проблема:** `EcosystemSection.tsx`
+(картки на лендингу) досі позначала Mail і Browser як `live: false`
+("Скоро", приглушена картка) — застаріло з моменту, коли ці два
+продукти отримали реальний код (`MailApp`/`BrowserUI`) у паралельних
+проходах. Виправлено на `live: true` для обох. Попутно виявлено, що
+умовний рендеринг `product.live ? <a>...</a> : <a>...</a>` рендерив
+ІДЕНТИЧНИЙ `href` в обох гілках (перехід технічно завжди працював,
+лише стиль картки відрізнявся) — плутанина для відвідувача, що бачив
+"Скоро" на робочому продукті. Спрощено: прибрано мертву гілку коду
+і плашку "Скоро" повністю (усі п'ять зараз live), поле `live` в
+даних `PRODUCTS` лишено на майбутнє (новий продукт у розробці), але
+рендеринг більше на ньому не гілкується.
+
+**Свідомо НЕ чіпали:** `/creator` для незалогінених редіректить
+одразу на `/login` без маркетингового опису (на відміну від Mail/
+Office/Browser, що показують `ProductComingSoon`) — це вже свідоме
+рішення попереднього проходу ("лендінг Артем зробить окремо"), не
+"заглушка" в сенсі запиту цього проходу (для залогінених Creator
+працює нормально), тому не змінювали без окремого запиту.
+
+**Перевірено:** `tsc --noEmit` чисто, `eslint` чисто, повний
+`next build` успішно.
+
+---
+
+## Qorax Creator: Components / Brand Kit — четвертий крок
+
+MODULE_ROADMAP.md, "Qorax Creator", порядок реалізації: Website Mode
+→ Diagram Mode → Live Objects (усі готові) → **Components/Brand Kit**
+(цей прохід) → Smart Components → AI Creator → ... Схема взята
+практично дослівно з плану — розділ "Components / Brand Kit —
+перевикористання, не нова система дизайну" уже дав готову структуру
+таблиць, не потрібно було проектувати з нуля.
+
+**Ключовий принцип, прямо з плану:** `creator_components.content` —
+ТОЙ САМИЙ block-JSON формат, що `project_pages.content` (0058) —
+один блок `{ type, heading?, subheading?, body?, cta_text?,
+cta_href?, image_url?, alt?, items? }`, не масив `{blocks:[]}`
+(компонент — одна перевикористовувана одиниця, що вставляється в
+чужу сторінку). Категорії компонентів — той самий список, що
+`BLOCK_TYPES` у `ProjectEditorUI.tsx` (hero/text/image/cta/faq/
+products), не новий перелік.
+
+**Схема (`0075_creator_components_brand_kit.sql`):**
+- `creator_brand_kits` — `unique(organization_id)`, один запис на
+  організацію в MVP (не історія версій)
+- `creator_components` — `organization_id` NULLABLE (`null` =
+  системний/marketplace-компонент), `is_marketplace boolean` — схема
+  готова під Marketplace ОДРАЗУ, з плану, але сам Marketplace UI/
+  логіка НЕ цей прохід (план явно відкладає це на "Developer Mode,
+  History, Multiplayer, Marketplace")
+- RLS: `creator_components_select` дозволяє бачити і власні
+  компоненти організації, і системні (`organization_id is null`) —
+  майбутня бібліотека стартових компонентів; `insert`/`update`/
+  `delete` — тільки власні (чи `is_platform_admin()` для системних,
+  керованих окремо, не через звичайний UI організації)
+
+**Worker (`creatorComponentsHandler.ts`, новий файл):**
+- Brand Kit: `GET`/`PUT` (upsert через `on_conflict=organization_id`,
+  не окремий insert/update шлях — простіше й атомарніше)
+- Components: `GET`/`POST`/`PATCH`(тільки перейменування)/`DELETE`.
+  `GET` явно фільтрує `or=(organization_id.eq.X,organization_id.is.null)`
+  — `selectRows` використовує service role (обходить RLS), тому цей
+  фільтр не декоративний, а єдиний реальний захист на цьому шляху,
+  так само як `DELETE` явно фільтрує `organization_id=eq.X` —
+  системні компоненти видалити з цього ендпоінту неможливо навіть
+  якщо `componentId` вгадано
+- `ALLOWED_CATEGORIES` — той самий список, що `CATEGORIES` на
+  фронтенді (`ComponentsLibraryUI.tsx`), worker — джерело істини для
+  валідації, фронтенд лише дублює для підписів/іконок в UI (той
+  самий принцип подвійного захисту, що вже застосований для
+  `LIVE_EMBED_ALLOWED` у Live Objects)
+
+**UI (`/creator/components`, 2 нові файли):** третя вкладка в
+перемикачі режимів (Website/Diagram/Компоненти) на всіх трьох
+сторінках Creator (`/creator`, `/creator/graph`, `/creator/components`
+самій). `ComponentsLibraryUI.tsx` — дві незалежні секції: Brand Kit
+(форма з color picker для primary/accent, textarea для tone of voice
+з поясненням "використовується AI-генерацією тексту" — чесно про
+те, що інтеграція ще не підключена, тільки поле для майбутнього) і
+бібліотека компонентів (форма створення за категорією, список з
+видаленням). Системні (`organization_id === null`) компоненти
+відфільтровано з UI-списку (`ownComponents`) — вони існують у схемі
+для Marketplace, але показувати порожню секцію "системні компоненти"
+без жодного реального контенту (Marketplace ще нема) було б
+UI-обіцянкою того, чого не існує.
+
+**Перевірено:** `tsc --noEmit` чисто (worker+app), `npx eslint
+app/creator/` чисто, `npm run build` успішно (`/creator/components`
+на місці серед 55 роутів), `wrangler deploy --dry-run --config
+wrangler.toml` успішно (738.50 KiB, gzip 128.01 KiB).
+
+**Свідомо НЕ зроблено цим проходом:**
+- Marketplace UI (перегляд/встановлення системних компонентів) —
+  схема готова, вітрини нема, як і задокументовано в плані
+- Інтеграція `tone_of_voice` з Content Agent при AI-генерації текстів
+  — поле зберігається, фактичне використання при генерації (промпт
+  враховує бренд-тон) — окрема задача, торкається `contentGeneration.ts`,
+  не входила в обсяг цього проходу
+- Вставка компонента НАЗАД на сторінку Sites (з бібліотеки в
+  `ProjectEditorUI`) — Артем явно попросив спростити MVP до окремої
+  сторінки бібліотеки без змін у `ProjectEditorUI.tsx`; "вставка"
+  зараз — це створення компонента З існуючого блоку вручну через
+  форму, не двосторонній потік бібліотека↔редактор
+- Редагування `content` існуючого компонента — `PATCH` приймає лише
+  `name` (перейменування), зміна вмісту — видалити і створити новий
+
+---
+
+## Qorax Creator: Smart Components — п'ятий крок
+
+MODULE_ROADMAP.md, "Qorax Creator", порядок реалізації: Website Mode
+→ Diagram Mode → Live Objects → Components/Brand Kit (усі готові) →
+**Smart Components** (цей прохід) → AI Creator → ... План описує це
+як "генуїнно нову ідею, не перевикористання" — на відміну від решти
+кроків, які переформульовували вже наявний функціонал.
+
+**Ключова відмінність від Website Mode/Live Objects, яку важливо не
+сплутати:** `canvas_nodes.ref_table/ref_id` (з 0071, Website Mode)
+кажуть "цей вузол ІСНУЄ і пов'язаний з реальним записом" — статична
+прив'язка, значення все одно живуть у `data`. Нові
+`bound_ref_table`/`bound_ref_id`/`field_bindings` (0079) кажуть "ця
+картка ПОКАЗУЄ живі дані цього запису" — рендер читає джерело
+істини щоразу при показі дошки, не кешує. Обидва механізми
+співіснують на одній таблиці `canvas_nodes`, служать різним цілям.
+
+**Схема (`0079_creator_smart_components.sql`):** дослівно з плану —
+`bound_ref_table text`, `bound_ref_id uuid`, `field_bindings jsonb`
+додано до вже наявної `canvas_nodes` (не нова таблиця).
+
+**MVP звужено до `products` (Commerce), одна таблиця, не довільна.**
+План не вимагає одразу підтримувати будь-яку таблицю — важливо
+довести сам механізм "живого зв'язку" на одному реальному прикладі.
+Whitelist (`SMART_COMPONENT_ALLOWED_TABLES` у `creatorHandler.ts`)
+— той самий принцип безпеки, що вже застосований для
+`LIVE_EMBED_ALLOWED` (Live Objects): `bound_ref_table` — вільний
+`text`, без whitelist дозволив би читати ДОВІЛЬНУ таблицю бази за
+`bound_ref_id` (напр. підміна на `bound_ref_table='profiles'` —
+потенційний витік чужих даних). Перевірка належності товару до
+організації — через непрямий зв'язок `products.project_id →
+projects.organization_id` (той самий шлях, що вже перевіряється для
+`embedded_editor`-вузлів у Website Mode, `products` не має
+`organization_id` напряму).
+
+**Worker (`creatorHandler.ts`, доповнено):**
+- `resolveSmartComponentData()` — читає `products` за
+  `bound_ref_id`, застосовує `field_bindings` (`{"slot":
+  "source_column"}`, з плану), ігнорує будь-які колонки поза
+  `tableConfig.columns` — whitelist на рівні полів, не тільки
+  таблиці
+- `handleBoardDetail` викликає резолвер для КОЖНОГО
+  `smart_component`-вузла паралельно (`Promise.all`, не послідовно)
+  ПРИ КОЖНОМУ `GET` дошки — не при створенні вузла й не окремим
+  API. Це і є механізм "живого оновлення": відкрили дошку — побачили
+  актуальну ціну, без жодної синхронізації чи вебхука
+- `handleNodeCreate` (`smart_component` гілка) — `field_bindings`
+  фіксований на створенні (`{title: "title", price_label:
+  "price_cents", image: "image_urls"}`), не приймається як довільний
+  об'єкт від клієнта — MVP доводить механізм, не конструктор
+  мапінгів для користувача
+
+**UI (`BoardCanvasUI.tsx`, доповнено):** `SmartComponentNode` —
+третій custom node (поруч з `EmbeddedEditorNode`/`LiveEmbedNode`),
+показує `resolved_data` з відповіді `GET` дошки (не з `data` самого
+вузла) — фотографія товару, назва, ціна. Індикатор "Live · Commerce"
+з іконкою `RefreshCw` — візуальна підказка, що це не статична
+картка. Меню "Додати на дошку" отримало третю секцію: двоетапний
+вибір (спочатку Sites-проєкт, потім товар цього проєкту) — той самий
+реальний зв'язок даних Commerce (товари прив'язані до конкретного
+`project_id`, не до організації напряму), не штучне спрощення UI
+приховуванням цієї структури.
+
+**Перевірено:** `tsc --noEmit` чисто (worker+app), `npx eslint
+app/creator/` чисто, `npm run build` успішно (усі роути на місці,
+включно з `/creator/[boardId]`), `wrangler deploy --dry-run
+--config wrangler.toml` успішно (812.67 KiB, gzip 138.11 KiB).
+
+**Свідомо НЕ зроблено цим проходом:**
+- Підтримка інших таблиць окрім `products` (CRM-контакти,
+  Analytics-метрики тощо) — той самий whitelist-механізм
+  масштабується легко, але кожна нова таблиця вимагає окремої
+  org-перевірки належності (не всі таблиці мають однаковий шлях до
+  `organization_id`), не додано без конкретної потреби
+- Редагований користувачем `field_bindings` (UI-конструктор
+  мапінгів "яке поле картки → яка колонка джерела") — MVP має
+  фіксований мапінг, повний конструктор — окрема, більша UI-задача
+- `canvas_node_versions` (append-only історія змін `data`/
+  `field_bindings`, згадана в іншій частині розділу плану про
+  History) — не Smart Components конкретно, окремий майбутній крок
+## Qorax Browser — AI Compare (шоста ітерація)
+
+**Обсяг:** roadmap — "свій сайт vs конкурент → різниці →
+рекомендації". Наступний крок за списком після One Click Actions.
+
+**Технічне рішення:** переюзано `inspectUrl()` (спільне ядро Site
+Inspector, винесене з `handleBrowserInspect` цим же проходом) для
+ОБОХ сайтів паралельно (`Promise.all`), потім Gemini порівнює вже
+структуровані дані (title/meta/technologies/швидкість/розмір), НЕ
+сирий HTML обох сторінок одразу — дешевше по токенах і точніше, ніж
+просити AI самому парсити два документи в одному промпті.
+
+**`worker/src/lib/browserHandler.ts`:**
+- Рефакторинг: `handleBrowserInspect` розбито на `inspectUrl(url):
+  Promise<InspectResult | null>` (чисте ядро аналізу) +
+  тонкий HTTP-wrapper — Site Inspector і AI Compare тепер
+  використовують один код аналізу, не два дублікати
+- `POST /api/browser/compare` (`handleBrowserCompare`) — приймає
+  `your_url`/`competitor_url`, аналізує обидва, формує Gemini-промпт
+  зі структурованим порівнянням, повертає `comparison` (текст) +
+  `your_site`/`competitor_site` (структуровані InspectResult)
+
+**UI:** новий `AiCompareModal.tsx` — "свій сайт" пропонується зі
+списку `sites` організації (читається напряму через Supabase client,
+той самий підхід, що `dashboard/page.tsx`, не новий worker-ендпоінт
+для простого списку), з можливістю ввести інший URL вручну (варіант
+"конкурент vs конкурент" теж підтримується). Результат показує
+короткі картки обох сайтів (title/швидкість/розмір) + текстове
+порівняння з рекомендаціями. Додано пункт "AI Compare" у
+`QuickActionsMenu.tsx`.
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (806.67 KiB, gzip 137.45 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** Reading Mode (окремий UI-режим
+чистого читання — відрізняється від уже наявного Summarize),
+Research Mode (агентний режим, що сам відкриває N сайтів), Visual
+Search, Component Extractor, Website Timeline, Workspace Tabs, Deep
+Search, AI Memory, Marketplace.
+
+## Qorax Browser — Reading Mode (сьома ітерація)
+
+**Обсяг:** roadmap — "не просто чистий текст, а AI-стислий зміст,
+витягнуті факти, автоматичні нотатки". Свідома відмінність від уже
+наявного Summarize (One Click Actions): Reading Mode — ОКРЕМИЙ
+РЕЖИМ ПЕРЕГЛЯДУ, що повністю замінює вигляд viewport на очищений
+читабельний layout, а не модалка з конспектом поверх звичайного
+перегляду.
+
+**Технічний підхід очищення (`worker/src/lib/browserHandler.ts`,
+`handleBrowserReadingMode`):** той самий принцип, що решта Browser —
+немає DOM-парсера в Cloudflare Workers. `NOISE_TAG_PATTERN` видаляє
+`nav`/`header`/`footer`/`aside`/`script`/`style`/`svg`/`noscript`/
+`form`/`iframe` ЦІЛИМИ БЛОКАМИ (не просто strip тегів — інакше текст
+меню/футера потрапляв би в "читабельний" контент), потім
+`extractReadableContent()` витягує `h1-h3`/`p`/`li` як послідовність
+структурованих блоків у порядку появи в документі (обмежено 80
+блоками — досить для однієї сторінки).
+
+**Чистий текст — безкоштовно, AI-збагачення — окрема дія:**
+витяг структури сторінки завжди безкоштовний (без Gemini-виклику,
+жодних кредитів). "Ключові факти" + коротка нотатка — окремий
+`with_ai: true` параметр, що явно викликає AI лише коли користувач
+натиснув кнопку — не витрачати кредити автоматично при кожному
+відкритті режиму.
+
+**UI:** новий `ReadingModeView.tsx` — повноекранний оверлей
+(`absolute inset-0`) поверх viewport, замінює iframe. Кнопка
+"Читання" у toolbar (поруч з "Дії"/AI). Заголовок + список блоків
+(heading/paragraph/list_item), кнопка "Витягти ключові факти"
+(AI, за запитом).
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (826.77 KiB, gzip 140.31 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** Research Mode (агентний режим,
+що сам відкриває N сайтів), Visual Search, Component Extractor,
+Website Timeline, Workspace Tabs, Deep Search, AI Memory,
+Marketplace.

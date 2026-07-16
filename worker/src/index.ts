@@ -94,6 +94,17 @@ import {
   handleTeamCommentCreate,
   handleActivityFeedList,
 } from "./lib/teamWorkspaceHandler";
+import {
+  handleMailAuth,
+  handleMailCallback,
+  handleMailAccountsList,
+  handleMailThreadsList,
+  handleMailMessagesList,
+  handleMailSyncRequest,
+  handleMailSend,
+  handleMailContactsList,
+  runMailSyncAll,
+} from "./lib/mailHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
 import {
   handleGa4Authorize,
@@ -113,6 +124,14 @@ import {
   handleNodeUpdate,
   handleNodeDelete,
 } from "./lib/creatorHandler";
+import {
+  handleBrandKitGet,
+  handleBrandKitUpsert,
+  handleComponentsList,
+  handleComponentCreate,
+  handleComponentUpdate,
+  handleComponentDelete,
+} from "./lib/creatorComponentsHandler";
 import { handleGraphData } from "./lib/knowledgeGraph";
 import {
   handleDocsList,
@@ -191,7 +210,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
-import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem } from "./lib/browserHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare, handleBrowserReadingMode } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -509,6 +528,15 @@ const worker = {
         return json({ ok: true, message: "CRM reminders started" }, 200, origin);
       }
 
+      // Qorax Mail — синхронізація всіх активних mail_accounts.
+      if (url.pathname === "/api/admin/run-mail-sync") {
+        ctx.waitUntil(
+          runMailSyncAll(env)
+            .then(s => console.log("Manual mail sync:", JSON.stringify(s)))
+        );
+        return json({ ok: true, message: "Mail sync started" }, 200, origin);
+      }
+
       if (url.pathname === "/api/admin/env-check") {
         return json({
           SUPABASE_URL: !!env.SUPABASE_URL,
@@ -702,6 +730,35 @@ const worker = {
     if (url.pathname === "/api/gsc/callback" && request.method === "GET") {
       return handleGscCallback(request, env);
     }
+
+    // ── Mail routes (Qorax Mail — окремий продукт екосистеми,
+    // MODULE_ROADMAP.md). OAuth-flow — той самий патерн, що GSC. ──
+    if (url.pathname === "/api/mail/auth" && request.method === "GET") {
+      return handleMailAuth(request, env);
+    }
+    if (url.pathname === "/api/mail/callback" && request.method === "GET") {
+      return handleMailCallback(request, env);
+    }
+    if (url.pathname === "/api/mail/accounts" && request.method === "GET") {
+      return handleMailAccountsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/mail/contacts" && request.method === "GET") {
+      return handleMailContactsList(request, env, corsHeaders(origin));
+    }
+    const mailSyncMatch = url.pathname.match(/^\/api\/mail\/accounts\/([^/]+)\/sync$/);
+    if (mailSyncMatch && request.method === "POST") {
+      return handleMailSyncRequest(request, env, corsHeaders(origin), mailSyncMatch[1]);
+    }
+    if (url.pathname === "/api/mail/threads" && request.method === "GET") {
+      return handleMailThreadsList(request, env, corsHeaders(origin));
+    }
+    const mailMessagesMatch = url.pathname.match(/^\/api\/mail\/threads\/([^/]+)\/messages$/);
+    if (mailMessagesMatch && request.method === "GET") {
+      return handleMailMessagesList(request, env, corsHeaders(origin), mailMessagesMatch[1]);
+    }
+    if (url.pathname === "/api/mail/send" && request.method === "POST") {
+      return handleMailSend(request, env, corsHeaders(origin));
+    }
     if (url.pathname === "/api/gsc/status" && request.method === "GET") {
       return handleGscStatus(request, env, corsHeaders(origin));
     }
@@ -873,6 +930,29 @@ const worker = {
       return handleGraphData(request, env, corsHeaders(origin), knowledgeGraphMatch[1]);
     }
 
+    // ── Qorax Creator: Components / Brand Kit (MODULE_ROADMAP.md "Qorax Creator") ──
+    const brandKitMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/brand-kit$/);
+    if (brandKitMatch && request.method === "GET") {
+      return handleBrandKitGet(request, env, corsHeaders(origin), brandKitMatch[1]);
+    }
+    if (brandKitMatch && request.method === "PUT") {
+      return handleBrandKitUpsert(request, env, corsHeaders(origin), brandKitMatch[1]);
+    }
+    const componentsListMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/components$/);
+    if (componentsListMatch && request.method === "GET") {
+      return handleComponentsList(request, env, corsHeaders(origin), componentsListMatch[1]);
+    }
+    if (componentsListMatch && request.method === "POST") {
+      return handleComponentCreate(request, env, corsHeaders(origin), componentsListMatch[1]);
+    }
+    const componentItemMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/components\/([^/]+)$/);
+    if (componentItemMatch && request.method === "PATCH") {
+      return handleComponentUpdate(request, env, corsHeaders(origin), componentItemMatch[1], componentItemMatch[2]);
+    }
+    if (componentItemMatch && request.method === "DELETE") {
+      return handleComponentDelete(request, env, corsHeaders(origin), componentItemMatch[1], componentItemMatch[2]);
+    }
+
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
     const croSnippetMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/cro\/snippet$/);
     if (croSnippetMatch && request.method === "GET") {
@@ -917,6 +997,21 @@ const worker = {
     const collectionDeleteMatch = url.pathname.match(/^\/api\/browser\/collections\/([^/]+)$/);
     if (collectionDeleteMatch && request.method === "DELETE") {
       return handleCollectionDelete(request, env, corsHeaders(origin), collectionDeleteMatch[1]);
+    }
+    if (url.pathname === "/api/browser/capture/office" && request.method === "POST") {
+      return handleCaptureToOffice(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/translate" && request.method === "POST") {
+      return handleBrowserTranslate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/summarize" && request.method === "POST") {
+      return handleBrowserSummarize(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/compare" && request.method === "POST") {
+      return handleBrowserCompare(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/reading-mode" && request.method === "POST") {
+      return handleBrowserReadingMode(request, env, corsHeaders(origin));
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
@@ -1980,6 +2075,12 @@ const worker = {
     if (event.cron === "*/10 * * * *") {
       const s = await runCroAggregate(env);
       console.log("CRO aggregate run:", JSON.stringify(s));
+      // Qorax Mail — синхронізація всіх активних mail_accounts. Той
+      // самий тригер, що CRO-агрегація (не новий Cloudflare Cron
+      // Trigger) — лист не потребує щохвилинної свіжості, 10 хв
+      // достатньо для MVP Inbox.
+      const mailSync = await runMailSyncAll(env);
+      console.log("Mail sync run:", JSON.stringify(mailSync));
       return;
     }
 

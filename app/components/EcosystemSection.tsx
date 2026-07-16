@@ -8,11 +8,13 @@ import { Reveal } from "./Reveal";
  * (PRODUCT_VISION.md, розділ "П'ять продуктів екосистеми Qorax").
  * На відміну від PlatformModulesSection (шість МОДУЛІВ всередині
  * Business), тут — п'ять окремих ПРОДУКТІВ, кожен зі своєю точкою
- * входу. Business єдиний, що вже частково `live` — веде на реальний
- * /login. Решта чотирьох (Mail/Creator/Office/Browser) зафіксовані
- * в roadmap як концепції без коду — сторінки-заглушки існують
- * (/mail, /creator, /office, /browser), але позначені "Скоро" з
- * заблокованим переходом, доки продукт реально не існує.
+ * входу. Станом на липень 2026 усі п'ять мають робочий мінімальний
+ * функціонал для залогінених користувачів (Business/dashboard,
+ * Mail/MailApp, Creator/CreatorBoardsListUI, Office/
+ * OfficeDocsListUI, Browser/BrowserUI) — усі позначені live: true.
+ * Незалогінені відвідувачі бачать ProductComingSoon (маркетинговий
+ * опис) на /mail, /office, /browser — це НЕ означає "продукт не
+ * готовий", лише що деталі показуються після входу.
  */
 
 const PRODUCTS = [
@@ -32,7 +34,7 @@ const PRODUCTS = [
     description: "Корпоративна пошта, email-маркетинг та AI-агенти для листування — в одному місці.",
     href: "/mail",
     accent: "cyan" as const,
-    live: false,
+    live: true,
   },
   {
     icon: Palette,
@@ -59,7 +61,7 @@ const PRODUCTS = [
     description: "Робочий браузер: аналізує сайти, збирає ідеї та передає їх у решту екосистеми.",
     href: "/browser",
     accent: "cyan" as const,
-    live: false,
+    live: true,
   },
 ];
 
@@ -95,47 +97,28 @@ export function EcosystemSection() {
         <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
           {PRODUCTS.map((product, i) => {
             const color = ACCENT_COLORS[product.accent];
-            const CardInner = (
-              <div className="glow-card p-6 h-full flex flex-col relative overflow-hidden">
-                {!product.live && (
-                  <span
-                    className="absolute top-4 right-4 text-[10px] font-mono px-2 py-0.5 rounded-full"
-                    style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-tertiary)" }}
-                  >
-                    Скоро
-                  </span>
-                )}
-                <div className="flex items-center gap-3 mb-4">
-                  <div
-                    className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
-                    style={{ background: `${color}14`, border: `1px solid ${color}33` }}
-                  >
-                    <product.icon size={16} style={{ color }} strokeWidth={1.5} />
-                  </div>
-                  <div>
-                    <h3 className="font-display text-base font-semibold leading-tight">{product.name}</h3>
-                    <p className="text-[11px] font-mono" style={{ color }}>{product.tagline}</p>
-                  </div>
-                </div>
-                <p className="text-sm leading-relaxed text-[var(--text-secondary)] flex-1">{product.description}</p>
-                {product.live && (
-                  <div className="mt-4 flex items-center gap-1.5 text-xs font-medium" style={{ color }}>
-                    Перейти <ArrowUpRight size={13} />
-                  </div>
-                )}
-              </div>
-            );
             return (
               <Reveal key={product.name} delay={Math.min(i * 0.05, 0.25)}>
-                {product.live ? (
-                  <a href={product.href} className="block h-full transition-transform hover:-translate-y-0.5">
-                    {CardInner}
-                  </a>
-                ) : (
-                  <a href={product.href} className="block h-full opacity-80 transition-opacity hover:opacity-100">
-                    {CardInner}
-                  </a>
-                )}
+                <a href={product.href} className="block h-full transition-transform hover:-translate-y-0.5">
+                  <div className="glow-card p-6 h-full flex flex-col relative overflow-hidden">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div
+                        className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
+                        style={{ background: `${color}14`, border: `1px solid ${color}33` }}
+                      >
+                        <product.icon size={16} style={{ color }} strokeWidth={1.5} />
+                      </div>
+                      <div>
+                        <h3 className="font-display text-base font-semibold leading-tight">{product.name}</h3>
+                        <p className="text-[11px] font-mono" style={{ color }}>{product.tagline}</p>
+                      </div>
+                    </div>
+                    <p className="text-sm leading-relaxed text-[var(--text-secondary)] flex-1">{product.description}</p>
+                    <div className="mt-4 flex items-center gap-1.5 text-xs font-medium" style={{ color }}>
+                      Перейти <ArrowUpRight size={13} />
+                    </div>
+                  </div>
+                </a>
               </Reveal>
             );
           })}
