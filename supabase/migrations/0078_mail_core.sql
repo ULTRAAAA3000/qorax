@@ -1,4 +1,4 @@
--- 0076_mail_core.sql
+-- 0078_mail_core.sql
 -- Qorax Mail — Шар 1: Inbox/Compose/Contacts/Files
 -- (MODULE_ROADMAP.md, "Qorax Mail — окремий продукт екосистеми").
 --
