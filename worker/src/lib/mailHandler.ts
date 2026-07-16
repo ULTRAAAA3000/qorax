@@ -143,6 +143,36 @@ export async function handleMailCallback(request: Request, env: Env): Promise<Re
   return Response.redirect(`${appBase}/mail?mail_connected=1`, 302);
 }
 
+// ── Route: GET /api/mail/contacts?organization_id=... ──
+// Читає crm_contacts, не окрему таблицю (mail_contacts навмисно не
+// створена — MODULE_ROADMAP.md, Шар 1 Mail). Фільтр за source не
+// застосовано навмисно: контакт міг спершу з'явитись через mail_thread,
+// а потім отримати ручні правки чи бути пов'язаний з угодою в CRM —
+// показуємо ВСІ контакти організації, не тільки ті, що з листування.
+
+export async function handleMailContactsList(
+  request: Request,
+  env: Env,
+  corsHeaders: Record<string, string>
+): Promise<Response> {
+  const url = new URL(request.url);
+  const organizationId = url.searchParams.get("organization_id");
+  if (!organizationId) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, organizationId, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const res = await selectRows<{ id: string; name: string | null; email: string | null; source: string; created_at: string }>(
+    "crm_contacts",
+    `select=id,name,email,source,created_at&organization_id=eq.${encodeURIComponent(organizationId)}&order=created_at.desc`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!res.ok) return json({ error: res.error }, 500, corsHeaders);
+
+  return json({ contacts: res.data ?? [] }, 200, corsHeaders);
+}
+
 // ── Route: GET /api/mail/accounts?organization_id=... ──
 
 export async function handleMailAccountsList(
@@ -366,9 +396,9 @@ interface MailSyncResult {
 }
 
 export async function runMailSync(mailAccountId: string, env: Env): Promise<MailSyncResult> {
-  const accountRes = await selectRows<{ encrypted_refresh_token: string; history_id: string | null }>(
+  const accountRes = await selectRows<{ encrypted_refresh_token: string; history_id: string | null; organization_id: string; email_address: string }>(
     "mail_accounts",
-    `select=encrypted_refresh_token,history_id&id=eq.${encodeURIComponent(mailAccountId)}`,
+    `select=encrypted_refresh_token,history_id,organization_id,email_address&id=eq.${encodeURIComponent(mailAccountId)}`,
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
@@ -427,7 +457,7 @@ export async function runMailSync(mailAccountId: string, env: Env): Promise<Mail
   let synced = 0;
   for (const messageId of messageIds) {
     try {
-      const ok = await syncOneMessage(mailAccountId, messageId, accessToken, env);
+      const ok = await syncOneMessage(mailAccountId, messageId, accessToken, account.organization_id, account.email_address, env);
       if (ok) synced++;
     } catch (err) {
       console.error("[mail-sync] failed to sync message", messageId, err);
@@ -449,12 +479,54 @@ function getHeader(headers: Array<{ name: string; value: string }>, name: string
   return headers.find(h => h.name.toLowerCase() === name.toLowerCase())?.value ?? null;
 }
 
+// Парсинг "Ім'я <email@domain.com>" чи просто "email@domain.com" —
+// Gmail API From/To заголовки завжди в цьому форматі (RFC 5322).
+function parseAddressHeader(raw: string): { name: string | null; email: string } | null {
+  const match = raw.match(/^(?:"?([^"<]*)"?\s*)?<?([^\s<>]+@[^\s<>]+)>?$/);
+  if (!match) return null;
+  const name = match[1]?.trim() || null;
+  const email = match[2].trim().toLowerCase();
+  return { name, email };
+}
+
+/**
+ * Team Workspace/Knowledge Graph синергія (MODULE_ROADMAP.md, Шар 1
+ * Mail): учасник листування = потенційний CRM-контакт. mail_contacts
+ * навмисно НЕ окрема таблиця — переюзовуємо вже наявну crm_contacts
+ * (source='mail_thread'). "Тихий" upsert — не найдено крос-модульного
+ * помилко-толерантного helper'а на кшталт logSecurityEvent()/
+ * logActivity(), тут той самий принцип: помилка не повинна ламати sync.
+ */
+async function upsertCrmContactFromMail(organizationId: string, ownEmailAddress: string, addressHeader: string, env: Env): Promise<void> {
+  try {
+    const parsed = parseAddressHeader(addressHeader);
+    if (!parsed || parsed.email === ownEmailAddress.toLowerCase()) return; // не створюємо контакт із самого власника скриньки
+
+    const existing = await selectRows<{ id: string }>(
+      "crm_contacts",
+      `select=id&organization_id=eq.${encodeURIComponent(organizationId)}&email=eq.${encodeURIComponent(parsed.email)}`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    if (existing.data?.[0]) return; // вже є контакт — не дублюємо і не оновлюємо (ручні правки імені мають пріоритет)
+
+    await insertRow(
+      "crm_contacts",
+      { organization_id: organizationId, name: parsed.name, email: parsed.email, source: "mail_thread" },
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  } catch (err) {
+    console.error("[mail] failed to upsert crm_contact from address", addressHeader, err);
+  }
+}
+
 function decodeBase64Url(data: string): string {
   const base64 = data.replace(/-/g, "+").replace(/_/g, "/");
   return decodeURIComponent(escape(atob(base64)));
 }
 
-async function syncOneMessage(mailAccountId: string, gmailMessageId: string, accessToken: string, env: Env): Promise<boolean> {
+async function syncOneMessage(mailAccountId: string, gmailMessageId: string, accessToken: string, organizationId: string, ownEmailAddress: string, env: Env): Promise<boolean> {
   const msgRes = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${gmailMessageId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -509,6 +581,16 @@ async function syncOneMessage(mailAccountId: string, gmailMessageId: string, acc
   // insertRes.ok === false при unique-конфлікті (лист вже
   // синхронізований раніше) — не помилка, очікувана поведінка
   // дедуплікації, тому не логуємо як error.
+  if (insertRes.ok) {
+    // Учасник листування = потенційний CRM-контакт (тільки для
+    // РЕАЛЬНО нових листів — не для дублів при повторному sync,
+    // інакше existing-check в upsertCrmContactFromMail даремно
+    // повторювався б щоразу на кожен history.list).
+    await upsertCrmContactFromMail(organizationId, ownEmailAddress, from, env);
+    for (const toAddress of to) {
+      await upsertCrmContactFromMail(organizationId, ownEmailAddress, toAddress, env);
+    }
+  }
   return insertRes.ok;
 }
 

@@ -29,6 +29,14 @@ interface MailMessage {
   sent_at: string;
 }
 
+interface MailContact {
+  id: string;
+  name: string | null;
+  email: string | null;
+  source: string;
+  created_at: string;
+}
+
 async function getFreshToken(): Promise<string> {
   try {
     const { createClient } = await import("@/app/lib/supabase/client");
@@ -47,6 +55,8 @@ async function getFreshToken(): Promise<string> {
 // звичайні поштові клієнти, MVP без пошуку/папок/лейблів (наступні
 // ітерації Шару 1, не цей прохід).
 export function MailApp({ organizationId }: { organizationId: string }) {
+  const [view, setView] = useState<"inbox" | "contacts">("inbox");
+  const [contacts, setContacts] = useState<MailContact[] | null>(null);
   const [accounts, setAccounts] = useState<MailAccount[] | null>(null);
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null);
   const [threads, setThreads] = useState<MailThread[] | null>(null);
@@ -108,9 +118,24 @@ export function MailApp({ organizationId }: { organizationId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeThreadId]);
 
+  const loadContacts = useCallback(async () => {
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/mail/contacts?organization_id=${organizationId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setContacts(data.contacts ?? []);
+    } catch {
+      setContacts([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [organizationId]);
+
   useEffect(() => { loadAccounts(); }, [loadAccounts]);
   useEffect(() => { loadThreads(); }, [loadThreads]);
   useEffect(() => { loadMessages(); }, [loadMessages]);
+  useEffect(() => { if (view === "contacts" && contacts === null) loadContacts(); }, [view, contacts, loadContacts]);
 
   async function connectGmail() {
     setConnecting(true);
@@ -212,6 +237,39 @@ export function MailApp({ organizationId }: { organizationId: string }) {
           <Plus size={14} /> Новий лист
         </button>
 
+        <div className="flex items-center gap-1 px-4 mt-3">
+          <button
+            onClick={() => setView("inbox")}
+            className="text-xs px-2.5 py-1 rounded-lg"
+            style={view === "inbox" ? { background: "rgba(214,255,63,0.1)", color: "var(--lime)" } : { color: "var(--text-tertiary)" }}
+          >
+            Вхідні
+          </button>
+          <button
+            onClick={() => setView("contacts")}
+            className="text-xs px-2.5 py-1 rounded-lg"
+            style={view === "contacts" ? { background: "rgba(214,255,63,0.1)", color: "var(--lime)" } : { color: "var(--text-tertiary)" }}
+          >
+            Контакти
+          </button>
+        </div>
+
+        {view === "contacts" ? (
+          <div className="flex-1 overflow-y-auto mt-3">
+            {contacts === null ? (
+              <div className="p-6 text-center"><Loader2 size={16} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} /></div>
+            ) : contacts.length === 0 ? (
+              <p className="text-xs text-center p-6" style={{ color: "var(--text-tertiary)" }}>Ще немає контактів — з'являться автоматично з листування.</p>
+            ) : (
+              contacts.map(contact => (
+                <div key={contact.id} className="px-4 py-3 border-b" style={{ borderColor: "rgba(255,255,255,0.04)" }}>
+                  <p className="text-sm">{contact.name || contact.email}</p>
+                  {contact.name && <p className="text-xs" style={{ color: "var(--text-tertiary)" }}>{contact.email}</p>}
+                </div>
+              ))
+            )}
+          </div>
+        ) : (
         <div className="flex-1 overflow-y-auto mt-3">
           {threads === null ? (
             <div className="p-6 text-center"><Loader2 size={16} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} /></div>
@@ -236,6 +294,7 @@ export function MailApp({ organizationId }: { organizationId: string }) {
             ))
           )}
         </div>
+        )}
       </div>
 
       {/* Лист / компонування */}

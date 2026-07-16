@@ -102,6 +102,7 @@ import {
   handleMailMessagesList,
   handleMailSyncRequest,
   handleMailSend,
+  handleMailContactsList,
   runMailSyncAll,
 } from "./lib/mailHandler";
 import { handleLSWebhook } from "./lib/lemonSqueezyWebhook";
@@ -732,6 +733,9 @@ const worker = {
     }
     if (url.pathname === "/api/mail/accounts" && request.method === "GET") {
       return handleMailAccountsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/mail/contacts" && request.method === "GET") {
+      return handleMailContactsList(request, env, corsHeaders(origin));
     }
     const mailSyncMatch = url.pathname.match(/^\/api\/mail\/accounts\/([^/]+)\/sync$/);
     if (mailSyncMatch && request.method === "POST") {
