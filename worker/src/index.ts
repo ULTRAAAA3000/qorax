@@ -190,7 +190,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
-import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory } from "./lib/browserHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -896,6 +896,22 @@ const worker = {
     }
     if (url.pathname === "/api/browser/history" && request.method === "GET") {
       return handleBrowserHistory(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/inspect" && request.method === "GET") {
+      return handleBrowserInspect(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/collections" && request.method === "GET") {
+      return handleCollectionsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/collections" && request.method === "POST") {
+      return handleCollectionCreate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/collections/save" && request.method === "POST") {
+      return handleCollectionSaveItem(request, env, corsHeaders(origin));
+    }
+    const collectionDeleteMatch = url.pathname.match(/^\/api\/browser\/collections\/([^/]+)$/);
+    if (collectionDeleteMatch && request.method === "DELETE") {
+      return handleCollectionDelete(request, env, corsHeaders(origin), collectionDeleteMatch[1]);
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
