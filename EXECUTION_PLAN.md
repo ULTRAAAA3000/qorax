@@ -3660,3 +3660,86 @@ wrangler.toml` успішно (738.50 KiB, gzip 128.01 KiB).
   форму, не двосторонній потік бібліотека↔редактор
 - Редагування `content` існуючого компонента — `PATCH` приймає лише
   `name` (перейменування), зміна вмісту — видалити і створити новий
+
+---
+
+## Qorax Creator: Smart Components — п'ятий крок
+
+MODULE_ROADMAP.md, "Qorax Creator", порядок реалізації: Website Mode
+→ Diagram Mode → Live Objects → Components/Brand Kit (усі готові) →
+**Smart Components** (цей прохід) → AI Creator → ... План описує це
+як "генуїнно нову ідею, не перевикористання" — на відміну від решти
+кроків, які переформульовували вже наявний функціонал.
+
+**Ключова відмінність від Website Mode/Live Objects, яку важливо не
+сплутати:** `canvas_nodes.ref_table/ref_id` (з 0071, Website Mode)
+кажуть "цей вузол ІСНУЄ і пов'язаний з реальним записом" — статична
+прив'язка, значення все одно живуть у `data`. Нові
+`bound_ref_table`/`bound_ref_id`/`field_bindings` (0079) кажуть "ця
+картка ПОКАЗУЄ живі дані цього запису" — рендер читає джерело
+істини щоразу при показі дошки, не кешує. Обидва механізми
+співіснують на одній таблиці `canvas_nodes`, служать різним цілям.
+
+**Схема (`0079_creator_smart_components.sql`):** дослівно з плану —
+`bound_ref_table text`, `bound_ref_id uuid`, `field_bindings jsonb`
+додано до вже наявної `canvas_nodes` (не нова таблиця).
+
+**MVP звужено до `products` (Commerce), одна таблиця, не довільна.**
+План не вимагає одразу підтримувати будь-яку таблицю — важливо
+довести сам механізм "живого зв'язку" на одному реальному прикладі.
+Whitelist (`SMART_COMPONENT_ALLOWED_TABLES` у `creatorHandler.ts`)
+— той самий принцип безпеки, що вже застосований для
+`LIVE_EMBED_ALLOWED` (Live Objects): `bound_ref_table` — вільний
+`text`, без whitelist дозволив би читати ДОВІЛЬНУ таблицю бази за
+`bound_ref_id` (напр. підміна на `bound_ref_table='profiles'` —
+потенційний витік чужих даних). Перевірка належності товару до
+організації — через непрямий зв'язок `products.project_id →
+projects.organization_id` (той самий шлях, що вже перевіряється для
+`embedded_editor`-вузлів у Website Mode, `products` не має
+`organization_id` напряму).
+
+**Worker (`creatorHandler.ts`, доповнено):**
+- `resolveSmartComponentData()` — читає `products` за
+  `bound_ref_id`, застосовує `field_bindings` (`{"slot":
+  "source_column"}`, з плану), ігнорує будь-які колонки поза
+  `tableConfig.columns` — whitelist на рівні полів, не тільки
+  таблиці
+- `handleBoardDetail` викликає резолвер для КОЖНОГО
+  `smart_component`-вузла паралельно (`Promise.all`, не послідовно)
+  ПРИ КОЖНОМУ `GET` дошки — не при створенні вузла й не окремим
+  API. Це і є механізм "живого оновлення": відкрили дошку — побачили
+  актуальну ціну, без жодної синхронізації чи вебхука
+- `handleNodeCreate` (`smart_component` гілка) — `field_bindings`
+  фіксований на створенні (`{title: "title", price_label:
+  "price_cents", image: "image_urls"}`), не приймається як довільний
+  об'єкт від клієнта — MVP доводить механізм, не конструктор
+  мапінгів для користувача
+
+**UI (`BoardCanvasUI.tsx`, доповнено):** `SmartComponentNode` —
+третій custom node (поруч з `EmbeddedEditorNode`/`LiveEmbedNode`),
+показує `resolved_data` з відповіді `GET` дошки (не з `data` самого
+вузла) — фотографія товару, назва, ціна. Індикатор "Live · Commerce"
+з іконкою `RefreshCw` — візуальна підказка, що це не статична
+картка. Меню "Додати на дошку" отримало третю секцію: двоетапний
+вибір (спочатку Sites-проєкт, потім товар цього проєкту) — той самий
+реальний зв'язок даних Commerce (товари прив'язані до конкретного
+`project_id`, не до організації напряму), не штучне спрощення UI
+приховуванням цієї структури.
+
+**Перевірено:** `tsc --noEmit` чисто (worker+app), `npx eslint
+app/creator/` чисто, `npm run build` успішно (усі роути на місці,
+включно з `/creator/[boardId]`), `wrangler deploy --dry-run
+--config wrangler.toml` успішно (812.67 KiB, gzip 138.11 KiB).
+
+**Свідомо НЕ зроблено цим проходом:**
+- Підтримка інших таблиць окрім `products` (CRM-контакти,
+  Analytics-метрики тощо) — той самий whitelist-механізм
+  масштабується легко, але кожна нова таблиця вимагає окремої
+  org-перевірки належності (не всі таблиці мають однаковий шлях до
+  `organization_id`), не додано без конкретної потреби
+- Редагований користувачем `field_bindings` (UI-конструктор
+  мапінгів "яке поле картки → яка колонка джерела") — MVP має
+  фіксований мапінг, повний конструктор — окрема, більша UI-задача
+- `canvas_node_versions` (append-only історія змін `data`/
+  `field_bindings`, згадана в іншій частині розділу плану про
+  History) — не Smart Components конкретно, окремий майбутній крок

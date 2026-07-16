@@ -43,6 +43,82 @@ interface NodeRow {
   data: Record<string, unknown>;
   ref_table: string | null;
   ref_id: string | null;
+  bound_ref_table: string | null;
+  bound_ref_id: string | null;
+  field_bindings: Record<string, string> | null;
+}
+
+// Smart Components (MODULE_ROADMAP.md "Qorax Creator", п'ятий крок):
+// "жива" картка, що показує дані з реальної таблиці, не з
+// заморожених значень у canvas_nodes.data. MVP: тільки 'products'
+// (Commerce) — план не вимагає одразу підтримувати довільну
+// таблицю, важливо довести сам механізм. Whitelist той самий
+// принцип безпеки, що LIVE_EMBED_ALLOWED для Live Objects: без
+// нього bound_ref_table (вільний text) дозволив би читати ДОВІЛЬНУ
+// таблицю бази за bound_ref_id — потенційний витік чужих даних
+// (напр. bound_ref_table='profiles').
+const SMART_COMPONENT_ALLOWED_TABLES: Record<string, { columns: string[] }> = {
+  products: { columns: ["id", "title", "price_cents", "currency", "image_urls", "status"] },
+};
+
+// Читає живі дані для одного bound_ref_table/bound_ref_id вузла й
+// застосовує field_bindings. Викликається з handleBoardDetail для
+// КОЖНОГО smart_component вузла ПРИ КОЖНОМУ показі дошки — план
+// прямо вимагає "не кешувати значення в data жорстко", тому
+// резолвиться тут, а не при створенні вузла.
+async function resolveSmartComponentData(
+  node: NodeRow,
+  orgId: string,
+  env: Env
+): Promise<Record<string, unknown> | null> {
+  if (!node.bound_ref_table || !node.bound_ref_id) return null;
+  const tableConfig = SMART_COMPONENT_ALLOWED_TABLES[node.bound_ref_table];
+  if (!tableConfig) return null;
+
+  if (node.bound_ref_table === "products") {
+    const res = await selectRows<{ id: string; project_id: string; title: string; price_cents: number; currency: string; image_urls: string[] | null; status: string }>(
+      "products",
+      `select=id,project_id,title,price_cents,currency,image_urls,status&id=eq.${encodeURIComponent(node.bound_ref_id)}`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    const product = res.data?.[0];
+    if (!product) return null;
+
+    // Належність до організації — через products.project_id ->
+    // projects.organization_id (products не має organization_id
+    // напряму, той самий непрямий зв'язок, що вже перевіряється для
+    // embedded_editor у handleNodeCreate нижче).
+    const projectRes = await selectRows<{ organization_id: string }>(
+      "projects",
+      `select=organization_id&id=eq.${encodeURIComponent(product.project_id)}`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    if (projectRes.data?.[0]?.organization_id !== orgId) return null;
+
+    const source: Record<string, unknown> = {
+      id: product.id,
+      title: product.title,
+      price_cents: product.price_cents,
+      currency: product.currency,
+      image_urls: product.image_urls,
+      status: product.status,
+    };
+
+    // field_bindings — {"slot_name": "source_column"}, з плану:
+    // {"title": "name", "price_label": "price_cents"}. Невідомі
+    // колонки (не в tableConfig.columns) ігноруються — той самий
+    // whitelist-принцип на рівні полів, не тільки таблиці.
+    const bindings = node.field_bindings ?? {};
+    const resolved: Record<string, unknown> = {};
+    for (const [slot, column] of Object.entries(bindings)) {
+      if (tableConfig.columns.includes(column)) resolved[slot] = source[column];
+    }
+    return resolved;
+  }
+
+  return null;
 }
 
 // ── Допоміжне: дістати organization_id дошки, без відомого org
@@ -120,12 +196,24 @@ export async function handleBoardDetail(request: Request, env: Env, corsHeaders:
 
   const nodesRes = await selectRows<NodeRow>(
     "canvas_nodes",
-    `select=id,board_id,node_type,position_x,position_y,width,height,data,ref_table,ref_id&board_id=eq.${encodeURIComponent(boardId)}`,
+    `select=id,board_id,node_type,position_x,position_y,width,height,data,ref_table,ref_id,bound_ref_table,bound_ref_id,field_bindings&board_id=eq.${encodeURIComponent(boardId)}`,
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
+  const nodes = nodesRes.data ?? [];
 
-  return json({ board, nodes: nodesRes.data ?? [] }, 200, corsHeaders);
+  // Smart Components: резолвиться ТУТ, при кожному GET дошки — план
+  // прямо вимагає "не кешувати значення в data жорстко", живі дані
+  // читаються з джерела істини в момент показу, не при створенні
+  // вузла. Паралельно (Promise.all), не послідовно — кожен виклик
+  // resolveSmartComponentData незалежний, послідовне очікування на
+  // дошці з кількома smart-вузлами додало б непотрібну затримку.
+  const resolvedData = await Promise.all(
+    nodes.map(n => n.bound_ref_table ? resolveSmartComponentData(n, orgId, env) : Promise.resolve(null))
+  );
+  const nodesWithResolved = nodes.map((n, i) => ({ ...n, resolved_data: resolvedData[i] }));
+
+  return json({ board, nodes: nodesWithResolved }, 200, corsHeaders);
 }
 
 // ── POST /api/canvas-boards/:id/nodes ── новий вузол на дошці ────
@@ -202,8 +290,60 @@ export async function handleNodeCreate(request: Request, env: Env, corsHeaders: 
     return json({ ok: true, node: insertRes.data?.[0] ?? null }, 201, corsHeaders);
   }
 
+  if (body.node_type === "smart_component") {
+    // MVP: тільки products (Commerce), той самий whitelist, що
+    // resolveSmartComponentData вище використовує для читання.
+    // field_bindings фіксований для MVP (не редагується користувачем
+    // у цьому проході) — доводить сам механізм "живого зв'язку", не
+    // довільний конструктор мапінгів.
+    const productId = body.ref_id;
+    if (!productId) return json({ error: "ref_id (product_id) обов'язковий для smart_component" }, 400, corsHeaders);
+
+    const productRes = await selectRows<{ id: string; project_id: string }>(
+      "products",
+      `select=id,project_id&id=eq.${encodeURIComponent(productId)}`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    const product = productRes.data?.[0];
+    if (!product) return json({ error: "Товар не знайдено" }, 404, corsHeaders);
+
+    const productProjectRes = await selectRows<{ organization_id: string }>(
+      "projects",
+      `select=organization_id&id=eq.${encodeURIComponent(product.project_id)}`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    if (productProjectRes.data?.[0]?.organization_id !== orgId) {
+      return json({ error: "Товар належить іншій організації" }, 404, corsHeaders);
+    }
+
+    const insertRes = await insertRowReturning<NodeRow>(
+      "canvas_nodes",
+      {
+        board_id: boardId,
+        node_type: "smart_component",
+        position_x: body.position_x ?? 0,
+        position_y: body.position_y ?? 0,
+        width: 280,
+        height: 200,
+        data: {},
+        ref_table: null,
+        ref_id: null,
+        bound_ref_table: "products",
+        bound_ref_id: productId,
+        field_bindings: { title: "title", price_label: "price_cents", image: "image_urls" },
+      },
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    if (!insertRes.ok) return json({ error: insertRes.error }, 500, corsHeaders);
+
+    return json({ ok: true, node: insertRes.data?.[0] ?? null }, 201, corsHeaders);
+  }
+
   if (body.node_type !== "embedded_editor") {
-    return json({ error: "Підтримується лише node_type='embedded_editor' або 'live_embed'" }, 400, corsHeaders);
+    return json({ error: "Підтримується лише node_type='embedded_editor', 'live_embed' або 'smart_component'" }, 400, corsHeaders);
   }
   if (!body.ref_id) return json({ error: "ref_id (project_id) обов'язковий для embedded_editor" }, 400, corsHeaders);
 
