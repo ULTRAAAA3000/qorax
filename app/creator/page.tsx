@@ -3,7 +3,7 @@ import { QoraxLogo } from "@/app/components/QoraxLogo";
 import { CreatorBoardsListUI } from "./CreatorBoardsListUI";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { LayoutTemplate, Network } from "lucide-react";
+import { LayoutTemplate, Network, Blocks } from "lucide-react";
 
 export const metadata = { title: "Qorax Creator" };
 
@@ -50,16 +50,20 @@ export default async function CreatorPage() {
         </div>
 
         {/* Перемикач режимів — MODULE_ROADMAP.md "Qorax Creator": режими
-            канвасу для різних типів контенту. Website Mode (тут, дошки)
-            і Diagram Mode (/creator/graph, Knowledge Graph) — перші два
-            реалізовані режими, решта (Email/Presentation/Whiteboard/
-            Social) — пізніші кроки, не додано цим проходом. */}
+            канвасу для різних типів контенту. Website Mode (тут, дошки),
+            Diagram Mode (/creator/graph, Knowledge Graph) і Компоненти
+            (/creator/components, бібліотека блоків + Brand Kit) — перші
+            реалізовані пункти, решта (Email/Presentation/Whiteboard/
+            Social, Smart Components, AI Creator) — пізніші кроки. */}
         <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <span className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg" style={{ background: "rgba(140,246,255,0.1)", color: "var(--cyan)" }}>
             <LayoutTemplate size={14} /> Website
           </span>
           <Link href="/creator/graph" className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
             <Network size={14} /> Diagram
+          </Link>
+          <Link href="/creator/components" className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5 transition-colors">
+            <Blocks size={14} /> Компоненти
           </Link>
         </div>
 
