@@ -10,6 +10,33 @@
 
 export type Cells = Record<string, string>;
 
+// Форматування клітинок — MVP-звуження: жирність/колір/числовий
+// формат ЛИШЕ для однієї клітинки за раз (немає вибору діапазону),
+// зберігається окремою sparse-мапою `formats` поруч з `cells` у
+// тому самому office_sheets.data jsonb — без міграції схеми БД
+// (data вже jsonb, довільна структура, ALTER TABLE не потрібен).
+export type NumberFormat = "plain" | "integer" | "currency" | "percent";
+
+export interface CellFormat {
+  bold?: boolean;
+  color?: string;
+  numberFormat?: NumberFormat;
+}
+
+export type Formats = Record<string, CellFormat>;
+
+/** Застосовує numberFormat до вже обчисленого (evaluateCell) значення — тільки для показу, не змінює raw. */
+export function formatDisplayValue(value: string, format?: NumberFormat): string {
+  if (!format || format === "plain" || value === "") return value;
+  const num = parseFloat(value);
+  if (isNaN(num)) return value; // текст — форматування чисел на нього не діє
+
+  if (format === "integer") return String(Math.round(num));
+  if (format === "percent") return `${(num * 100).toFixed(1)}%`;
+  if (format === "currency") return `${num.toLocaleString("uk-UA", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ₴`;
+  return value;
+}
+
 const COL_RE = /^[A-Z]+/;
 const ROW_RE = /\d+$/;
 

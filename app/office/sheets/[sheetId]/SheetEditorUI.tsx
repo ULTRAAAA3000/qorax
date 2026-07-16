@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Loader2, Sparkles, Plus, Download, Upload, X } from "lucide-react";
+import { Loader2, Sparkles, Plus, Download, Upload, X, Bold, Palette } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
-import { type Cells, cellKey, indexToCol, evaluateCell, cellsToCsv, parseCsv, csvToCells } from "../sheetFormulas";
+import { type Cells, type Formats, type CellFormat, type NumberFormat, cellKey, indexToCol, evaluateCell, formatDisplayValue, cellsToCsv, parseCsv, csvToCells } from "../sheetFormulas";
 import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
 
@@ -11,6 +11,7 @@ interface SheetData {
   columns: number;
   rows: number;
   cells: Cells;
+  formats?: Formats;
 }
 
 interface Props {
@@ -46,7 +47,15 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
   const [columns, setColumns] = useState(initialData?.columns ?? 12);
   const [rows, setRows] = useState(initialData?.rows ?? 30);
   const [cells, setCells] = useState<Cells>(initialData?.cells ?? {});
+  const [formats, setFormats] = useState<Formats>(initialData?.formats ?? {});
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
+  // toolbarKey — окремо від focusedKey: focusedKey скидається на
+  // null при blur інпута (потрібно для isFocused у рендері клітинки —
+  // показувати raw vs обчислене значення), а toolbarKey лишається
+  // "останньою обраною клітинкою" навіть після blur, щоб клік по
+  // тулбару форматування (який сам провокує blur інпута) не встиг
+  // розмонтувати тулбар до того, як onClick встигне спрацювати.
+  const [toolbarKey, setToolbarKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
@@ -56,6 +65,11 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // formatsRef — щоб scheduleSave() у вже наявних 8 місцях виклику
+  // (зміна клітинок/сітки) не загубила поточні formats, не
+  // переписуючи кожен виклик четвертим аргументом.
+  const formatsRef = useRef(formats);
+  useEffect(() => { formatsRef.current = formats; }, [formats]);
 
   const persist = useCallback(async (patch: { title?: string; data?: SheetData }) => {
     setSaving(true);
@@ -71,10 +85,10 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
     }
   }, [sheetId]);
 
-  const scheduleSave = useCallback((nextCells: Cells, nextColumns: number, nextRows: number) => {
+  const scheduleSave = useCallback((nextCells: Cells, nextColumns: number, nextRows: number, nextFormats?: Formats) => {
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
     saveTimeout.current = setTimeout(() => {
-      persist({ data: { cells: nextCells, columns: nextColumns, rows: nextRows } });
+      persist({ data: { cells: nextCells, columns: nextColumns, rows: nextRows, formats: nextFormats ?? formatsRef.current } });
     }, 600);
   }, [persist]);
 
@@ -86,6 +100,19 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
       if (value === "") delete next[key];
       else next[key] = value;
       scheduleSave(next, columns, rows);
+      return next;
+    });
+  }
+
+  function updateCellFormat(key: string, patch: Partial<CellFormat>) {
+    setFormats(prev => {
+      const merged: CellFormat = { ...prev[key], ...patch };
+      // порожній формат — прибираємо ключ, а не тримаємо {} даремно
+      const isEmpty = !merged.bold && !merged.color && (!merged.numberFormat || merged.numberFormat === "plain");
+      const next = { ...prev };
+      if (isEmpty) delete next[key];
+      else next[key] = merged;
+      scheduleSave(cells, columns, rows, next);
       return next;
     });
   }
@@ -253,6 +280,50 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
       )}
       {aiError && <p className="px-6 py-1 text-xs" style={{ color: "#ff6b6b" }}>{aiError}</p>}
 
+      {toolbarKey && (
+        <div className="px-4 sm:px-6 py-2 flex items-center gap-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+          <span className="text-[10px] text-[var(--text-tertiary)] mr-1 font-mono">{toolbarKey}</span>
+          <button
+            onMouseDown={e => e.preventDefault()}
+            onClick={() => updateCellFormat(toolbarKey, { bold: !formats[toolbarKey]?.bold })}
+            className="p-1.5 rounded-lg hover:bg-white/5"
+            style={{ color: formats[toolbarKey]?.bold ? "var(--lime)" : "var(--text-tertiary)" }}
+            title="Жирний"
+          >
+            <Bold size={12} />
+          </button>
+          <div className="flex items-center gap-1 px-1">
+            <Palette size={12} className="text-[var(--text-tertiary)]" />
+            {["", "#C6FF54", "#8CF6FF", "#FF9F6B", "#B98CF7", "#ffffff"].map(color => (
+              <button
+                key={color || "none"}
+                onMouseDown={e => e.preventDefault()}
+                onClick={() => updateCellFormat(toolbarKey, { color: color || undefined })}
+                className="h-4 w-4 rounded-full shrink-0"
+                style={{
+                  background: color || "transparent",
+                  border: color ? "1px solid rgba(255,255,255,0.2)" : "1px dashed rgba(255,255,255,0.3)",
+                  outline: (formats[toolbarKey]?.color ?? "") === color ? "2px solid var(--lime)" : "none",
+                  outlineOffset: 1,
+                }}
+                title={color || "Без кольору"}
+              />
+            ))}
+          </div>
+          <select
+            value={formats[toolbarKey]?.numberFormat ?? "plain"}
+            onChange={e => updateCellFormat(toolbarKey, { numberFormat: e.target.value as NumberFormat })}
+            className="text-xs rounded-lg px-2 py-1 outline-none"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-secondary)" }}
+          >
+            <option value="plain">Звичайний</option>
+            <option value="integer">Ціле число</option>
+            <option value="percent">Відсоток</option>
+            <option value="currency">₴ Гривня</option>
+          </select>
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto">
         <table className="border-collapse" style={{ tableLayout: "fixed" }}>
           <thead>
@@ -284,19 +355,20 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
                 {Array.from({ length: columns }).map((_, c) => {
                   const key = cellKey(c, r);
                   const isFocused = focusedKey === key;
-                  const displayValue = isFocused ? (cells[key] ?? "") : evaluateCell(cells, key);
+                  const format = formats[key];
+                  const displayValue = isFocused ? (cells[key] ?? "") : formatDisplayValue(evaluateCell(cells, key), format?.numberFormat);
                   return (
                     <td key={c} style={{ width: CELL_W, height: CELL_H, border: "1px solid rgba(255,255,255,0.05)", padding: 0 }}>
                       <input
                         ref={el => { if (el) inputRefs.current.set(key, el); else inputRefs.current.delete(key); }}
                         value={displayValue}
                         onChange={e => setCellValue(key, e.target.value)}
-                        onFocus={() => setFocusedKey(key)}
+                        onFocus={() => { setFocusedKey(key); setToolbarKey(key); }}
                         onBlur={() => setFocusedKey(null)}
                         onKeyDown={e => onCellKeyDown(e, c, r)}
                         onPaste={e => onCellPaste(e, c, r)}
                         className="w-full h-full bg-transparent outline-none text-xs px-2"
-                        style={{ outlineOffset: -1 }}
+                        style={{ outlineOffset: -1, fontWeight: format?.bold ? 700 : 400, color: format?.color || undefined }}
                       />
                     </td>
                   );
