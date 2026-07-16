@@ -3783,3 +3783,44 @@ Inspector, винесене з `handleBrowserInspect` цим же проходо
 Research Mode (агентний режим, що сам відкриває N сайтів), Visual
 Search, Component Extractor, Website Timeline, Workspace Tabs, Deep
 Search, AI Memory, Marketplace.
+
+## Qorax Browser — Reading Mode (сьома ітерація)
+
+**Обсяг:** roadmap — "не просто чистий текст, а AI-стислий зміст,
+витягнуті факти, автоматичні нотатки". Свідома відмінність від уже
+наявного Summarize (One Click Actions): Reading Mode — ОКРЕМИЙ
+РЕЖИМ ПЕРЕГЛЯДУ, що повністю замінює вигляд viewport на очищений
+читабельний layout, а не модалка з конспектом поверх звичайного
+перегляду.
+
+**Технічний підхід очищення (`worker/src/lib/browserHandler.ts`,
+`handleBrowserReadingMode`):** той самий принцип, що решта Browser —
+немає DOM-парсера в Cloudflare Workers. `NOISE_TAG_PATTERN` видаляє
+`nav`/`header`/`footer`/`aside`/`script`/`style`/`svg`/`noscript`/
+`form`/`iframe` ЦІЛИМИ БЛОКАМИ (не просто strip тегів — інакше текст
+меню/футера потрапляв би в "читабельний" контент), потім
+`extractReadableContent()` витягує `h1-h3`/`p`/`li` як послідовність
+структурованих блоків у порядку появи в документі (обмежено 80
+блоками — досить для однієї сторінки).
+
+**Чистий текст — безкоштовно, AI-збагачення — окрема дія:**
+витяг структури сторінки завжди безкоштовний (без Gemini-виклику,
+жодних кредитів). "Ключові факти" + коротка нотатка — окремий
+`with_ai: true` параметр, що явно викликає AI лише коли користувач
+натиснув кнопку — не витрачати кредити автоматично при кожному
+відкритті режиму.
+
+**UI:** новий `ReadingModeView.tsx` — повноекранний оверлей
+(`absolute inset-0`) поверх viewport, замінює iframe. Кнопка
+"Читання" у toolbar (поруч з "Дії"/AI). Заголовок + список блоків
+(heading/paragraph/list_item), кнопка "Витягти ключові факти"
+(AI, за запитом).
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (826.77 KiB, gzip 140.31 KiB).
+
+**Свідомо НЕ зроблено цим проходом:** Research Mode (агентний режим,
+що сам відкриває N сайтів), Visual Search, Component Extractor,
+Website Timeline, Workspace Tabs, Deep Search, AI Memory,
+Marketplace.

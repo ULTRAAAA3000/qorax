@@ -873,3 +873,142 @@ ${describeInspect("Сайт конкурента", competitorUrl, competitorInsp
   );
 }
 
+
+// ============================================================
+// Reading Mode (MODULE_ROADMAP.md, "Qorax Browser" — сьома
+// ітерація після MVP AI Sidebar → Site Inspector → Collections →
+// Smart Capture → One Click Actions → AI Compare).
+// ============================================================
+// Roadmap: "не просто чистий текст, а AI-стислий зміст, витягнуті
+// факти, автоматичні нотатки" — відрізняється від уже наявного
+// Summarize (One Click Actions) тим, що це ОКРЕМИЙ РЕЖИМ ПЕРЕГЛЯДУ
+// (замінює вигляд сторінки на очищений читабельний layout), а не
+// швидка модалка з конспектом поверх звичайного перегляду.
+//
+// Технічний підхід очищення: той самий принцип, що вже в проєкті —
+// немає DOM-парсера в Cloudflare Workers, тому видалення
+// nav/header/footer/aside/script/style/svg ЦІЛИМИ БЛОКАМИ через
+// regex (не просто strip тегів — інакше текст меню/футера
+// потрапляв би в "читабельний" контент), потім витяг h1-h3/p/li як
+// структурованих блоків.
+
+interface ReadingBlock {
+  type: "heading" | "paragraph" | "list_item";
+  text: string;
+}
+
+interface ReadingModeResult {
+  title: string | null;
+  blocks: ReadingBlock[];
+  keyFacts: string[] | null;
+  notes: string | null;
+}
+
+const NOISE_TAG_PATTERN = /<(script|style|nav|header|footer|aside|svg|noscript|form|iframe)[^>]*>[\s\S]*?<\/\1>/gi;
+
+function stripHtmlTags(fragment: string): string {
+  return fragment.replace(/<[^>]+>/g, " ").replace(/&nbsp;/g, " ").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/\s+/g, " ").trim();
+}
+
+/** Витягує читабельний контент зі сторінки: видаляє шумові блоки
+ * цілком (nav/header/footer/тощо), потім послідовно проходить
+ * заголовки/параграфи/пункти списків у порядку появи в документі. */
+function extractReadableContent(html: string): ReadingBlock[] {
+  const cleaned = html.replace(NOISE_TAG_PATTERN, "");
+
+  const blocks: ReadingBlock[] = [];
+  const blockPattern = /<(h[1-3]|p|li)[^>]*>([\s\S]*?)<\/\1>/gi;
+  let match: RegExpExecArray | null;
+  while ((match = blockPattern.exec(cleaned)) !== null) {
+    const tag = match[1].toLowerCase();
+    const text = stripHtmlTags(match[2]);
+    if (!text || text.length < 3) continue; // порожні/декоративні елементи — не текстовий контент
+    blocks.push({ type: tag.startsWith("h") ? "heading" : tag === "li" ? "list_item" : "paragraph", text });
+  }
+  return blocks.slice(0, 80); // достатньо для читабельного викладу однієї сторінки, не безлімітний документ
+}
+
+interface ReadingModeBody {
+  organization_id: string;
+  url: string;
+  with_ai?: boolean;
+}
+
+// POST /api/browser/reading-mode
+export async function handleBrowserReadingMode(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: ReadingModeBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const targetUrl = isValidHttpUrl(body.url ?? "");
+  if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let html: string;
+  try {
+    const upstream = await fetch(targetUrl.toString(), { signal: controller.signal, headers: { "User-Agent": BROWSER_USER_AGENT } });
+    html = await upstream.text();
+  } catch {
+    clearTimeout(timeout);
+    return json({ error: "Не вдалося завантажити сайт" }, 502, corsHeaders);
+  }
+  clearTimeout(timeout);
+
+  const titleMatch = html.match(/<title[^>]*>([^<]*)<\/title>/i);
+  const blocks = extractReadableContent(html);
+
+  let keyFacts: string[] | null = null;
+  let notes: string | null = null;
+  let creditsRemaining: number | undefined;
+  let unlimited = false;
+
+  // AI-збагачення (ключові факти + нотатки) — опціональне, окремо
+  // від чистого витягу тексту (той працює завжди безкоштовно, без
+  // AI-виклику, схоже на "просто чистий текст" з roadmap). with_ai
+  // додає саме той шар, що roadmap виділяє як відмінність Reading
+  // Mode від звичайного reader-режиму браузерів.
+  if (body.with_ai) {
+    const creditsCheck = await checkAiCredits(body.organization_id, env);
+    if (!creditsCheck.ok) {
+      return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+    }
+    const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+    if (apiKey && blocks.length > 0) {
+      const plainText = blocks.map(b => b.text).join("\n").slice(0, 12_000);
+      const prompt = `Ось текстовий зміст сторінки ${targetUrl.toString()}:
+${plainText}
+
+Дай дві речі українською:
+1. "ФАКТИ:" — 3-5 ключових конкретних фактів зі сторінки (цифри, назви, дати, якщо є)
+2. "НОТАТКА:" — одне коротке речення-нотатка, чому ця сторінка може бути корисна користувачу
+Формат рівно такий: рядок "ФАКТИ:" далі буллети, потім рядок "НОТАТКА:" далі текст.`;
+      const result = await callGemini(prompt, apiKey);
+      if (result.ok) {
+        const factsMatch = result.text.match(/ФАКТИ:([\s\S]*?)НОТАТКА:/i);
+        const noteMatch = result.text.match(/НОТАТКА:([\s\S]*)/i);
+        keyFacts = factsMatch
+          ? factsMatch[1].split("\n").map(l => l.replace(/^[-•*]\s*/, "").trim()).filter(Boolean)
+          : null;
+        notes = noteMatch ? noteMatch[1].trim() : null;
+        creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+        unlimited = creditsCheck.unlimited;
+      }
+    }
+  }
+
+  const result: ReadingModeResult = {
+    title: titleMatch?.[1]?.trim() || null,
+    blocks,
+    keyFacts,
+    notes,
+  };
+
+  return json({ ...result, credits_remaining: creditsRemaining, unlimited }, 200, corsHeaders);
+}

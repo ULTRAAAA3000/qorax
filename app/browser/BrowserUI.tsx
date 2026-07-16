@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Globe, Sparkles, Loader2, ArrowRight, Clock, X, ScanSearch, Zap, Palette, Type, Code2, Layers, FileText } from "lucide-react";
+import { Globe, Sparkles, Loader2, ArrowRight, Clock, X, ScanSearch, Zap, Palette, Type, Code2, Layers, FileText, BookOpen } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { QuickActionsMenu } from "./QuickActionsMenu";
+import { ReadingModeView } from "./ReadingModeView";
 
 interface HistoryItem {
   id: string;
@@ -71,6 +72,7 @@ export function BrowserUI({ organizationId }: Props) {
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [captureSuccess, setCaptureSuccess] = useState(false);
+  const [readingMode, setReadingMode] = useState(false);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const loadHistory = useCallback(async () => {
@@ -122,6 +124,7 @@ export function BrowserUI({ organizationId }: Props) {
     setCapturedText(null);
     setCaptureError(null);
     setCaptureSuccess(false);
+    setReadingMode(false);
     setAddressInput(normalized);
     setCurrentUrl(normalized);
     setIframeLoading(true);
@@ -236,6 +239,16 @@ export function BrowserUI({ organizationId }: Props) {
               onSaveToCollection={() => { setSidebarOpen(true); setSidebarTab("collections"); }}
             />
           )}
+          {currentUrl && (
+            <button
+              type="button"
+              onClick={() => setReadingMode(v => !v)}
+              className="text-xs px-3 py-1.5 rounded-lg flex items-center gap-1.5"
+              style={{ background: readingMode ? "rgba(198,255,84,0.1)" : "rgba(255,255,255,0.04)", color: readingMode ? "var(--lime)" : "var(--text-tertiary)" }}
+            >
+              <BookOpen size={12} /> Читання
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setSidebarOpen(v => !v)}
@@ -289,6 +302,15 @@ export function BrowserUI({ organizationId }: Props) {
               onLoad={() => setIframeLoading(false)}
               onError={() => { setIframeLoading(false); setLoadError("Не вдалося відобразити сайт"); }}
               sandbox="allow-same-origin allow-scripts allow-forms allow-popups"
+            />
+          )}
+
+          {readingMode && currentUrl && (
+            <ReadingModeView
+              organizationId={organizationId}
+              url={currentUrl}
+              getFreshToken={getFreshToken}
+              onClose={() => setReadingMode(false)}
             />
           )}
 

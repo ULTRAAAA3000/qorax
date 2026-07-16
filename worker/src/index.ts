@@ -210,7 +210,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
-import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare } from "./lib/browserHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare, handleBrowserReadingMode } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -1009,6 +1009,9 @@ const worker = {
     }
     if (url.pathname === "/api/browser/compare" && request.method === "POST") {
       return handleBrowserCompare(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/reading-mode" && request.method === "POST") {
+      return handleBrowserReadingMode(request, env, corsHeaders(origin));
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
