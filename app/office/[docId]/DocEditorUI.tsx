@@ -1,14 +1,12 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Plus, Loader2, Sparkles, Trash2, Heading1, Heading2, Heading3, List, CheckSquare, Type, Check, X } from "lucide-react";
+import { Loader2, Sparkles, Heading2, List, CheckSquare, Type, Download, LayoutTemplate, Check } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
-
-type Block =
-  | { id: string; type: "paragraph"; text: string }
-  | { id: string; type: "heading"; level: 1 | 2 | 3; text: string }
-  | { id: string; type: "bullet_list"; items: string[] }
-  | { id: string; type: "checklist"; items: Array<{ text: string; checked: boolean }> };
+import { type Block, newBlockId, BlockAddButton, BlockRow } from "../BlockEditor";
+import { exportDocToPdf } from "../exportPdf";
+import { usePresence } from "../usePresence";
+import { PresenceAvatars } from "../PresenceAvatars";
 
 interface Props {
   docId: string;
@@ -30,10 +28,6 @@ async function getFreshToken(): Promise<string> {
   }
 }
 
-function newBlockId(): string {
-  return `b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
 // MVP-редактор Qorax Office Docs (MODULE_ROADMAP.md, "Qorax Office").
 // Свідомо вузький: 4 типи блоків (paragraph/heading/bullet_list/
 // checklist), без таблиць/зображень/код-блоків/Smart Blocks з плану
@@ -41,9 +35,13 @@ function newBlockId(): string {
 // не окрема кнопка "Зберегти" — той самий принцип UX, що project_pages
 // редактор Sites-конструктора.
 export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
+  const presentUsers = usePresence("office_documents", docId);
   const [title, setTitle] = useState(initialTitle);
   const [blocks, setBlocks] = useState<Block[]>(initialContent?.blocks ?? []);
   const [saving, setSaving] = useState(false);
+  const [exportingPdf, setExportingPdf] = useState(false);
+  const [savingTemplate, setSavingTemplate] = useState(false);
+  const [templateSaved, setTemplateSaved] = useState(false);
   const [showAiWriter, setShowAiWriter] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -109,6 +107,33 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
     persist({ title });
   }
 
+  async function handleExportPdf() {
+    setExportingPdf(true);
+    try {
+      await exportDocToPdf(title || "Без назви", blocks);
+    } finally {
+      setExportingPdf(false);
+    }
+  }
+
+  async function handleSaveAsTemplate() {
+    setSavingTemplate(true);
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/office-documents/${docId}/save-as-template`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ title }),
+      });
+      if (res.ok) {
+        setTemplateSaved(true);
+        setTimeout(() => setTemplateSaved(false), 2500);
+      }
+    } finally {
+      setSavingTemplate(false);
+    }
+  }
+
   async function runAiWriter() {
     if (!aiInstruction.trim()) return;
     setAiLoading(true);
@@ -150,7 +175,23 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
           className="font-display text-2xl font-semibold bg-transparent outline-none flex-1 min-w-0"
         />
         <div className="flex items-center gap-3 shrink-0 ml-3">
+          <PresenceAvatars users={presentUsers} />
           {saving && <Loader2 size={14} className="animate-spin text-[var(--text-tertiary)]" />}
+          <button
+            onClick={handleExportPdf}
+            disabled={exportingPdf}
+            className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
+          >
+            {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
+          </button>
+          <button
+            onClick={handleSaveAsTemplate}
+            disabled={savingTemplate}
+            className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
+          >
+            {savingTemplate ? <Loader2 size={12} className="animate-spin" /> : templateSaved ? <Check size={12} style={{ color: "var(--lime)" }} /> : <LayoutTemplate size={12} />}
+            {templateSaved ? "Збережено" : "Як шаблон"}
+          </button>
           <button
             onClick={() => setShowAiWriter(v => !v)}
             className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5"
@@ -207,168 +248,6 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
         <BlockAddButton icon={List} label="Список" onClick={() => addBlock("bullet_list")} />
         <BlockAddButton icon={CheckSquare} label="Чек-лист" onClick={() => addBlock("checklist")} />
       </div>
-    </div>
-  );
-}
-
-function BlockAddButton({ icon: Icon, label, onClick }: { icon: typeof Type; label: string; onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 transition-colors text-[var(--text-tertiary)]"
-    >
-      <Plus size={11} /><Icon size={12} /> {label}
-    </button>
-  );
-}
-
-function BlockRow({ block, onChange, onDelete }: { block: Block; onChange: (updater: (b: Block) => Block) => void; onDelete: () => void }) {
-  return (
-    <div className="group relative flex items-start gap-2">
-      <div className="flex-1 min-w-0">
-        <BlockContent block={block} onChange={onChange} />
-      </div>
-      <button
-        onClick={onDelete}
-        aria-label="Видалити блок"
-        className="opacity-0 group-hover:opacity-100 transition-opacity p-1.5 rounded-lg hover:bg-white/5 shrink-0 mt-1"
-        style={{ color: "var(--text-tertiary)" }}
-      >
-        <Trash2 size={13} />
-      </button>
-    </div>
-  );
-}
-
-function autoResize(el: HTMLTextAreaElement | null) {
-  if (!el) return;
-  el.style.height = "auto";
-  el.style.height = `${el.scrollHeight}px`;
-}
-
-function BlockContent({ block, onChange }: { block: Block; onChange: (updater: (b: Block) => Block) => void }) {
-  if (block.type === "paragraph") {
-    return (
-      <textarea
-        value={block.text}
-        onChange={e => { autoResize(e.target); onChange(b => (b.type === "paragraph" ? { ...b, text: e.target.value } : b)); }}
-        ref={autoResize}
-        placeholder="Текст..."
-        rows={1}
-        className="w-full bg-transparent outline-none resize-none text-sm leading-relaxed py-1"
-      />
-    );
-  }
-
-  if (block.type === "heading") {
-    const sizes: Record<1 | 2 | 3, string> = { 1: "text-2xl", 2: "text-xl", 3: "text-lg" };
-    return (
-      <div className="flex items-center gap-2">
-        <div className="flex items-center gap-0.5 shrink-0">
-          {([1, 2, 3] as const).map(level => {
-            const Icon = level === 1 ? Heading1 : level === 2 ? Heading2 : Heading3;
-            return (
-              <button
-                key={level}
-                onClick={() => onChange(b => (b.type === "heading" ? { ...b, level } : b))}
-                className="p-1 rounded"
-                style={{ color: block.level === level ? "var(--lime)" : "var(--text-tertiary)" }}
-              >
-                <Icon size={13} />
-              </button>
-            );
-          })}
-        </div>
-        <input
-          value={block.text}
-          onChange={e => onChange(b => (b.type === "heading" ? { ...b, text: e.target.value } : b))}
-          placeholder="Заголовок"
-          className={`flex-1 bg-transparent outline-none font-display font-semibold ${sizes[block.level]}`}
-        />
-      </div>
-    );
-  }
-
-  if (block.type === "bullet_list") {
-    return (
-      <div className="space-y-1.5">
-        {block.items.map((item, i) => (
-          <div key={i} className="flex items-center gap-2">
-            <span className="text-[var(--text-tertiary)] shrink-0">•</span>
-            <input
-              value={item}
-              onChange={e => onChange(b => {
-                if (b.type !== "bullet_list") return b;
-                const items = [...b.items];
-                items[i] = e.target.value;
-                return { ...b, items };
-              })}
-              placeholder="Пункт списку"
-              className="flex-1 bg-transparent outline-none text-sm"
-            />
-            <button
-              onClick={() => onChange(b => (b.type === "bullet_list" ? { ...b, items: b.items.filter((_, j) => j !== i) } : b))}
-              className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-              style={{ color: "var(--text-tertiary)" }}
-            >
-              <X size={12} />
-            </button>
-          </div>
-        ))}
-        <button
-          onClick={() => onChange(b => (b.type === "bullet_list" ? { ...b, items: [...b.items, ""] } : b))}
-          className="text-xs flex items-center gap-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors ml-4"
-        >
-          <Plus size={11} /> Пункт
-        </button>
-      </div>
-    );
-  }
-
-  // checklist
-  return (
-    <div className="space-y-1.5">
-      {block.items.map((item, i) => (
-        <div key={i} className="flex items-center gap-2">
-          <button
-            onClick={() => onChange(b => {
-              if (b.type !== "checklist") return b;
-              const items = [...b.items];
-              items[i] = { ...items[i], checked: !items[i].checked };
-              return { ...b, items };
-            })}
-            className="shrink-0 h-4 w-4 rounded flex items-center justify-center"
-            style={{ border: `1px solid ${item.checked ? "var(--lime)" : "rgba(255,255,255,0.2)"}`, background: item.checked ? "rgba(198,255,84,0.15)" : "transparent" }}
-          >
-            {item.checked && <Check size={11} style={{ color: "var(--lime)" }} />}
-          </button>
-          <input
-            value={item.text}
-            onChange={e => onChange(b => {
-              if (b.type !== "checklist") return b;
-              const items = [...b.items];
-              items[i] = { ...items[i], text: e.target.value };
-              return { ...b, items };
-            })}
-            placeholder="Завдання"
-            className="flex-1 bg-transparent outline-none text-sm"
-            style={{ textDecoration: item.checked ? "line-through" : "none", opacity: item.checked ? 0.5 : 1 }}
-          />
-          <button
-            onClick={() => onChange(b => (b.type === "checklist" ? { ...b, items: b.items.filter((_, j) => j !== i) } : b))}
-            className="opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
-            style={{ color: "var(--text-tertiary)" }}
-          >
-            <X size={12} />
-          </button>
-        </div>
-      ))}
-      <button
-        onClick={() => onChange(b => (b.type === "checklist" ? { ...b, items: [...b.items, { text: "", checked: false }] } : b))}
-        className="text-xs flex items-center gap-1 text-[var(--text-tertiary)] hover:text-[var(--text-secondary)] transition-colors ml-6"
-      >
-        <Plus size={11} /> Завдання
-      </button>
     </div>
   );
 }

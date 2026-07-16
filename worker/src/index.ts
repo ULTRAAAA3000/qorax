@@ -132,7 +132,24 @@ import {
   handleDocDelete,
   handleAiWriter,
   handleTemplatesList,
+  handleSaveAsTemplate,
 } from "./lib/officeHandler";
+import {
+  handleSheetsList,
+  handleSheetCreate,
+  handleSheetDetail,
+  handleSheetUpdate,
+  handleSheetDelete,
+  handleSheetAiGenerate,
+} from "./lib/officeSheetsHandler";
+import {
+  handleSlidesDecksList,
+  handleSlidesDeckCreate,
+  handleSlidesDeckDetail,
+  handleSlidesDeckUpdate,
+  handleSlidesDeckDelete,
+  handleSlidesAiGenerate,
+} from "./lib/officeSlidesHandler";
 import {
   handleGscAuth,
   handleGscCallback,
@@ -184,7 +201,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
-import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory } from "./lib/browserHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -844,6 +861,56 @@ const worker = {
     if (docAiWriterMatch && request.method === "POST") {
       return handleAiWriter(request, env, corsHeaders(origin), docAiWriterMatch[1]);
     }
+    const saveAsTemplateMatch = url.pathname.match(/^\/api\/office-documents\/([^/]+)\/save-as-template$/);
+    if (saveAsTemplateMatch && request.method === "POST") {
+      return handleSaveAsTemplate(request, env, corsHeaders(origin), saveAsTemplateMatch[1]);
+    }
+
+    // ── Qorax Office: Sheets MVP (MODULE_ROADMAP.md "Qorax Office") ──
+    const sheetsListMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/office-sheets$/);
+    if (sheetsListMatch && request.method === "GET") {
+      return handleSheetsList(request, env, corsHeaders(origin), sheetsListMatch[1]);
+    }
+    if (sheetsListMatch && request.method === "POST") {
+      return handleSheetCreate(request, env, corsHeaders(origin), sheetsListMatch[1]);
+    }
+    const sheetDetailMatch = url.pathname.match(/^\/api\/office-sheets\/([^/]+)$/);
+    if (sheetDetailMatch && request.method === "GET") {
+      return handleSheetDetail(request, env, corsHeaders(origin), sheetDetailMatch[1]);
+    }
+    if (sheetDetailMatch && request.method === "PATCH") {
+      return handleSheetUpdate(request, env, corsHeaders(origin), sheetDetailMatch[1]);
+    }
+    if (sheetDetailMatch && request.method === "DELETE") {
+      return handleSheetDelete(request, env, corsHeaders(origin), sheetDetailMatch[1]);
+    }
+    const sheetAiMatch = url.pathname.match(/^\/api\/office-sheets\/([^/]+)\/ai-generate$/);
+    if (sheetAiMatch && request.method === "POST") {
+      return handleSheetAiGenerate(request, env, corsHeaders(origin), sheetAiMatch[1]);
+    }
+
+    // ── Qorax Office: Slides MVP (MODULE_ROADMAP.md "Qorax Office") ──
+    const slidesDecksListMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/office-slides$/);
+    if (slidesDecksListMatch && request.method === "GET") {
+      return handleSlidesDecksList(request, env, corsHeaders(origin), slidesDecksListMatch[1]);
+    }
+    if (slidesDecksListMatch && request.method === "POST") {
+      return handleSlidesDeckCreate(request, env, corsHeaders(origin), slidesDecksListMatch[1]);
+    }
+    const slidesDeckDetailMatch = url.pathname.match(/^\/api\/office-slides\/([^/]+)$/);
+    if (slidesDeckDetailMatch && request.method === "GET") {
+      return handleSlidesDeckDetail(request, env, corsHeaders(origin), slidesDeckDetailMatch[1]);
+    }
+    if (slidesDeckDetailMatch && request.method === "PATCH") {
+      return handleSlidesDeckUpdate(request, env, corsHeaders(origin), slidesDeckDetailMatch[1]);
+    }
+    if (slidesDeckDetailMatch && request.method === "DELETE") {
+      return handleSlidesDeckDelete(request, env, corsHeaders(origin), slidesDeckDetailMatch[1]);
+    }
+    const slidesAiMatch = url.pathname.match(/^\/api\/office-slides\/([^/]+)\/ai-generate$/);
+    if (slidesAiMatch && request.method === "POST") {
+      return handleSlidesAiGenerate(request, env, corsHeaders(origin), slidesAiMatch[1]);
+    }
 
     // ── Qorax Creator: KG Visualization / Diagram Mode (MODULE_ROADMAP.md "Qorax Creator") ──
     const knowledgeGraphMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/knowledge-graph$/);
@@ -879,6 +946,22 @@ const worker = {
     }
     if (url.pathname === "/api/browser/history" && request.method === "GET") {
       return handleBrowserHistory(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/inspect" && request.method === "GET") {
+      return handleBrowserInspect(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/collections" && request.method === "GET") {
+      return handleCollectionsList(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/collections" && request.method === "POST") {
+      return handleCollectionCreate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/collections/save" && request.method === "POST") {
+      return handleCollectionSaveItem(request, env, corsHeaders(origin));
+    }
+    const collectionDeleteMatch = url.pathname.match(/^\/api\/browser\/collections\/([^/]+)$/);
+    if (collectionDeleteMatch && request.method === "DELETE") {
+      return handleCollectionDelete(request, env, corsHeaders(origin), collectionDeleteMatch[1]);
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──

@@ -1,5 +1,5 @@
 import { createClient } from "@/app/lib/supabase/server";
-import { QoraxLogo } from "@/app/components/QoraxLogo";
+import { OfficeHeader } from "./OfficeHeader";
 import { OfficeDocsListUI } from "./OfficeDocsListUI";
 import { ProductComingSoon } from "@/app/components/ProductComingSoon";
 import { redirect } from "next/navigation";
@@ -46,20 +46,16 @@ export default async function OfficePage() {
 
   return (
     <div className="min-h-screen" style={{ background: "var(--bg)" }}>
-      <header className="sticky top-0 z-40" style={{ background: "rgba(10,10,10,0.8)", backdropFilter: "blur(20px)", borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-        <div className="mx-auto max-w-6xl px-6 sm:px-8 h-14 flex items-center">
-          <QoraxLogo size="sm" />
-        </div>
-      </header>
+      <OfficeHeader active="docs" />
 
       <main className="mx-auto max-w-6xl px-6 sm:px-8 py-8 space-y-6">
         <div>
           <div className="flex items-center gap-2.5 mb-1">
             <FileText size={20} style={{ color: "var(--lime)" }} />
-            <h1 className="font-display text-2xl font-semibold">Qorax Office</h1>
+            <h1 className="font-display text-2xl font-semibold">Документи</h1>
           </div>
           <p className="text-sm text-[var(--text-secondary)]">
-            Docs — редактор документів з AI Writer. Sheets, Slides та решта режимів — незабаром.
+            Редактор документів з AI Writer і бібліотекою шаблонів.
           </p>
         </div>
 
