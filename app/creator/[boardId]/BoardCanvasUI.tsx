@@ -30,7 +30,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Loader2, X, Globe, Zap, Users, BarChart3, Sparkles, Search, ShoppingCart, Share2, GraduationCap, Users2, Trophy } from "lucide-react";
+import { Plus, Loader2, X, Globe, Zap, Users, BarChart3, Sparkles, Search, ShoppingCart, Share2, GraduationCap, Users2, Trophy, RefreshCw } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { ProjectEditorUI } from "@/app/dashboard/sites-builder/[projectId]/ProjectEditorUI";
 
@@ -44,11 +44,22 @@ interface CanvasNodeRow {
   data: Record<string, unknown>;
   ref_table: string | null;
   ref_id: string | null;
+  bound_ref_table: string | null;
+  bound_ref_id: string | null;
+  field_bindings: Record<string, string> | null;
+  resolved_data: Record<string, unknown> | null;
 }
 
 interface ProjectOption {
   id: string;
   name: string;
+}
+
+interface ProductOption {
+  id: string;
+  title: string;
+  price_cents: number;
+  currency: string;
 }
 
 // Дзеркалить LIVE_EMBED_ALLOWED у worker/src/lib/creatorHandler.ts —
@@ -166,13 +177,70 @@ function LiveEmbedNode({ data }: NodeProps) {
   );
 }
 
-const nodeTypes = { embeddedEditor: EmbeddedEditorNode, liveEmbed: LiveEmbedNode };
+// ── node_type='smart_component' → "жива" картка товару ────────────
+// MODULE_ROADMAP.md "Qorax Creator", Smart Components: значення тут
+// НЕ з canvas_nodes.data (заморожені), а з resolvedData у
+// data.resolved — worker резолвить bound_ref_table/bound_ref_id ПРИ
+// КОЖНОМУ GET дошки (creatorHandler.ts::resolveSmartComponentData),
+// тому просте перезавантаження дошки показує актуальну ціну без
+// жодної дії користувача над самою карткою.
+function SmartComponentNode({ data }: NodeProps) {
+  const resolved = data.resolved as Record<string, unknown> | null;
+  const onDelete = data.onDelete as () => void;
+
+  const title = resolved?.title as string | undefined;
+  const priceCents = resolved?.price_label as number | undefined;
+  const imageUrls = resolved?.image as string[] | null | undefined;
+  const image = imageUrls?.[0];
+
+  return (
+    <div
+      className="rounded-2xl overflow-hidden flex flex-col"
+      style={{ width: "100%", height: "100%", background: "var(--bg-raised)", border: "1px solid rgba(214,255,63,0.2)" }}
+    >
+      <div
+        className="shrink-0 flex items-center justify-between px-3 py-2"
+        style={{ borderBottom: "1px solid rgba(255,255,255,0.08)" }}
+      >
+        <div className="flex items-center gap-1.5 min-w-0">
+          <RefreshCw size={11} style={{ color: "var(--lime)" }} />
+          <span className="text-[10px] font-mono uppercase tracking-wide text-[var(--text-tertiary)]">Live · Commerce</span>
+        </div>
+        <button onClick={onDelete} className="shrink-0 p-1 rounded-lg hover:bg-white/10 transition-colors nodrag">
+          <X size={12} className="text-[var(--text-tertiary)]" />
+        </button>
+      </div>
+      <div className="flex-1 min-h-0 flex flex-col p-3 gap-2">
+        {image && (
+          <div className="w-full h-24 rounded-lg overflow-hidden shrink-0" style={{ background: "rgba(255,255,255,0.03)" }}>
+            {/* eslint-disable-next-line @next/next/no-img-element -- зовнішній URL товару, невідомий заздалегідь домен, next/image вимагав би whitelist домену на кожен магазин клієнта */}
+            <img src={image} alt={title ?? ""} className="w-full h-full object-cover" />
+          </div>
+        )}
+        <p className="text-sm font-medium truncate">{title ?? "Товар не знайдено"}</p>
+        {priceCents != null && (
+          <p className="text-lg font-display font-semibold" style={{ color: "var(--lime)" }}>
+            {(priceCents / 100).toFixed(2)}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const nodeTypes = { embeddedEditor: EmbeddedEditorNode, liveEmbed: LiveEmbedNode, smartComponent: SmartComponentNode };
 
 export function BoardCanvasUI({ boardId, organizationId }: Props) {
   const [nodes, setNodes] = useNodesState<Node>([]);
   const [loading, setLoading] = useState(true);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [projects, setProjects] = useState<ProjectOption[] | null>(null);
+  // Товари прив'язані до конкретного Sites-проєкту (Commerce), не до
+  // організації напряму — тому вибір smart_component двоетапний:
+  // спочатку проєкт, потім товар цього проєкту (той самий реальний
+  // зв'язок даних, не штучне спрощення UI).
+  const [productPickerProjectId, setProductPickerProjectId] = useState<string | null>(null);
+  const [products, setProducts] = useState<ProductOption[] | null>(null);
   const rawNodesRef = useRef<Map<string, CanvasNodeRow>>(new Map());
   const projectNamesRef = useRef<Map<string, string>>(new Map());
 
@@ -197,6 +265,19 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
         style: { width: row.width, height: row.height },
         data: {
           liveKey: row.data.live_key,
+          onDelete: () => deleteNode(row.id),
+        },
+      };
+    }
+
+    if (row.node_type === "smart_component") {
+      return {
+        id: row.id,
+        type: "smartComponent",
+        position: { x: row.position_x, y: row.position_y },
+        style: { width: row.width, height: row.height },
+        data: {
+          resolved: row.resolved_data,
           onDelete: () => deleteNode(row.id),
         },
       };
@@ -229,7 +310,7 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
     setProjects(projectList);
 
     const rows: CanvasNodeRow[] = boardData.nodes ?? [];
-    setNodes(rows.filter(r => r.node_type === "embedded_editor" || r.node_type === "live_embed").map(toFlowNode));
+    setNodes(rows.filter(r => r.node_type === "embedded_editor" || r.node_type === "live_embed" || r.node_type === "smart_component").map(toFlowNode));
     setLoading(false);
   }, [boardId, organizationId, setNodes, toFlowNode]);
 
@@ -277,6 +358,30 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ node_type: "live_embed", live_key: liveKey, position_x: 40 + nodes.length * 40, position_y: 40 + nodes.length * 40 }),
+    });
+    const data = await res.json();
+    if (data.node) setNodes(nds => [...nds, toFlowNode(data.node)]);
+  }
+
+  async function openProductPicker(projectId: string) {
+    setProductPickerProjectId(projectId);
+    setProducts(null);
+    const token = await getFreshToken();
+    const res = await fetch(`${API_BASE_URL}/api/projects/${projectId}/products`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+    setProducts(data.products ?? []);
+  }
+
+  async function addSmartComponentNode(productId: string) {
+    setShowAddMenu(false);
+    setProductPickerProjectId(null);
+    const token = await getFreshToken();
+    const res = await fetch(`${API_BASE_URL}/api/canvas-boards/${boardId}/nodes`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ node_type: "smart_component", ref_id: productId, position_x: 40 + nodes.length * 40, position_y: 40 + nodes.length * 40 }),
     });
     const data = await res.json();
     if (data.node) setNodes(nds => [...nds, toFlowNode(data.node)]);
@@ -351,6 +456,49 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
                   </button>
                 ))}
               </div>
+            </div>
+
+            <div>
+              <p className="px-2 text-[10px] font-mono uppercase tracking-wide text-[var(--text-tertiary)] mb-1">Живий товар (Smart Component)</p>
+              {!productPickerProjectId ? (
+                !projects || projects.length === 0 ? (
+                  <p className="text-xs text-[var(--text-tertiary)] px-2 py-2">Немає проєктів у Sites-конструкторі.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {projects.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => openProductPicker(p.id)}
+                        className="w-full text-left text-sm px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors truncate flex items-center gap-1.5"
+                      >
+                        <RefreshCw size={12} className="text-[var(--lime)] shrink-0" /> {p.name}
+                      </button>
+                    ))}
+                  </div>
+                )
+              ) : (
+                <div className="space-y-1">
+                  <button onClick={() => setProductPickerProjectId(null)} className="text-xs text-[var(--text-tertiary)] px-2 py-1 hover:text-[var(--text-primary)] transition-colors">
+                    ← Назад до проєктів
+                  </button>
+                  {!products ? (
+                    <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)] px-2 py-2"><Loader2 size={12} className="animate-spin" /> Завантаження...</div>
+                  ) : products.length === 0 ? (
+                    <p className="text-xs text-[var(--text-tertiary)] px-2 py-2">Немає товарів у цьому проєкті.</p>
+                  ) : (
+                    products.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => addSmartComponentNode(p.id)}
+                        className="w-full text-left text-sm px-2 py-1.5 rounded-lg hover:bg-white/5 transition-colors truncate flex items-center justify-between gap-1.5"
+                      >
+                        <span className="truncate">{p.title}</span>
+                        <span className="text-xs text-[var(--text-tertiary)] shrink-0">{(p.price_cents / 100).toFixed(2)}</span>
+                      </button>
+                    ))
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}

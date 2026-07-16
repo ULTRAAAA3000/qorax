@@ -124,6 +124,14 @@ import {
   handleNodeUpdate,
   handleNodeDelete,
 } from "./lib/creatorHandler";
+import {
+  handleBrandKitGet,
+  handleBrandKitUpsert,
+  handleComponentsList,
+  handleComponentCreate,
+  handleComponentUpdate,
+  handleComponentDelete,
+} from "./lib/creatorComponentsHandler";
 import { handleGraphData } from "./lib/knowledgeGraph";
 import {
   handleDocsList,
@@ -202,7 +210,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
-import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem } from "./lib/browserHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -922,6 +930,29 @@ const worker = {
       return handleGraphData(request, env, corsHeaders(origin), knowledgeGraphMatch[1]);
     }
 
+    // ── Qorax Creator: Components / Brand Kit (MODULE_ROADMAP.md "Qorax Creator") ──
+    const brandKitMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/brand-kit$/);
+    if (brandKitMatch && request.method === "GET") {
+      return handleBrandKitGet(request, env, corsHeaders(origin), brandKitMatch[1]);
+    }
+    if (brandKitMatch && request.method === "PUT") {
+      return handleBrandKitUpsert(request, env, corsHeaders(origin), brandKitMatch[1]);
+    }
+    const componentsListMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/components$/);
+    if (componentsListMatch && request.method === "GET") {
+      return handleComponentsList(request, env, corsHeaders(origin), componentsListMatch[1]);
+    }
+    if (componentsListMatch && request.method === "POST") {
+      return handleComponentCreate(request, env, corsHeaders(origin), componentsListMatch[1]);
+    }
+    const componentItemMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/components\/([^/]+)$/);
+    if (componentItemMatch && request.method === "PATCH") {
+      return handleComponentUpdate(request, env, corsHeaders(origin), componentItemMatch[1], componentItemMatch[2]);
+    }
+    if (componentItemMatch && request.method === "DELETE") {
+      return handleComponentDelete(request, env, corsHeaders(origin), componentItemMatch[1], componentItemMatch[2]);
+    }
+
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
     const croSnippetMatch = url.pathname.match(/^\/api\/sites\/([^/]+)\/cro\/snippet$/);
     if (croSnippetMatch && request.method === "GET") {
@@ -966,6 +997,15 @@ const worker = {
     const collectionDeleteMatch = url.pathname.match(/^\/api\/browser\/collections\/([^/]+)$/);
     if (collectionDeleteMatch && request.method === "DELETE") {
       return handleCollectionDelete(request, env, corsHeaders(origin), collectionDeleteMatch[1]);
+    }
+    if (url.pathname === "/api/browser/capture/office" && request.method === "POST") {
+      return handleCaptureToOffice(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/translate" && request.method === "POST") {
+      return handleBrowserTranslate(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/summarize" && request.method === "POST") {
+      return handleBrowserSummarize(request, env, corsHeaders(origin));
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
