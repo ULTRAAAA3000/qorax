@@ -8,7 +8,7 @@
 // {blocks:[]}) — узгоджено з 0075_creator_components_brand_kit.sql.
 
 import { useState, useEffect, useCallback } from "react";
-import { Loader2, Plus, X, Trash2, Palette, Blocks, Layout, Type, Image as ImageIcon, MousePointerClick, HelpCircle, Package } from "lucide-react";
+import { Loader2, Plus, X, Trash2, Palette, Blocks, Layout, Type, Image as ImageIcon, MousePointerClick, HelpCircle, Package, Sparkles, Check } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 
 interface BrandKit {
@@ -208,6 +208,17 @@ function ComponentsSection({ organizationId }: { organizationId: string }) {
   const [ctaHref, setCtaHref] = useState("");
   const [creating, setCreating] = useState(false);
 
+  // AI Collaboration (MODULE_ROADMAP.md "Qorax Creator", AI Creator):
+  // rewriteTargetId — картка, для якої зараз відкрита панель
+  // інструкції. rewritePreview — результат від Gemini, ЩЕ НЕ
+  // застосований (застосування — окремий підтверджуючий крок,
+  // окремий PATCH-виклик applyRewrite нижче).
+  const [rewriteTargetId, setRewriteTargetId] = useState<string | null>(null);
+  const [instruction, setInstruction] = useState("");
+  const [rewriting, setRewriting] = useState(false);
+  const [rewritePreview, setRewritePreview] = useState<Component["content"] | null>(null);
+  const [applying, setApplying] = useState(false);
+
   const load = useCallback(async () => {
     const token = await getFreshToken();
     const res = await fetch(`${API_BASE_URL}/api/organizations/${organizationId}/components`, {
@@ -259,6 +270,52 @@ function ComponentsSection({ organizationId }: { organizationId: string }) {
       method: "DELETE",
       headers: { Authorization: `Bearer ${token}` },
     });
+  }
+
+  function openRewritePanel(id: string) {
+    setRewriteTargetId(id);
+    setInstruction("");
+    setRewritePreview(null);
+  }
+
+  async function requestRewrite(componentId: string) {
+    if (!instruction.trim()) return;
+    setRewriting(true);
+    setRewritePreview(null);
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/organizations/${organizationId}/components/${componentId}/rewrite`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ instruction: instruction.trim() }),
+      });
+      const data = await res.json();
+      if (data.content) setRewritePreview(data.content);
+    } finally {
+      setRewriting(false);
+    }
+  }
+
+  // Підтвердження — окремий крок від генерації: rewrite повертає лише
+  // прев'ю (worker НЕ зберігає його сам), applyRewrite явно зберігає
+  // те, що користувач переглянув і схвалив. "Не автозастосування без
+  // перегляду" — пряма вимога плану для AI Collaboration.
+  async function applyRewrite(componentId: string) {
+    if (!rewritePreview) return;
+    setApplying(true);
+    try {
+      const token = await getFreshToken();
+      await fetch(`${API_BASE_URL}/api/organizations/${organizationId}/components/${componentId}`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ content: rewritePreview }),
+      });
+      setRewriteTargetId(null);
+      setRewritePreview(null);
+      await load();
+    } finally {
+      setApplying(false);
+    }
   }
 
   const ownComponents = components?.filter(c => c.organization_id !== null) ?? [];
@@ -346,18 +403,67 @@ function ComponentsSection({ organizationId }: { organizationId: string }) {
           {ownComponents.map(c => {
             const meta = categoryMeta(c.category);
             const Icon = meta.icon;
+            const isRewriting = rewriteTargetId === c.id;
             return (
-              <div key={c.id} className="glow-card p-4 flex items-start gap-3">
-                <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(140,246,255,0.1)" }}>
-                  <Icon size={14} style={{ color: "var(--cyan)" }} />
+              <div key={c.id} className="glow-card p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="h-8 w-8 rounded-lg flex items-center justify-center shrink-0" style={{ background: "rgba(140,246,255,0.1)" }}>
+                    <Icon size={14} style={{ color: "var(--cyan)" }} />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">{c.name}</p>
+                    <p className="text-xs text-[var(--text-tertiary)] truncate">{meta.label}{c.content.heading ? ` · ${c.content.heading}` : ""}</p>
+                  </div>
+                  <button
+                    onClick={() => isRewriting ? setRewriteTargetId(null) : openRewritePanel(c.id)}
+                    className="shrink-0 p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+                    title="AI: переробити текст"
+                  >
+                    <Sparkles size={14} style={{ color: isRewriting ? "var(--lime)" : "var(--text-tertiary)" }} />
+                  </button>
+                  <button onClick={() => deleteComponent(c.id)} className="shrink-0 p-1.5 rounded-lg hover:bg-white/5 transition-colors">
+                    <Trash2 size={14} className="text-[var(--text-tertiary)]" />
+                  </button>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium truncate">{c.name}</p>
-                  <p className="text-xs text-[var(--text-tertiary)] truncate">{meta.label}{c.content.heading ? ` · ${c.content.heading}` : ""}</p>
-                </div>
-                <button onClick={() => deleteComponent(c.id)} className="shrink-0 p-1.5 rounded-lg hover:bg-white/5 transition-colors">
-                  <Trash2 size={14} className="text-[var(--text-tertiary)]" />
-                </button>
+
+                {isRewriting && (
+                  <div className="pt-3 space-y-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+                    <div className="flex gap-2">
+                      <input
+                        type="text" value={instruction} onChange={e => setInstruction(e.target.value)}
+                        placeholder="Напр.: зроби стиль як Apple, коротше і енергійніше"
+                        className="flex-1 rounded-xl px-3 py-1.5 text-xs outline-none"
+                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+                        onKeyDown={e => { if (e.key === "Enter") requestRewrite(c.id); }}
+                      />
+                      <button
+                        onClick={() => requestRewrite(c.id)}
+                        disabled={rewriting || !instruction.trim()}
+                        className="glow-button text-xs !py-1.5 !px-3 disabled:opacity-50 shrink-0"
+                      >
+                        {rewriting ? <Loader2 size={12} className="animate-spin" /> : "Переробити"}
+                      </button>
+                    </div>
+
+                    {rewritePreview && (
+                      <div className="rounded-xl p-3 space-y-1.5" style={{ background: "rgba(214,255,63,0.04)", border: "1px solid rgba(214,255,63,0.15)" }}>
+                        <p className="text-[10px] font-mono uppercase tracking-wide text-[var(--text-tertiary)]">Прев&apos;ю (ще не збережено)</p>
+                        {rewritePreview.heading && <p className="text-sm font-medium">{rewritePreview.heading}</p>}
+                        {rewritePreview.subheading && <p className="text-xs text-[var(--text-secondary)]">{rewritePreview.subheading}</p>}
+                        {rewritePreview.body && <p className="text-xs text-[var(--text-secondary)]">{rewritePreview.body}</p>}
+                        {rewritePreview.cta_text && <p className="text-xs" style={{ color: "var(--lime)" }}>{rewritePreview.cta_text}</p>}
+                        <button
+                          onClick={() => applyRewrite(c.id)}
+                          disabled={applying}
+                          className="mt-1 flex items-center gap-1.5 text-xs font-medium disabled:opacity-50"
+                          style={{ color: "var(--lime)" }}
+                        >
+                          {applying ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />} Застосувати
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             );
           })}
