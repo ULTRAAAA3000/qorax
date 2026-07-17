@@ -3887,3 +3887,84 @@ Search, AI Memory, Marketplace.
 що сам відкриває N сайтів), Visual Search, Component Extractor,
 Website Timeline, Workspace Tabs, Deep Search, AI Memory,
 Marketplace.
+
+---
+
+## Qorax Creator: AI Creator — шостий, останній крок ближньої послідовності
+
+MODULE_ROADMAP.md, "Qorax Creator", порядок реалізації: Website Mode
+→ Diagram Mode → Live Objects → Components/Brand Kit → Smart
+Components (усі готові) → **AI Creator** (цей прохід). Це завершує
+ВСІ кроки ближньої послідовності — наступні пункти плану (Email/
+Presentation/Whiteboard/Social Mode, Developer Mode, History,
+Multiplayer, Marketplace) довгостроковіші, не заплановані найближчим
+часом.
+
+**Важлива знахідка перед тим, як писати код:** план описує AI Creator
+як дві частини — генерацію сторінки (структура+дизайн+тексти) і
+AI Collaboration (точковий рерайт). Перша частина ВЖЕ ПРАЦЮЄ в
+Creator без жодного нового коду: Website Mode рендерить
+`ProjectEditorUI.tsx` НАПРЯМУ (рішення з першого проходу Website
+Mode), а той компонент вже має повністю робочу AI-генерацію сторінки
+(`handleProjectPageAiGenerate` у `sitesAiHandler.ts`, окремий,
+раніший прохід з Qorax AI Memory-контекстом) — той самий "той самий
+пайплайн", що план і вимагає, "безкоштовно" через уже прийняте
+архітектурне рішення прямого рендеру. Реальна нова робота цього
+проходу — тільки AI Collaboration.
+
+**AI Collaboration — застосовано до Components (`/creator/components`),
+єдине місце з текстовим `content` зараз.** Website Mode-вузли
+(сторінки) редагуються через сам `ProjectEditorUI`, Live Objects —
+iframe на чужі сторінки без власного content, Smart Components —
+показують live-дані з Commerce (переписувати AI-ом нічого, значення
+не належать самому вузлу). `creator_components.content` — єдиний
+"обраний текстовий content", над яким має сенс точковий рерайт.
+
+**Ключовий принцип з плану, застосований буквально: "підтвердження
+перед деструктивною зміною, не автозастосування без перегляду".**
+`handleComponentRewrite` (worker, новий ендпоінт) викликає Gemini і
+ПОВЕРТАЄ переписаний варіант як прев'ю — НЕ зберігає його сам.
+Застосування — окремий крок: фронтенд явно викликає вже наявний
+`PATCH` (розширений, щоб приймати `content`, не тільки `name`) лише
+після того, як користувач переглянув прев'ю і натиснув "Застосувати".
+Без цієї розв'язки один клік міг би непоправно замінити вміст
+компонента невдалою AI-генерацією.
+
+**Worker (`creatorComponentsHandler.ts`, доповнено):**
+- `handleComponentRewrite` — `POST
+  /api/organizations/:id/components/:componentId/rewrite`, body
+  `{ instruction }`. Той самий Gemini-виклик (structured output через
+  `responseSchema`), що вже перевірений у `sitesAiHandler.ts`, той
+  самий `aiCredits.ts` helper (1 кредит, `unlimited` для адмінської
+  організації)
+- Серверна гарантія, не лише промпт-інструкція: рерайт заповнює ЛИШЕ
+  ті поля, що вже мали значення в оригіналі (`if (current.heading !=
+  null) rewritten.heading = ...`) — навіть якщо AI вирішить додати
+  нове поле всупереч інструкції в промпті, відповідь все одно
+  звужується до вихідної структури компонента
+- `handleComponentUpdate` (`PATCH`) розширено приймати опціональний
+  `content` поряд з `name` — крок підтвердження AI Collaboration
+  використовує той самий ендпоінт, не новий
+
+**UI (`ComponentsLibraryUI.tsx`, доповнено):** кнопка Sparkles на
+кожній картці компонента розкриває панель — поле інструкції +
+кнопка "Переробити" → прев'ю (позначене "ще не збережено") →
+кнопка "Застосувати" (окремий явний клік, не автоматично після
+генерації).
+
+**Перевірено:** `tsc --noEmit` чисто (worker+app), `npx eslint
+app/creator/` чисто, `npm run build` успішно (усі роути на місці),
+`wrangler deploy --dry-run --config wrangler.toml` успішно (820.31
+KiB, gzip 139.51 KiB).
+
+**Свідомо НЕ зроблено цим проходом:**
+- Генерація зображень — план прямо каже "окреме рішення
+  постачальника, не вирішено цим записом", не додано
+- AI Collaboration для інших типів вузлів (Website Mode-сторінок
+  напряму на Canvas, а не через окрему сторінку Sites) — той
+  функціонал вже покритий `ProjectEditorUI`'s власною AI-генерацією,
+  дублювати точковий рерайт там не було сенсу
+- Генерація кількох сторінок за раз (план згадує це як розширення
+  "б" AI Creator) — `handleProjectPageAiGenerate` генерує одну
+  сторінку за виклик, розширення до пакетної генерації — окрема
+  задача, не увійшла в цей прохід

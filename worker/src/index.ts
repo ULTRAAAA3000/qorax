@@ -131,6 +131,7 @@ import {
   handleComponentCreate,
   handleComponentUpdate,
   handleComponentDelete,
+  handleComponentRewrite,
 } from "./lib/creatorComponentsHandler";
 import { handleGraphData } from "./lib/knowledgeGraph";
 import {
@@ -951,6 +952,10 @@ const worker = {
     }
     if (componentItemMatch && request.method === "DELETE") {
       return handleComponentDelete(request, env, corsHeaders(origin), componentItemMatch[1], componentItemMatch[2]);
+    }
+    const componentRewriteMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/components\/([^/]+)\/rewrite$/);
+    if (componentRewriteMatch && request.method === "POST") {
+      return handleComponentRewrite(request, env, corsHeaders(origin), componentRewriteMatch[1], componentRewriteMatch[2]);
     }
 
     // ── CRO routes (MODULE_ROADMAP.md, розділ 9; EXECUTION_PLAN.md Фаза 2.6) ──
