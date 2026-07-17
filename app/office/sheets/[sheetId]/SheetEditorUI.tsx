@@ -62,6 +62,8 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
   // розмонтувати тулбар до того, як onClick встигне спрацювати.
   const [toolbarKey, setToolbarKey] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [exportingXlsx, setExportingXlsx] = useState(false);
+  const [importingXlsx, setImportingXlsx] = useState(false);
   const [showAi, setShowAi] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
@@ -69,6 +71,7 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
 
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const xlsxFileInputRef = useRef<HTMLInputElement>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   // formatsRef/chartsRef — щоб scheduleSave() у вже наявних місцях
   // виклику (зміна клітинок/сітки) не загубила поточні formats/
@@ -233,6 +236,39 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
     e.target.value = "";
   }
 
+  async function exportXlsxHandler() {
+    setExportingXlsx(true);
+    try {
+      const { exportXlsx } = await import("../xlsxIO");
+      await exportXlsx(title, cells, columns, rows);
+    } finally {
+      setExportingXlsx(false);
+    }
+  }
+
+  async function importXlsxHandler(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (Object.keys(cells).length > 0 && !confirm("Імпорт XLSX замінить усі дані в таблиці. Продовжити?")) {
+      e.target.value = "";
+      return;
+    }
+    setImportingXlsx(true);
+    try {
+      const { importXlsx } = await import("../xlsxIO");
+      const { cells: newCells, columns: neededCols, rows: neededRows } = await importXlsx(file);
+      setCells(newCells);
+      setColumns(neededCols);
+      setRows(neededRows);
+      scheduleSave(newCells, neededCols, neededRows);
+    } catch {
+      alert("Не вдалося прочитати файл — переконайтесь, що це коректний .xlsx");
+    } finally {
+      setImportingXlsx(false);
+      e.target.value = "";
+    }
+  }
+
   async function runAiGenerate() {
     if (!aiInstruction.trim()) return;
     setAiLoading(true);
@@ -279,6 +315,13 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
           <input ref={fileInputRef} type="file" accept=".csv,text/csv" onChange={importCsv} className="hidden" />
           <button onClick={exportCsv} className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)]">
             <Download size={12} /> Експорт CSV
+          </button>
+          <button onClick={() => xlsxFileInputRef.current?.click()} disabled={importingXlsx} className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50">
+            {importingXlsx ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />} Імпорт XLSX
+          </button>
+          <input ref={xlsxFileInputRef} type="file" accept=".xlsx" onChange={importXlsxHandler} className="hidden" />
+          <button onClick={exportXlsxHandler} disabled={exportingXlsx} className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50">
+            {exportingXlsx ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Експорт XLSX
           </button>
           <button onClick={() => setShowChartForm(v => !v)} className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)]">
             <BarChart3 size={12} /> Діаграма
