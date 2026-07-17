@@ -73,6 +73,7 @@ export function BrowserUI({ organizationId }: Props) {
   const [captureError, setCaptureError] = useState<string | null>(null);
   const [captureSuccess, setCaptureSuccess] = useState(false);
   const [readingMode, setReadingMode] = useState(false);
+  const [proxyToken, setProxyToken] = useState<string | null>(null);
   const iframeRef = useRef<HTMLIFrameElement>(null);
 
   const loadHistory = useCallback(async () => {
@@ -110,7 +111,7 @@ export function BrowserUI({ organizationId }: Props) {
     return () => window.removeEventListener("message", handleMessage);
   }, []);
 
-  const navigate = useCallback((rawUrl: string) => {
+  const navigate = useCallback(async (rawUrl: string) => {
     const normalized = normalizeUrl(rawUrl);
     if (!normalized) {
       setLoadError("Введіть коректну адресу сайту");
@@ -126,13 +127,37 @@ export function BrowserUI({ organizationId }: Props) {
     setCaptureSuccess(false);
     setReadingMode(false);
     setAddressInput(normalized);
-    setCurrentUrl(normalized);
     setIframeLoading(true);
-  }, []);
+
+    // <iframe src="..."> — звичайна браузерна навігація, вона фізично
+    // не може надіслати заголовок Authorization. Тому перед показом
+    // сайту спершу отримуємо короткоживущий одноразовий токен
+    // (authenticated fetch з JWT), і саме його підставляємо в src
+    // iframe нижче (proxySrc) — не сам organization_id напряму.
+    try {
+      const jwt = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/browser/proxy-token`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${jwt}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ organization_id: organizationId }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setLoadError(data.error ?? "Не вдалося авторизувати перегляд сайту");
+        setIframeLoading(false);
+        return;
+      }
+      setProxyToken(data.token);
+      setCurrentUrl(normalized);
+    } catch {
+      setLoadError("Помилка з'єднання");
+      setIframeLoading(false);
+    }
+  }, [organizationId]);
 
   async function handleAddressSubmit(e: React.FormEvent) {
     e.preventDefault();
-    navigate(addressInput);
+    await navigate(addressInput);
   }
 
   async function analyzeSite() {
@@ -210,8 +235,8 @@ export function BrowserUI({ organizationId }: Props) {
     }
   }
 
-  const proxySrc = currentUrl
-    ? `${API_BASE_URL}/api/browser/proxy?url=${encodeURIComponent(currentUrl)}&organization_id=${organizationId}`
+  const proxySrc = currentUrl && proxyToken
+    ? `${API_BASE_URL}/api/browser/proxy?url=${encodeURIComponent(currentUrl)}&token=${encodeURIComponent(proxyToken)}`
     : null;
 
   return (

@@ -31,6 +31,7 @@ import { insertRow, selectRows, updateRows } from "./supabase";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
 import { callGemini, callGeminiVision } from "./contentGeneration";
 import { handleDocCreate } from "./officeHandler";
+import { checkRateLimit, getClientIp } from "./rateLimit";
 
 // Справжній браузерний User-Agent — на відміну від DEFAULT_USER_AGENT
 // в httpUtils.ts (той навмисно бот-агент "QoraxBot/1.0" для чесного
@@ -100,18 +101,66 @@ function injectSelectionScript(html: string): string {
   return html + script;
 }
 
-// GET /api/browser/proxy?url=...&organization_id=...
+// ── Proxy token (виправлення критичного бага) ──────────────────────
+// <iframe src="..."> — це звичайна браузерна навігація, вона фізично
+// НЕ МОЖЕ надіслати заголовок Authorization: Bearer <token> (той
+// працює лише для fetch()-запитів з JS). Тому requireOrgAccess()
+// (що читає саме цей заголовок) завжди повертав Unauthorized для
+// прямого <iframe src>, ЩО Й БУЛО БАГОМ — proxy ніколи не міг
+// спрацювати через iframe з таким типом авторизації.
+//
+// Рішення: короткоживущий одноразовий токен у query-параметрі.
+// Фронтенд СПОЧАТКУ робить звичайний authenticated fetch (Bearer JWT)
+// на /api/browser/proxy-token, отримує токен, ПОТІМ підставляє його
+// в src iframe замість organization_id. Токен зберігається в
+// RATE_LIMIT_KV (перевикористання наявного KV namespace, не новий
+// біндинг) з TTL 60 секунд — достатньо для завантаження iframe,
+// замало для практичного зловживання навіть якщо токен кудись
+// протече (напр. в логи сервера через query-параметр).
+
+const PROXY_TOKEN_TTL_SEC = 60;
+
+interface ProxyTokenBody {
+  organization_id: string;
+}
+
+// POST /api/browser/proxy-token
+export async function handleProxyTokenIssue(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: ProxyTokenBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const token = crypto.randomUUID();
+  await env.RATE_LIMIT_KV.put(`browser-proxy-token:${token}`, body.organization_id, { expirationTtl: PROXY_TOKEN_TTL_SEC });
+
+  return json({ token }, 200, corsHeaders);
+}
+
+// GET /api/browser/proxy?url=...&token=...
 // Повертає HTML сторінки з <base href> rewrite, без frame-blocking
 // заголовків. Рендериться в <iframe> на фронтенді.
 export async function handleBrowserProxy(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
   const url = new URL(request.url);
   const targetUrlRaw = url.searchParams.get("url");
-  const organizationId = url.searchParams.get("organization_id");
-  if (!organizationId) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const token = url.searchParams.get("token");
+  if (!token) return json({ error: "token обов'язковий" }, 400, corsHeaders);
   if (!targetUrlRaw) return json({ error: "url обов'язковий" }, 400, corsHeaders);
 
-  const access = await requireOrgAccess(request, organizationId, "viewer", env);
-  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+  // Rate limit по IP — proxy виконує зовнішній fetch на довільний URL,
+  // без ліміту Worker можна використати як анонімний HTTP-проксі
+  // (відомий пробіл, зафіксований ще в EXECUTION_PLAN.md при MVP).
+  const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, `browser-proxy:${getClientIp(request)}`, 60, 60);
+  if (!rateLimit.allowed) return json({ error: "Забагато запитів, спробуйте пізніше" }, 429, corsHeaders);
+
+  const organizationId = await env.RATE_LIMIT_KV.get(`browser-proxy-token:${token}`);
+  if (!organizationId) return json({ error: "Токен недійсний або прострочений" }, 401, corsHeaders);
 
   const targetUrl = isValidHttpUrl(targetUrlRaw);
   if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);

@@ -4260,3 +4260,48 @@ visual-search`:** завантажує зображення за URL (ліміт
 в інтернеті). Component Extractor — той самий рівень ризику, теж не
 цей прохід. Website Timeline, Workspace Tabs, Deep Search, AI
 Memory, Marketplace — решта списку.
+
+## Qorax Browser — критичний баг proxy: "Unauthorized" на будь-якому сайті (виправлено)
+
+**Симптом (скріншот від Артема):** будь-який URL у Browser показував
+`{"error":"Unauthorized"}` замість вмісту сайту.
+
+**Корінна причина:** `<iframe src="...">` — це звичайна браузерна
+навігація, вона ФІЗИЧНО не може надіслати заголовок
+`Authorization: Bearer <token>` (той працює лише для `fetch()`-
+запитів з JS, не для навігаційних завантажень типу `src`/`href`).
+`handleBrowserProxy` від самого початку (MVP-проходу) використовував
+`requireOrgAccess()`, що читає саме цей заголовок — тобто **proxy
+ніколи не міг спрацювати через `<iframe src>` з таким типом
+авторизації**, це була архітектурна помилка з першого дня, не
+регресія.
+
+**Рішення: короткоживущий одноразовий токен у query-параметрі,
+замість Authorization-заголовка.**
+- Новий `POST /api/browser/proxy-token` (`handleProxyTokenIssue`) —
+  звичайний authenticated fetch (Bearer JWT через `requireOrgAccess`,
+  спрацьовує нормально бо це fetch, не navigation), генерує
+  `crypto.randomUUID()`, зберігає в `RATE_LIMIT_KV` (перевикористання
+  наявного KV namespace, не новий біндинг) з `organization_id` як
+  значенням, TTL 60 секунд
+- `GET /api/browser/proxy` тепер приймає `token` замість
+  `organization_id` напряму в query, перевіряє його існування в KV
+  (не JWT) — 60 секунд достатньо для завантаження iframe, замало для
+  практичного зловживання навіть якщо токен кудись протече (напр. у
+  логи сервера через query-параметр URL)
+- **Попутно закрито відомий пробіл безпеки**, зафіксований ще при
+  MVP-проході ("proxy можна використати як анонімний HTTP-проксі без
+  ліміту"): додано `checkRateLimit()` по IP (60 запитів/хв) на
+  `handleBrowserProxy` — той самий helper, що вже захищає
+  `/api/audit`/CRO-track/тощо
+
+**Фронтенд (`BrowserUI.tsx`):** `navigate()` тепер асинхронна —
+спершу робить authenticated fetch на `/api/browser/proxy-token`
+(через уже наявний `getFreshToken()`), отримує токен, лише ПОТІМ
+встановлює `currentUrl` і будує `proxySrc` з цим токеном замість
+`organization_id`. Кожна навігація на новий сайт отримує свіжий
+токен (не переюзовує старий).
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (847.66 KiB, gzip 143.57 KiB).

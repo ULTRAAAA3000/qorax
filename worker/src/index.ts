@@ -212,7 +212,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
-import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare, handleBrowserReadingMode, handleVisualSearch } from "./lib/browserHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare, handleBrowserReadingMode, handleVisualSearch, handleProxyTokenIssue } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -983,6 +983,9 @@ const worker = {
     }
 
     // ── Qorax Browser routes (MODULE_ROADMAP.md, "Qorax Browser") ──
+    if (url.pathname === "/api/browser/proxy-token" && request.method === "POST") {
+      return handleProxyTokenIssue(request, env, corsHeaders(origin));
+    }
     if (url.pathname === "/api/browser/proxy" && request.method === "GET") {
       return handleBrowserProxy(request, env, corsHeaders(origin));
     }
