@@ -29,7 +29,7 @@ import { json } from "./httpUtils";
 import { requireOrgAccess } from "./orgAuth";
 import { insertRow, selectRows, updateRows } from "./supabase";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
-import { callGemini } from "./contentGeneration";
+import { callGemini, callGeminiVision } from "./contentGeneration";
 import { handleDocCreate } from "./officeHandler";
 
 // Справжній браузерний User-Agent — на відміну від DEFAULT_USER_AGENT
@@ -1011,4 +1011,110 @@ ${plainText}
   };
 
   return json({ ...result, credits_remaining: creditsRemaining, unlimited }, 200, corsHeaders);
+}
+
+// ============================================================
+// Visual Search (MODULE_ROADMAP.md, "Qorax Browser" — восьма
+// ітерація). Обсяг звужено (узгоджено з Артемом): roadmap описує
+// "пошук джерела, схожих зображень, автоматичний SVG, усе одразу в
+// Creator" — недоступно без зовнішнього reverse-image-search API
+// (якого немає) і без API прийому візуального контенту в Creator
+// (той самий блокер, що Smart Capture/Create Design: лише
+// embedded_editor/live_embed/smart_component вузли, жодного "довільне
+// зображення"). Реалізовано те, що чесно можливо: опис кольорової
+// палітри й стилю зображення через Gemini Vision (Cloudflare Workers
+// не має Canvas API чи PNG/JPEG-декодера для реального pixel-аналізу
+// "з коробки" — тому текстовий опис від AI, не точні HEX-коди з
+// пікселів).
+
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4 МБ — з запасом під ліміт inline_data Gemini API
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 8192; // уникаємо String.fromCharCode(...bytes) на весь масив одразу — стек-ліміт на великих зображеннях
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+interface VisualSearchBody {
+  organization_id: string;
+  image_url: string;
+}
+
+// POST /api/browser/visual-search
+export async function handleVisualSearch(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: VisualSearchBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const imageUrl = isValidHttpUrl(body.image_url ?? "");
+  if (!imageUrl) return json({ error: "Некоректний URL зображення" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let imageBuffer: ArrayBuffer;
+  let mimeType: string;
+  try {
+    const upstream = await fetch(imageUrl.toString(), { signal: controller.signal, headers: { "User-Agent": BROWSER_USER_AGENT } });
+    if (!upstream.ok) return json({ error: `Не вдалося завантажити зображення: HTTP ${upstream.status}` }, 502, corsHeaders);
+    mimeType = upstream.headers.get("content-type") ?? "";
+    if (!mimeType.startsWith("image/")) return json({ error: "URL не веде на зображення" }, 415, corsHeaders);
+    imageBuffer = await upstream.arrayBuffer();
+  } catch {
+    clearTimeout(timeout);
+    return json({ error: "Не вдалося завантажити зображення" }, 502, corsHeaders);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (imageBuffer.byteLength > MAX_IMAGE_BYTES) {
+    return json({ error: "Зображення завелике для аналізу (макс. 4 МБ)" }, 413, corsHeaders);
+  }
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const base64Image = arrayBufferToBase64(imageBuffer);
+  const prompt = `Проаналізуй це зображення для дизайнера. Дай відповідь українською у форматі рівно такому:
+ПАЛІТРА: перелічи 4-6 основних кольорів зображення як HEX-коди через кому (твоя найкраща оцінка на око, не точний пік-аналіз)
+СТИЛЬ: 1-2 речення опису стилю/настрою зображення (мінімалізм, яскравий, корпоративний тощо)
+ЕЛЕМЕНТИ: коротко що зображено (2-4 слова)`;
+
+  const result = await callGeminiVision(prompt, base64Image, mimeType, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const paletteMatch = result.text.match(/ПАЛІТРА:\s*(.+)/i);
+  const styleMatch = result.text.match(/СТИЛЬ:\s*(.+)/i);
+  const elementsMatch = result.text.match(/ЕЛЕМЕНТИ:\s*(.+)/i);
+
+  const palette = paletteMatch
+    ? paletteMatch[1].split(",").map(c => c.trim()).filter(c => /^#[0-9a-fA-F]{3,8}$/.test(c))
+    : [];
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+
+  return json(
+    {
+      palette,
+      style: styleMatch?.[1]?.trim() ?? null,
+      elements: elementsMatch?.[1]?.trim() ?? null,
+      raw_analysis: result.text,
+      credits_remaining: creditsRemaining,
+      unlimited: creditsCheck.unlimited,
+    },
+    200,
+    corsHeaders
+  );
 }
