@@ -11,7 +11,7 @@
 // ============================================================
 
 import type { Env } from "../types";
-import { selectRows, insertRowReturning, updateRows } from "./supabase";
+import { selectRows, insertRow, insertRowReturning, updateRowsReturning } from "./supabase";
 import { requireOrgAccess } from "./orgAuth";
 
 function json(data: unknown, status: number, headers: Record<string, string>): Response {
@@ -133,6 +133,52 @@ async function getBoardOrgId(boardId: string, env: Env): Promise<string | null> 
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   return res.data?.[0]?.organization_id ?? null;
+}
+
+// History (MODULE_ROADMAP.md "Qorax Creator", "Developer Mode,
+// History, Multiplayer, Marketplace"): append-only знімок вузла при
+// кожній суттєвій зміні. Викликається з handleNodeCreate/
+// handleNodeUpdate(геометрія)/handleNodeDelete нижче — усі три
+// реальні події зміни вузла зараз у системі (Артем: знімати й
+// геометрію, не тільки create/delete). Помилка запису версії НІКОЛИ
+// не повинна ронити основну операцію над вузлом — історія
+// допоміжний шар, як і Knowledge Graph раніше (той самий принцип
+// "не критичний шлях").
+async function snapshotNodeVersion(
+  node: NodeRow,
+  boardId: string,
+  event: "created" | "updated" | "deleted",
+  userId: string | undefined,
+  env: Env
+): Promise<void> {
+  try {
+    await insertRow(
+      "canvas_node_versions",
+      {
+        node_id: node.id,
+        board_id: boardId,
+        event,
+        snapshot: {
+          node_type: node.node_type,
+          position_x: node.position_x,
+          position_y: node.position_y,
+          width: node.width,
+          height: node.height,
+          data: node.data,
+          ref_table: node.ref_table,
+          ref_id: node.ref_id,
+          bound_ref_table: node.bound_ref_table,
+          bound_ref_id: node.bound_ref_id,
+          field_bindings: node.field_bindings,
+        },
+        created_by: userId ?? null,
+      },
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+  } catch (err) {
+    console.error("[creator-history] failed to snapshot node version:", node.id, event, err instanceof Error ? err.message : err);
+  }
 }
 
 // ── GET /api/organizations/:id/canvas-boards ── список дощок організації
@@ -286,8 +332,10 @@ export async function handleNodeCreate(request: Request, env: Env, corsHeaders: 
       env.SUPABASE_SERVICE_ROLE_KEY
     );
     if (!insertRes.ok) return json({ error: insertRes.error }, 500, corsHeaders);
+    const createdLiveEmbed = insertRes.data?.[0] ?? null;
+    if (createdLiveEmbed) await snapshotNodeVersion(createdLiveEmbed, boardId, "created", access.userId, env);
 
-    return json({ ok: true, node: insertRes.data?.[0] ?? null }, 201, corsHeaders);
+    return json({ ok: true, node: createdLiveEmbed }, 201, corsHeaders);
   }
 
   if (body.node_type === "smart_component") {
@@ -338,8 +386,10 @@ export async function handleNodeCreate(request: Request, env: Env, corsHeaders: 
       env.SUPABASE_SERVICE_ROLE_KEY
     );
     if (!insertRes.ok) return json({ error: insertRes.error }, 500, corsHeaders);
+    const createdSmart = insertRes.data?.[0] ?? null;
+    if (createdSmart) await snapshotNodeVersion(createdSmart, boardId, "created", access.userId, env);
 
-    return json({ ok: true, node: insertRes.data?.[0] ?? null }, 201, corsHeaders);
+    return json({ ok: true, node: createdSmart }, 201, corsHeaders);
   }
 
   if (body.node_type !== "embedded_editor") {
@@ -379,8 +429,10 @@ export async function handleNodeCreate(request: Request, env: Env, corsHeaders: 
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   if (!insertRes.ok) return json({ error: insertRes.error }, 500, corsHeaders);
+  const createdEditor = insertRes.data?.[0] ?? null;
+  if (createdEditor) await snapshotNodeVersion(createdEditor, boardId, "created", access.userId, env);
 
-  return json({ ok: true, node: insertRes.data?.[0] ?? null }, 201, corsHeaders);
+  return json({ ok: true, node: createdEditor }, 201, corsHeaders);
 }
 
 // ── PATCH /api/canvas-boards/:id/nodes/:nodeId ── позиція/розмір ──
@@ -408,7 +460,7 @@ export async function handleNodeUpdate(request: Request, env: Env, corsHeaders: 
   if (typeof body.width === "number") patch.width = body.width;
   if (typeof body.height === "number") patch.height = body.height;
 
-  const res = await updateRows(
+  const res = await updateRowsReturning<NodeRow>(
     "canvas_nodes",
     `id=eq.${encodeURIComponent(nodeId)}&board_id=eq.${encodeURIComponent(boardId)}`,
     patch,
@@ -416,6 +468,8 @@ export async function handleNodeUpdate(request: Request, env: Env, corsHeaders: 
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   if (!res.ok) return json({ error: res.error }, 500, corsHeaders);
+  const updated = res.data?.[0] ?? null;
+  if (updated) await snapshotNodeVersion(updated, boardId, "updated", access.userId, env);
 
   return json({ ok: true }, 200, corsHeaders);
 }
@@ -428,6 +482,17 @@ export async function handleNodeDelete(request: Request, env: Env, corsHeaders: 
 
   const access = await requireOrgAccess(request, orgId, "editor", env);
   if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  // Знімок ПЕРЕД видаленням — після DELETE рядка вже не існує, читати
+  // нема звідки. snapshotNodeVersion усе одно допоміжна дія
+  // (try/catch усередині), не критичний шлях для самого видалення.
+  const beforeRes = await selectRows<NodeRow>(
+    "canvas_nodes",
+    `select=id,board_id,node_type,position_x,position_y,width,height,data,ref_table,ref_id,bound_ref_table,bound_ref_id,field_bindings&id=eq.${encodeURIComponent(nodeId)}&board_id=eq.${encodeURIComponent(boardId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const nodeBeforeDelete = beforeRes.data?.[0] ?? null;
 
   const res = await fetch(
     `${env.SUPABASE_URL}/rest/v1/canvas_nodes?id=eq.${encodeURIComponent(nodeId)}&board_id=eq.${encodeURIComponent(boardId)}`,
@@ -442,5 +507,45 @@ export async function handleNodeDelete(request: Request, env: Env, corsHeaders: 
   );
   if (!res.ok) return json({ error: `Delete failed: ${res.status}` }, 500, corsHeaders);
 
+  // canvas_node_versions.node_id -> canvas_nodes(id) on delete SET
+  // NULL (не cascade, виправлено при написанні цього ендпоінту —
+  // cascade видалив би всю історію разом з вузлом, включно з щойно
+  // вставленим знімком "deleted", що суперечило б самій меті
+  // append-only History). Рядок історії лишається назавжди, лише
+  // node_id стає null після видалення самого вузла.
+  if (nodeBeforeDelete) await snapshotNodeVersion(nodeBeforeDelete, boardId, "deleted", access.userId, env);
+
   return json({ ok: true }, 200, corsHeaders);
+}
+
+// ── GET /api/canvas-boards/:id/history ── стрічка версій дошки ───
+// MODULE_ROADMAP.md "Qorax Creator", History. Читає всю дошку
+// одразу (не по вузлах окремо) — денормалізований board_id у
+// 0080_creator_history.sql саме для цього.
+
+interface NodeVersionRow {
+  id: string;
+  node_id: string | null;
+  event: "created" | "updated" | "deleted";
+  snapshot: Record<string, unknown>;
+  created_by: string | null;
+  created_at: string;
+}
+
+export async function handleBoardHistory(request: Request, env: Env, corsHeaders: Record<string, string>, boardId: string): Promise<Response> {
+  const orgId = await getBoardOrgId(boardId, env);
+  if (!orgId) return json({ error: "Дошку не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, orgId, "viewer", env);
+  if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  const res = await selectRows<NodeVersionRow>(
+    "canvas_node_versions",
+    `select=id,node_id,event,snapshot,created_by,created_at&board_id=eq.${encodeURIComponent(boardId)}&order=created_at.desc&limit=100`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!res.ok) return json({ error: res.error }, 500, corsHeaders);
+
+  return json({ versions: res.data ?? [] }, 200, corsHeaders);
 }

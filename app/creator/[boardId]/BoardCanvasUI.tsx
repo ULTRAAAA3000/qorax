@@ -30,7 +30,7 @@ import {
   type NodeProps,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { Plus, Loader2, X, Globe, Zap, Users, BarChart3, Sparkles, Search, ShoppingCart, Share2, GraduationCap, Users2, Trophy, RefreshCw } from "lucide-react";
+import { Plus, Loader2, X, Globe, Zap, Users, BarChart3, Sparkles, Search, ShoppingCart, Share2, GraduationCap, Users2, Trophy, RefreshCw, History } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { ProjectEditorUI } from "@/app/dashboard/sites-builder/[projectId]/ProjectEditorUI";
 
@@ -62,6 +62,15 @@ interface ProductOption {
   currency: string;
 }
 
+interface NodeVersion {
+  id: string;
+  node_id: string | null;
+  event: "created" | "updated" | "deleted";
+  snapshot: { node_type: string };
+  created_by: string | null;
+  created_at: string;
+}
+
 // Дзеркалить LIVE_EMBED_ALLOWED у worker/src/lib/creatorHandler.ts —
 // джерело істини для безпеки саме там (worker перевіряє live_key
 // проти власного whitelist незалежно від того, що надішле клієнт),
@@ -77,6 +86,18 @@ const LIVE_EMBED_OPTIONS: Array<{ key: string; label: string; path: string; icon
   { key: "team", label: "Team", path: "/dashboard/team", icon: Users2 },
   { key: "benchmark", label: "Benchmark", path: "/dashboard/benchmark", icon: Trophy },
 ];
+
+const EVENT_LABEL: Record<string, string> = {
+  created: "Додано",
+  updated: "Переміщено",
+  deleted: "Видалено",
+};
+
+const NODE_TYPE_LABEL: Record<string, string> = {
+  embedded_editor: "Сайт",
+  live_embed: "Живий об'єкт",
+  smart_component: "Товар",
+};
 
 interface Props {
   boardId: string;
@@ -241,6 +262,8 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
   // зв'язок даних, не штучне спрощення UI).
   const [productPickerProjectId, setProductPickerProjectId] = useState<string | null>(null);
   const [products, setProducts] = useState<ProductOption[] | null>(null);
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<NodeVersion[] | null>(null);
   const rawNodesRef = useRef<Map<string, CanvasNodeRow>>(new Map());
   const projectNamesRef = useRef<Map<string, string>>(new Map());
 
@@ -253,6 +276,19 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
       headers: { Authorization: `Bearer ${token}` },
     });
   }, [boardId, setNodes]);
+
+  async function toggleHistory() {
+    const next = !showHistory;
+    setShowHistory(next);
+    if (next && !history) {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/canvas-boards/${boardId}/history`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+      setHistory(data.versions ?? []);
+    }
+  }
 
   const toFlowNode = useCallback((row: CanvasNodeRow): Node => {
     rawNodesRef.current.set(row.id, row);
@@ -500,6 +536,37 @@ export function BoardCanvasUI({ boardId, organizationId }: Props) {
                 </div>
               )}
             </div>
+          </div>
+        )}
+      </div>
+
+      <div className="absolute top-4 right-4 z-10">
+        <button onClick={toggleHistory} className="glow-button text-sm !py-2 !px-4 flex items-center gap-1.5" style={showHistory ? { background: "var(--lime)", color: "#0a0a0a" } : undefined}>
+          <History size={14} /> Історія
+        </button>
+
+        {showHistory && (
+          <div className="mt-2 glow-card p-2 w-72 max-h-96 overflow-auto space-y-1">
+            <div className="flex items-center justify-between px-2 py-1">
+              <span className="text-xs font-medium text-[var(--text-tertiary)]">Останні зміни</span>
+              <button onClick={() => setShowHistory(false)}><X size={13} className="text-[var(--text-tertiary)]" /></button>
+            </div>
+            {!history ? (
+              <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)] px-2 py-3"><Loader2 size={12} className="animate-spin" /> Завантаження...</div>
+            ) : history.length === 0 ? (
+              <p className="text-xs text-[var(--text-tertiary)] px-2 py-3">Ще немає історії змін.</p>
+            ) : (
+              history.map(v => (
+                <div key={v.id} className="px-2 py-1.5 rounded-lg text-xs flex items-center justify-between gap-2">
+                  <span className="text-[var(--text-secondary)] truncate">
+                    {EVENT_LABEL[v.event]} · {NODE_TYPE_LABEL[v.snapshot.node_type] ?? v.snapshot.node_type}
+                  </span>
+                  <span className="text-[var(--text-tertiary)] shrink-0">
+                    {new Date(v.created_at).toLocaleString("uk-UA", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+                  </span>
+                </div>
+              ))
+            )}
           </div>
         )}
       </div>

@@ -123,6 +123,7 @@ import {
   handleNodeCreate,
   handleNodeUpdate,
   handleNodeDelete,
+  handleBoardHistory,
 } from "./lib/creatorHandler";
 import {
   handleBrandKitGet,
@@ -846,6 +847,10 @@ const worker = {
     }
     if (nodeItemMatch && request.method === "DELETE") {
       return handleNodeDelete(request, env, corsHeaders(origin), nodeItemMatch[1], nodeItemMatch[2]);
+    }
+    const boardHistoryMatch = url.pathname.match(/^\/api\/canvas-boards\/([^/]+)\/history$/);
+    if (boardHistoryMatch && request.method === "GET") {
+      return handleBoardHistory(request, env, corsHeaders(origin), boardHistoryMatch[1]);
     }
 
     // ── Qorax Office: Docs MVP (MODULE_ROADMAP.md "Qorax Office") ──
