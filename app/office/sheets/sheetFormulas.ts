@@ -25,6 +25,33 @@ export interface CellFormat {
 
 export type Formats = Record<string, CellFormat>;
 
+// Діаграми Sheets — MVP-звуження: bar/line/pie над одним діапазоном
+// значень (не зведеними таблицями/множинними серіями). Той самий
+// принцип "формула — просто текст, обчислення на льоту", що вже
+// прийнятий для клітинок: chart не зберігає обчислені точки, лише
+// специфікацію (діапазон+тип), рендерер читає актуальні значення
+// клітинок при кожному показі.
+export interface ChartSpec {
+  id: string;
+  type: "bar" | "line" | "pie";
+  title: string;
+  valueRange: string; // "B2:B8"
+  labelRange?: string; // "A2:A8" — якщо не задано, підписи 1,2,3...
+}
+
+/** Числові значення діапазону (нечислові/порожні клітинки — 0, щоб не ламати індекси відповідності підписам). */
+export function getRangeValues(cells: Cells, range: string): number[] {
+  return parseRange(range).map(key => {
+    const v = parseFloat(evaluateCell(cells, key));
+    return isNaN(v) ? 0 : v;
+  });
+}
+
+/** Текстові підписи діапазону (для labelRange) — сирі значення клітинок, не обчислення формул. */
+export function getRangeLabels(cells: Cells, range: string): string[] {
+  return parseRange(range).map(key => cells[key] ?? "");
+}
+
 /** Застосовує numberFormat до вже обчисленого (evaluateCell) значення — тільки для показу, не змінює raw. */
 export function formatDisplayValue(value: string, format?: NumberFormat): string {
   if (!format || format === "plain" || value === "") return value;
@@ -68,7 +95,8 @@ function parseCellKey(key: string): { col: number; row: number } | null {
   return { col: colToIndex(colMatch[0]), row: parseInt(rowMatch[0], 10) - 1 };
 }
 
-function parseRange(range: string): string[] {
+/** Розбирає "A1:A5" (чи одну клітинку "A1") у список ключів — переюзано і формулами (SUM/AVERAGE/COUNT), і Chart-рендерингом (SheetChart.tsx). */
+export function parseRange(range: string): string[] {
   const [start, end] = range.split(":");
   if (!end) return [start];
   const s = parseCellKey(start.trim());

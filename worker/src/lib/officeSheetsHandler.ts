@@ -28,10 +28,11 @@ interface SheetData {
   columns: number;
   rows: number;
   cells: Record<string, string>; // "A1" -> текст/число/формула як рядок
-  // formats — опційна sparse-мапа форматування (bold/color/numberFormat),
-  // worker не валідує її форму (jsonb, наскрізна передача), формат
-  // визначено на клієнті в app/office/sheets/sheetFormulas.ts.
+  // formats/charts — опційні поля, worker не валідує їх форму (jsonb,
+  // наскрізна передача), визначені на клієнті в
+  // app/office/sheets/sheetFormulas.ts.
   formats?: Record<string, unknown>;
+  charts?: unknown[];
 }
 
 interface SheetRow {

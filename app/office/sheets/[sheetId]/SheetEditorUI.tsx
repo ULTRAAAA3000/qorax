@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
-import { Loader2, Sparkles, Plus, Download, Upload, X, Bold, Palette } from "lucide-react";
+import { Loader2, Sparkles, Plus, Download, Upload, X, Bold, Palette, BarChart3 } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
-import { type Cells, type Formats, type CellFormat, type NumberFormat, cellKey, indexToCol, evaluateCell, formatDisplayValue, cellsToCsv, parseCsv, csvToCells } from "../sheetFormulas";
+import { type Cells, type Formats, type CellFormat, type NumberFormat, type ChartSpec, cellKey, indexToCol, evaluateCell, formatDisplayValue, cellsToCsv, parseCsv, csvToCells } from "../sheetFormulas";
+import { SheetChart } from "../SheetChart";
 import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
 
@@ -12,6 +13,7 @@ interface SheetData {
   rows: number;
   cells: Cells;
   formats?: Formats;
+  charts?: ChartSpec[];
 }
 
 interface Props {
@@ -48,6 +50,9 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
   const [rows, setRows] = useState(initialData?.rows ?? 30);
   const [cells, setCells] = useState<Cells>(initialData?.cells ?? {});
   const [formats, setFormats] = useState<Formats>(initialData?.formats ?? {});
+  const [charts, setCharts] = useState<ChartSpec[]>(initialData?.charts ?? []);
+  const [showChartForm, setShowChartForm] = useState(false);
+  const [chartDraft, setChartDraft] = useState<{ type: ChartSpec["type"]; title: string; valueRange: string; labelRange: string }>({ type: "bar", title: "", valueRange: "", labelRange: "" });
   const [focusedKey, setFocusedKey] = useState<string | null>(null);
   // toolbarKey — окремо від focusedKey: focusedKey скидається на
   // null при blur інпута (потрібно для isFocused у рендері клітинки —
@@ -65,11 +70,13 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
   const inputRefs = useRef<Map<string, HTMLInputElement>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // formatsRef — щоб scheduleSave() у вже наявних 8 місцях виклику
-  // (зміна клітинок/сітки) не загубила поточні formats, не
-  // переписуючи кожен виклик четвертим аргументом.
+  // formatsRef/chartsRef — щоб scheduleSave() у вже наявних місцях
+  // виклику (зміна клітинок/сітки) не загубила поточні formats/
+  // charts, не переписуючи кожен виклик додатковими аргументами.
   const formatsRef = useRef(formats);
   useEffect(() => { formatsRef.current = formats; }, [formats]);
+  const chartsRef = useRef(charts);
+  useEffect(() => { chartsRef.current = charts; }, [charts]);
 
   const persist = useCallback(async (patch: { title?: string; data?: SheetData }) => {
     setSaving(true);
@@ -88,7 +95,7 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
   const scheduleSave = useCallback((nextCells: Cells, nextColumns: number, nextRows: number, nextFormats?: Formats) => {
     if (saveTimeout.current) clearTimeout(saveTimeout.current);
     saveTimeout.current = setTimeout(() => {
-      persist({ data: { cells: nextCells, columns: nextColumns, rows: nextRows, formats: nextFormats ?? formatsRef.current } });
+      persist({ data: { cells: nextCells, columns: nextColumns, rows: nextRows, formats: nextFormats ?? formatsRef.current, charts: chartsRef.current } });
     }, 600);
   }, [persist]);
 
@@ -115,6 +122,28 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
       scheduleSave(cells, columns, rows, next);
       return next;
     });
+  }
+
+  function addChart() {
+    if (!chartDraft.valueRange.trim()) return;
+    const newChart: ChartSpec = {
+      id: `chart-${Date.now()}`,
+      type: chartDraft.type,
+      title: chartDraft.title.trim(),
+      valueRange: chartDraft.valueRange.trim().toUpperCase(),
+      labelRange: chartDraft.labelRange.trim() ? chartDraft.labelRange.trim().toUpperCase() : undefined,
+    };
+    const next = [...charts, newChart];
+    setCharts(next);
+    persist({ data: { cells, columns, rows, formats, charts: next } });
+    setShowChartForm(false);
+    setChartDraft({ type: "bar", title: "", valueRange: "", labelRange: "" });
+  }
+
+  function deleteChart(id: string) {
+    const next = charts.filter(c => c.id !== id);
+    setCharts(next);
+    persist({ data: { cells, columns, rows, formats, charts: next } });
   }
 
   function moveFocus(col: number, row: number) {
@@ -251,6 +280,9 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
           <button onClick={exportCsv} className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)]">
             <Download size={12} /> Експорт CSV
           </button>
+          <button onClick={() => setShowChartForm(v => !v)} className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)]">
+            <BarChart3 size={12} /> Діаграма
+          </button>
           <button
             onClick={() => setShowAi(v => !v)}
             className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5"
@@ -279,6 +311,65 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
         </div>
       )}
       {aiError && <p className="px-6 py-1 text-xs" style={{ color: "#ff6b6b" }}>{aiError}</p>}
+
+      {showChartForm && (
+        <div className="px-4 sm:px-6 py-3 flex items-end gap-2 flex-wrap" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--text-tertiary)]">
+            Тип
+            <select
+              value={chartDraft.type}
+              onChange={e => setChartDraft(d => ({ ...d, type: e.target.value as ChartSpec["type"] }))}
+              className="text-xs rounded-lg px-2 py-1.5 outline-none"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-secondary)" }}
+            >
+              <option value="bar">Стовпчики</option>
+              <option value="line">Лінія</option>
+              <option value="pie">Кругова</option>
+            </select>
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--text-tertiary)]">
+            Значення (напр. B2:B8)
+            <input
+              value={chartDraft.valueRange}
+              onChange={e => setChartDraft(d => ({ ...d, valueRange: e.target.value }))}
+              placeholder="B2:B8"
+              className="text-xs rounded-lg px-2 py-1.5 outline-none w-28"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--text-tertiary)]">
+            Підписи (напр. A2:A8)
+            <input
+              value={chartDraft.labelRange}
+              onChange={e => setChartDraft(d => ({ ...d, labelRange: e.target.value }))}
+              placeholder="A2:A8 (необов'язково)"
+              className="text-xs rounded-lg px-2 py-1.5 outline-none w-32"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[10px] text-[var(--text-tertiary)]">
+            Назва
+            <input
+              value={chartDraft.title}
+              onChange={e => setChartDraft(d => ({ ...d, title: e.target.value }))}
+              placeholder="Назва діаграми"
+              className="text-xs rounded-lg px-2 py-1.5 outline-none w-36"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+            />
+          </label>
+          <button onClick={addChart} disabled={!chartDraft.valueRange.trim()} className="glow-button text-xs !py-1.5 !px-3 disabled:opacity-50">
+            Додати
+          </button>
+        </div>
+      )}
+
+      {charts.length > 0 && (
+        <div className="px-4 sm:px-6 py-4 flex items-start gap-3 flex-wrap" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+          {charts.map(chart => (
+            <SheetChart key={chart.id} chart={chart} cells={cells} onDelete={() => deleteChart(chart.id)} />
+          ))}
+        </div>
+      )}
 
       {toolbarKey && (
         <div className="px-4 sm:px-6 py-2 flex items-center gap-1" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
