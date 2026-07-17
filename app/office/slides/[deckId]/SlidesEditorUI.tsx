@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Plus, Loader2, Sparkles, Trash2, Type, Heading2, List, CheckSquare, Play, X, ChevronLeft, ChevronRight, Download } from "lucide-react";
+import { Plus, Loader2, Sparkles, Trash2, Type, Heading2, List, CheckSquare, Play, X, ChevronLeft, ChevronRight, Download, Image as ImageIcon } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow, BlockStatic } from "../../BlockEditor";
 import { exportSlidesToPdf } from "../../exportPdf";
@@ -94,6 +94,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
       type === "paragraph" ? { id, type, text: "" } :
       type === "heading" ? { id, type, level: 2, text: "" } :
       type === "bullet_list" ? { id, type, items: [""] } :
+      type === "image" ? { id, type, url: "" } :
       { id, type, items: [{ text: "", checked: false }] };
     updateActiveSlideBlocks(blocks => [...blocks, block]);
   }
@@ -320,6 +321,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
               <BlockAddButton icon={Heading2} label="Заголовок" onClick={() => addBlock("heading")} />
               <BlockAddButton icon={List} label="Список" onClick={() => addBlock("bullet_list")} />
               <BlockAddButton icon={CheckSquare} label="Чек-лист" onClick={() => addBlock("checklist")} />
+              <BlockAddButton icon={ImageIcon} label="Зображення" onClick={() => addBlock("image")} />
             </div>
           </div>
         </div>

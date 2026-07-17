@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Loader2, Sparkles, Heading2, List, CheckSquare, Type, Download, LayoutTemplate, Check } from "lucide-react";
+import { Loader2, Sparkles, Heading2, List, CheckSquare, Type, Download, LayoutTemplate, Check, Image as ImageIcon } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow } from "../BlockEditor";
 import { exportDocToPdf } from "../exportPdf";
@@ -87,6 +87,7 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
       type === "paragraph" ? { id, type, text: "" } :
       type === "heading" ? { id, type, level: 2, text: "" } :
       type === "bullet_list" ? { id, type, items: [""] } :
+      type === "image" ? { id, type, url: "" } :
       { id, type, items: [{ text: "", checked: false }] };
     setBlocks(prev => {
       const next = [...prev, block];
@@ -247,6 +248,7 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
         <BlockAddButton icon={Heading2} label="Заголовок" onClick={() => addBlock("heading")} />
         <BlockAddButton icon={List} label="Список" onClick={() => addBlock("bullet_list")} />
         <BlockAddButton icon={CheckSquare} label="Чек-лист" onClick={() => addBlock("checklist")} />
+        <BlockAddButton icon={ImageIcon} label="Зображення" onClick={() => addBlock("image")} />
       </div>
     </div>
   );

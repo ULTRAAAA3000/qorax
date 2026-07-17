@@ -14,7 +14,8 @@ export type Block =
   | { id: string; type: "paragraph"; text: string }
   | { id: string; type: "heading"; level: 1 | 2 | 3; text: string }
   | { id: string; type: "bullet_list"; items: string[] }
-  | { id: string; type: "checklist"; items: Array<{ text: string; checked: boolean }> };
+  | { id: string; type: "checklist"; items: Array<{ text: string; checked: boolean }> }
+  | { id: string; type: "image"; url: string; alt?: string };
 
 export function newBlockId(): string {
   return `b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -134,6 +135,30 @@ export function BlockContent({ block, onChange }: { block: Block; onChange: (upd
     );
   }
 
+  if (block.type === "image") {
+    return (
+      <div className="space-y-1.5">
+        <input
+          value={block.url}
+          onChange={e => onChange(b => (b.type === "image" ? { ...b, url: e.target.value } : b))}
+          placeholder="URL зображення (https://...)"
+          className="w-full bg-transparent outline-none text-sm rounded-lg px-2 py-1.5"
+          style={{ border: "1px solid rgba(255,255,255,0.08)" }}
+        />
+        {block.url && (
+          // eslint-disable-next-line @next/next/no-img-element -- довільний зовнішній URL, не з /public, next/image тут не підходить
+          <img src={block.url} alt={block.alt ?? ""} className="max-w-full rounded-lg" style={{ maxHeight: 240 }} onError={e => { (e.target as HTMLImageElement).style.display = "none"; }} />
+        )}
+        <input
+          value={block.alt ?? ""}
+          onChange={e => onChange(b => (b.type === "image" ? { ...b, alt: e.target.value } : b))}
+          placeholder="Опис зображення (для доступності, необов'язково)"
+          className="w-full bg-transparent outline-none text-xs text-[var(--text-tertiary)]"
+        />
+      </div>
+    );
+  }
+
   // checklist
   return (
     <div className="space-y-1.5">
@@ -189,6 +214,11 @@ export function BlockStatic({ block }: { block: Block }) {
   if (block.type === "heading") {
     const sizes: Record<1 | 2 | 3, string> = { 1: "text-5xl", 2: "text-3xl", 3: "text-2xl" };
     return <h2 className={`font-display font-semibold ${sizes[block.level]}`}>{block.text}</h2>;
+  }
+  if (block.type === "image") {
+    if (!block.url) return null;
+    // eslint-disable-next-line @next/next/no-img-element -- довільний зовнішній URL, Present-режим і PDF-експорт потребують звичайний <img>
+    return <img src={block.url} alt={block.alt ?? ""} className="max-w-full rounded-lg" style={{ maxHeight: "60vh" }} />;
   }
   if (block.type === "bullet_list") {
     return (

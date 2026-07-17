@@ -39,7 +39,8 @@ export type OfficeBlock =
   | { id: string; type: "paragraph"; text: string }
   | { id: string; type: "heading"; level: 1 | 2 | 3; text: string }
   | { id: string; type: "bullet_list"; items: string[] }
-  | { id: string; type: "checklist"; items: Array<{ text: string; checked: boolean }> };
+  | { id: string; type: "checklist"; items: Array<{ text: string; checked: boolean }> }
+  | { id: string; type: "image"; url: string; alt?: string };
 
 interface DocRow {
   id: string;

@@ -42,6 +42,16 @@ function blockToHtml(block: Block): string {
   if (block.type === "bullet_list") {
     return `<ul style="margin:0 0 10px;padding-left:20px;">${block.items.map(i => `<li style="font-size:13px;line-height:1.6;">${escapeHtml(i)}</li>`).join("")}</ul>`;
   }
+  if (block.type === "image") {
+    if (!block.url) return "";
+    // crossorigin="anonymous" — щоб html2canvas міг прочитати піксели
+    // зображення для растеризації. Якщо сервер картинки не віддає
+    // CORS-заголовки, html2canvas тихо пропустить зображення (відомий
+    // компроміс цієї бібліотеки, не можна обійти без проксі) — той
+    // самий рівень чесності про межі перевірки, що вже позначений
+    // вище для всього PDF-експорту.
+    return `<img src="${escapeHtml(block.url)}" crossorigin="anonymous" style="max-width:100%;border-radius:6px;margin:0 0 10px;display:block;" />`;
+  }
   // checklist
   return `<ul style="margin:0 0 10px;padding-left:0;list-style:none;">${block.items
     .map(i => `<li style="font-size:13px;line-height:1.6;${i.checked ? "opacity:0.5;text-decoration:line-through;" : ""}">${i.checked ? "☑" : "☐"} ${escapeHtml(i.text)}</li>`)
@@ -63,7 +73,7 @@ export async function exportDocToPdf(title: string, blocks: Block[]): Promise<vo
   const container = buildContainer(html, 760);
   try {
     const doc = new jsPDF({ unit: "pt", format: "a4" });
-    await doc.html(container, { x: 24, y: 24, width: 547, windowWidth: 760 });
+    await doc.html(container, { x: 24, y: 24, width: 547, windowWidth: 760, html2canvas: { useCORS: true } });
     doc.save(`${title || "документ"}.pdf`);
   } finally {
     document.body.removeChild(container);
@@ -85,7 +95,7 @@ export async function exportSlidesToPdf(title: string, slides: Array<{ blocks: B
       // fromPage/pagesplit=false — не даємо jsPDF самому додавати
       // сторінки за висотою вмісту, кожен слайд свідомо один pt-блок
       // на одній вже доданій сторінці (addPage() вище керує пагінацією).
-      await doc.html(container, { x: 40, y: 40, width: 782, windowWidth: 900, autoPaging: false });
+      await doc.html(container, { x: 40, y: 40, width: 782, windowWidth: 900, autoPaging: false, html2canvas: { useCORS: true } });
     } finally {
       document.body.removeChild(container);
     }
