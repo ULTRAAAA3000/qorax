@@ -1,9 +1,10 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Zap, ScanSearch, Bookmark, Languages, FileStack, ListChecks, Palette, Mail, Loader2, X, Scale } from "lucide-react";
+import { Zap, ScanSearch, Bookmark, Languages, FileStack, ListChecks, Palette, Mail, Loader2, X, Scale, ImageIcon } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { AiCompareModal } from "./AiCompareModal";
+import { VisualSearchModal } from "./VisualSearchModal";
 
 interface Props {
   organizationId: string;
@@ -30,6 +31,7 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
   const [resultText, setResultText] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
+  const [showVisualSearch, setShowVisualSearch] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -104,6 +106,7 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
           <ActionItem icon={Languages} label="Translate" onClick={() => runAiAction("translate")} />
           <ActionItem icon={FileStack} label="Summarize" onClick={() => runAiAction("summarize")} />
           <ActionItem icon={ListChecks} label="Add Task" onClick={addTask} />
+          <ActionItem icon={ImageIcon} label="Visual Search" onClick={() => { setOpen(false); setShowVisualSearch(true); }} />
           <div className="my-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
           <ActionItem icon={Palette} label="Create Design" disabled note="Creator — скоро" />
           <ActionItem icon={Mail} label="Generate Email" disabled note="Mail — скоро" />
@@ -116,6 +119,14 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
           competitorUrl={currentUrl}
           getFreshToken={getFreshToken}
           onClose={() => setShowCompare(false)}
+        />
+      )}
+
+      {showVisualSearch && (
+        <VisualSearchModal
+          organizationId={organizationId}
+          getFreshToken={getFreshToken}
+          onClose={() => setShowVisualSearch(false)}
         />
       )}
 

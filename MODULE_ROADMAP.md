@@ -2454,6 +2454,24 @@ Builder-ів, тепер явно для КОЖНОГО режиму — Canvas 
   append-only `canvas_node_versions` (знімок `data`/`field_bindings`
   при кожній суттєвій зміні) — можна зробити раніше за Multiplayer,
   не залежить від Durable Objects.
+
+  **Статус: реалізовано.** `0080_creator_history.sql` — знімок
+  береться при `create`/`update`(геометрія)/`delete` вузла (за
+  рішенням Артема — і геометрія теж, не лише create/delete, ціною
+  більшого обсягу записів). Важлива правка під час написання:
+  оригінальний `node_id … on delete cascade` видалив би ВСЮ історію
+  разом із самим вузлом, включно зі щойно вставленим знімком
+  `"deleted"` — суперечило б самій меті append-only History.
+  Виправлено на `on delete set null` — рядки історії лишаються
+  назавжди, лише посилання на видалений вузол розривається.
+  `handleBoardHistory` — `GET /api/canvas-boards/:id/history`,
+  читає денормалізований `board_id` (без join через `canvas_nodes`
+  на кожен рядок). UI — кнопка "Історія" у `BoardCanvasUI.tsx`,
+  список останніх 100 подій дошки. Відкат до попередньої версії
+  (не тільки перегляд) — НЕ цей прохід, окрема, більша задача
+  (застосування знімка назад вимагає обережної логіки для кожного
+  `node_type`, особливо `smart_component` з `field_bindings`).
+
 - **Multiplayer** — той самий real-time шар, що вже описаний вище
   для Canvas (Durable Objects/Liveblocks) — друга ітерація.
 - **Marketplace** (шаблони/UI Kit/Brand Kit/компоненти/іконки/

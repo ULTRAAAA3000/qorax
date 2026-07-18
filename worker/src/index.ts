@@ -123,6 +123,7 @@ import {
   handleNodeCreate,
   handleNodeUpdate,
   handleNodeDelete,
+  handleBoardHistory,
 } from "./lib/creatorHandler";
 import {
   handleBrandKitGet,
@@ -211,7 +212,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
-import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare, handleBrowserReadingMode } from "./lib/browserHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare, handleBrowserReadingMode, handleVisualSearch, handleProxyTokenIssue } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -847,6 +848,10 @@ const worker = {
     if (nodeItemMatch && request.method === "DELETE") {
       return handleNodeDelete(request, env, corsHeaders(origin), nodeItemMatch[1], nodeItemMatch[2]);
     }
+    const boardHistoryMatch = url.pathname.match(/^\/api\/canvas-boards\/([^/]+)\/history$/);
+    if (boardHistoryMatch && request.method === "GET") {
+      return handleBoardHistory(request, env, corsHeaders(origin), boardHistoryMatch[1]);
+    }
 
     // ── Qorax Office: Docs MVP (MODULE_ROADMAP.md "Qorax Office") ──
     const docsListMatch = url.pathname.match(/^\/api\/organizations\/([^/]+)\/office-documents$/);
@@ -978,6 +983,9 @@ const worker = {
     }
 
     // ── Qorax Browser routes (MODULE_ROADMAP.md, "Qorax Browser") ──
+    if (url.pathname === "/api/browser/proxy-token" && request.method === "POST") {
+      return handleProxyTokenIssue(request, env, corsHeaders(origin));
+    }
     if (url.pathname === "/api/browser/proxy" && request.method === "GET") {
       return handleBrowserProxy(request, env, corsHeaders(origin));
     }
@@ -1017,6 +1025,9 @@ const worker = {
     }
     if (url.pathname === "/api/browser/reading-mode" && request.method === "POST") {
       return handleBrowserReadingMode(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/visual-search" && request.method === "POST") {
+      return handleVisualSearch(request, env, corsHeaders(origin));
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──

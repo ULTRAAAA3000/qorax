@@ -115,6 +115,64 @@ export async function callGemini(prompt: string, apiKey: string): Promise<{ ok: 
   }
 }
 
+// callGeminiVision — той самий Gemini-виклик, що callGemini вище,
+// але з image part у contents (Gemini підтримує мультимодальний
+// вхід: text + inline_data з base64-зображенням). Потрібно для
+// Visual Search (Qorax Browser) — опис кольорової палітри/стилю
+// зображення, коли реального pixel-аналізу немає (Cloudflare
+// Workers не має Canvas API чи PNG/JPEG-декодера з коробки).
+// Окрема функція, а не розширення callGemini — щоб не міняти
+// сигнатуру виклику в 6+ місцях, що вже використовують текстовий
+// callGemini.
+export async function callGeminiVision(
+  prompt: string,
+  imageBase64: string,
+  mimeType: string,
+  apiKey: string
+): Promise<{ ok: true; text: string } | { ok: false; error: string; status: number }> {
+  const body = {
+    contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: mimeType, data: imageBase64 } }] }],
+    generationConfig: { temperature: 0.4, maxOutputTokens: 1000 },
+  };
+
+  const doFetch = async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+    try {
+      return await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify(body),
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+  };
+
+  try {
+    let resp = await doFetch();
+    if (resp.status === 429 || resp.status === 503) {
+      const delay = resp.status === 503 ? 6000 : 4000;
+      await new Promise(r => setTimeout(r, delay));
+      resp = await doFetch();
+    }
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error("[content-gen] Gemini vision error:", resp.status, errText.slice(0, 300));
+      return { ok: false, error: resp.status === 429 ? "AI перевантажений — спробуйте через хвилину" : "AI тимчасово недоступний", status: 503 };
+    }
+    interface GeminiResponse { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
+    const data = (await resp.json()) as GeminiResponse;
+    const text = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+    if (!text) return { ok: false, error: "AI не повернув результат", status: 502 };
+    return { ok: true, text };
+  } catch (err) {
+    console.error("[content-gen] vision fetch error:", err);
+    return { ok: false, error: "AI тимчасово недоступний", status: 503 };
+  }
+}
+
 // ── Route: POST /api/ai/generate ─────────────────────────────────────
 
 export async function handleAiGenerate(

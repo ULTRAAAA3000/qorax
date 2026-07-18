@@ -29,8 +29,9 @@ import { json } from "./httpUtils";
 import { requireOrgAccess } from "./orgAuth";
 import { insertRow, selectRows, updateRows } from "./supabase";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
-import { callGemini } from "./contentGeneration";
+import { callGemini, callGeminiVision } from "./contentGeneration";
 import { handleDocCreate } from "./officeHandler";
+import { checkRateLimit, getClientIp } from "./rateLimit";
 
 // Справжній браузерний User-Agent — на відміну від DEFAULT_USER_AGENT
 // в httpUtils.ts (той навмисно бот-агент "QoraxBot/1.0" для чесного
@@ -100,18 +101,66 @@ function injectSelectionScript(html: string): string {
   return html + script;
 }
 
-// GET /api/browser/proxy?url=...&organization_id=...
+// ── Proxy token (виправлення критичного бага) ──────────────────────
+// <iframe src="..."> — це звичайна браузерна навігація, вона фізично
+// НЕ МОЖЕ надіслати заголовок Authorization: Bearer <token> (той
+// працює лише для fetch()-запитів з JS). Тому requireOrgAccess()
+// (що читає саме цей заголовок) завжди повертав Unauthorized для
+// прямого <iframe src>, ЩО Й БУЛО БАГОМ — proxy ніколи не міг
+// спрацювати через iframe з таким типом авторизації.
+//
+// Рішення: короткоживущий одноразовий токен у query-параметрі.
+// Фронтенд СПОЧАТКУ робить звичайний authenticated fetch (Bearer JWT)
+// на /api/browser/proxy-token, отримує токен, ПОТІМ підставляє його
+// в src iframe замість organization_id. Токен зберігається в
+// RATE_LIMIT_KV (перевикористання наявного KV namespace, не новий
+// біндинг) з TTL 60 секунд — достатньо для завантаження iframe,
+// замало для практичного зловживання навіть якщо токен кудись
+// протече (напр. в логи сервера через query-параметр).
+
+const PROXY_TOKEN_TTL_SEC = 60;
+
+interface ProxyTokenBody {
+  organization_id: string;
+}
+
+// POST /api/browser/proxy-token
+export async function handleProxyTokenIssue(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: ProxyTokenBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const token = crypto.randomUUID();
+  await env.RATE_LIMIT_KV.put(`browser-proxy-token:${token}`, body.organization_id, { expirationTtl: PROXY_TOKEN_TTL_SEC });
+
+  return json({ token }, 200, corsHeaders);
+}
+
+// GET /api/browser/proxy?url=...&token=...
 // Повертає HTML сторінки з <base href> rewrite, без frame-blocking
 // заголовків. Рендериться в <iframe> на фронтенді.
 export async function handleBrowserProxy(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
   const url = new URL(request.url);
   const targetUrlRaw = url.searchParams.get("url");
-  const organizationId = url.searchParams.get("organization_id");
-  if (!organizationId) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const token = url.searchParams.get("token");
+  if (!token) return json({ error: "token обов'язковий" }, 400, corsHeaders);
   if (!targetUrlRaw) return json({ error: "url обов'язковий" }, 400, corsHeaders);
 
-  const access = await requireOrgAccess(request, organizationId, "viewer", env);
-  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+  // Rate limit по IP — proxy виконує зовнішній fetch на довільний URL,
+  // без ліміту Worker можна використати як анонімний HTTP-проксі
+  // (відомий пробіл, зафіксований ще в EXECUTION_PLAN.md при MVP).
+  const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, `browser-proxy:${getClientIp(request)}`, 60, 60);
+  if (!rateLimit.allowed) return json({ error: "Забагато запитів, спробуйте пізніше" }, 429, corsHeaders);
+
+  const organizationId = await env.RATE_LIMIT_KV.get(`browser-proxy-token:${token}`);
+  if (!organizationId) return json({ error: "Токен недійсний або прострочений" }, 401, corsHeaders);
 
   const targetUrl = isValidHttpUrl(targetUrlRaw);
   if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
@@ -1011,4 +1060,110 @@ ${plainText}
   };
 
   return json({ ...result, credits_remaining: creditsRemaining, unlimited }, 200, corsHeaders);
+}
+
+// ============================================================
+// Visual Search (MODULE_ROADMAP.md, "Qorax Browser" — восьма
+// ітерація). Обсяг звужено (узгоджено з Артемом): roadmap описує
+// "пошук джерела, схожих зображень, автоматичний SVG, усе одразу в
+// Creator" — недоступно без зовнішнього reverse-image-search API
+// (якого немає) і без API прийому візуального контенту в Creator
+// (той самий блокер, що Smart Capture/Create Design: лише
+// embedded_editor/live_embed/smart_component вузли, жодного "довільне
+// зображення"). Реалізовано те, що чесно можливо: опис кольорової
+// палітри й стилю зображення через Gemini Vision (Cloudflare Workers
+// не має Canvas API чи PNG/JPEG-декодера для реального pixel-аналізу
+// "з коробки" — тому текстовий опис від AI, не точні HEX-коди з
+// пікселів).
+
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4 МБ — з запасом під ліміт inline_data Gemini API
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 8192; // уникаємо String.fromCharCode(...bytes) на весь масив одразу — стек-ліміт на великих зображеннях
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return btoa(binary);
+}
+
+interface VisualSearchBody {
+  organization_id: string;
+  image_url: string;
+}
+
+// POST /api/browser/visual-search
+export async function handleVisualSearch(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: VisualSearchBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const imageUrl = isValidHttpUrl(body.image_url ?? "");
+  if (!imageUrl) return json({ error: "Некоректний URL зображення" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  let imageBuffer: ArrayBuffer;
+  let mimeType: string;
+  try {
+    const upstream = await fetch(imageUrl.toString(), { signal: controller.signal, headers: { "User-Agent": BROWSER_USER_AGENT } });
+    if (!upstream.ok) return json({ error: `Не вдалося завантажити зображення: HTTP ${upstream.status}` }, 502, corsHeaders);
+    mimeType = upstream.headers.get("content-type") ?? "";
+    if (!mimeType.startsWith("image/")) return json({ error: "URL не веде на зображення" }, 415, corsHeaders);
+    imageBuffer = await upstream.arrayBuffer();
+  } catch {
+    clearTimeout(timeout);
+    return json({ error: "Не вдалося завантажити зображення" }, 502, corsHeaders);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (imageBuffer.byteLength > MAX_IMAGE_BYTES) {
+    return json({ error: "Зображення завелике для аналізу (макс. 4 МБ)" }, 413, corsHeaders);
+  }
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const base64Image = arrayBufferToBase64(imageBuffer);
+  const prompt = `Проаналізуй це зображення для дизайнера. Дай відповідь українською у форматі рівно такому:
+ПАЛІТРА: перелічи 4-6 основних кольорів зображення як HEX-коди через кому (твоя найкраща оцінка на око, не точний пік-аналіз)
+СТИЛЬ: 1-2 речення опису стилю/настрою зображення (мінімалізм, яскравий, корпоративний тощо)
+ЕЛЕМЕНТИ: коротко що зображено (2-4 слова)`;
+
+  const result = await callGeminiVision(prompt, base64Image, mimeType, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const paletteMatch = result.text.match(/ПАЛІТРА:\s*(.+)/i);
+  const styleMatch = result.text.match(/СТИЛЬ:\s*(.+)/i);
+  const elementsMatch = result.text.match(/ЕЛЕМЕНТИ:\s*(.+)/i);
+
+  const palette = paletteMatch
+    ? paletteMatch[1].split(",").map(c => c.trim()).filter(c => /^#[0-9a-fA-F]{3,8}$/.test(c))
+    : [];
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+
+  return json(
+    {
+      palette,
+      style: styleMatch?.[1]?.trim() ?? null,
+      elements: elementsMatch?.[1]?.trim() ?? null,
+      raw_analysis: result.text,
+      credits_remaining: creditsRemaining,
+      unlimited: creditsCheck.unlimited,
+    },
+    200,
+    corsHeaders
+  );
 }
