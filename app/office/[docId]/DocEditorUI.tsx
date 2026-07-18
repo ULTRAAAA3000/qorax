@@ -7,6 +7,7 @@ import { type Block, newBlockId, BlockAddButton, BlockRow } from "../BlockEditor
 import { exportDocToPdf } from "../exportPdf";
 import { usePresence } from "../usePresence";
 import { PresenceAvatars } from "../PresenceAvatars";
+import { useLiveSync } from "../useLiveSync";
 
 interface Props {
   docId: string;
@@ -48,6 +49,13 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
   const [aiError, setAiError] = useState<string | null>(null);
 
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // notifySavedRef — useLiveSync() (нижче) повертає notifySaved, але
+  // persist() визначено вище виклику useLiveSync і посилається на неї
+  // до того, як хук встиг повернути реальну функцію — той самий
+  // патерн "ref для уникнення stale/undefined closure", що вже
+  // застосований у SheetEditorUI.tsx (formatsRef/chartsRef).
+  const notifySavedRef = useRef<() => void>(() => {});
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const persist = useCallback(async (patch: { title?: string; content?: { blocks: Block[] } }) => {
     setSaving(true);
@@ -58,6 +66,7 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
+      notifySavedRef.current();
     } finally {
       setSaving(false);
     }
@@ -72,6 +81,36 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
   }, [persist]);
 
   useEffect(() => () => { if (saveTimeout.current) clearTimeout(saveTimeout.current); }, []);
+
+  const reloadFromServer = useCallback(async () => {
+    if (saveTimeout.current) { clearTimeout(saveTimeout.current); saveTimeout.current = null; }
+    const token = await getFreshToken();
+    const res = await fetch(`${API_BASE_URL}/api/office-documents/${docId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.document) {
+      setTitle(data.document.title);
+      setBlocks(data.document.content?.blocks ?? []);
+    }
+  }, [docId]);
+
+  const { pendingUpdate, applyPendingUpdate: applyPendingUpdateRaw, notifySaved } = useLiveSync("office_documents", docId, {
+    isEditing: () => !!containerRef.current && containerRef.current.contains(document.activeElement),
+    onRemoteUpdate: reloadFromServer,
+  });
+  useEffect(() => { notifySavedRef.current = notifySaved; }, [notifySaved]);
+
+  // Захист від гонки: якщо на момент кліку "Оновити зараз" ще
+  // "тікає" відкладений scheduleSave() від попереднього натискання
+  // клавіші (600мс дебаунс), він міг би спрацювати ПІСЛЯ
+  // reloadFromServer() і перезаписати щойно підтягнуті свіжі дані
+  // застарілими локальними — скасовуємо таймер перед перезавантаженням.
+  const applyPendingUpdate = useCallback(() => {
+    if (saveTimeout.current) { clearTimeout(saveTimeout.current); saveTimeout.current = null; }
+    applyPendingUpdateRaw();
+  }, [applyPendingUpdateRaw]);
 
   function updateBlock(id: string, updater: (b: Block) => Block) {
     setBlocks(prev => {
@@ -166,7 +205,15 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-6 sm:px-8 py-10">
+    <div ref={containerRef} className="mx-auto max-w-3xl px-6 sm:px-8 py-10">
+      {pendingUpdate && (
+        <div className="rounded-xl px-4 py-2.5 mb-4 flex items-center justify-between gap-3 text-xs" style={{ background: "rgba(140,246,255,0.08)", border: "1px solid rgba(140,246,255,0.25)" }}>
+          <span style={{ color: "var(--cyan)" }}>Хтось інший оновив цей документ, поки ви редагували.</span>
+          <button onClick={applyPendingUpdate} className="font-medium underline shrink-0" style={{ color: "var(--cyan)" }}>
+            Оновити зараз
+          </button>
+        </div>
+      )}
       <div className="flex items-center justify-between mb-6">
         <input
           value={title}
