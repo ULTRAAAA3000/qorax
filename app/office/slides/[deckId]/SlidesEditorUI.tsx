@@ -7,6 +7,7 @@ import { type Block, newBlockId, BlockAddButton, BlockRow, BlockStatic } from ".
 import { exportSlidesToPdf } from "../../exportPdf";
 import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
+import { useLiveSync } from "../../useLiveSync";
 
 interface Slide {
   id: string;
@@ -58,6 +59,9 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
   const [aiError, setAiError] = useState<string | null>(null);
 
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // notifySavedRef/containerRef — той самий патерн, що DocEditorUI.tsx/SheetEditorUI.tsx.
+  const notifySavedRef = useRef<() => void>(() => {});
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const persist = useCallback(async (patch: { title?: string; slides?: Slide[] }) => {
     setSaving(true);
@@ -68,6 +72,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
+      notifySavedRef.current();
     } finally {
       setSaving(false);
     }
@@ -79,6 +84,38 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
   }, [persist]);
 
   useEffect(() => () => { if (saveTimeout.current) clearTimeout(saveTimeout.current); }, []);
+
+  const reloadFromServer = useCallback(async () => {
+    if (saveTimeout.current) { clearTimeout(saveTimeout.current); saveTimeout.current = null; }
+    const token = await getFreshToken();
+    const res = await fetch(`${API_BASE_URL}/api/office-slides/${deckId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.deck) {
+      setTitle(data.deck.title);
+      setSlides(data.deck.slides?.length ? data.deck.slides : [{ id: newBlockId(), blocks: [] }]);
+      setActiveIndex(0);
+    }
+  }, [deckId]);
+
+  const { pendingUpdate, applyPendingUpdate: applyPendingUpdateRaw, notifySaved } = useLiveSync("office_slides", deckId, {
+    // presenting теж рахується як "редагування" з погляду живої
+    // синхронізації — інакше reloadFromServer() міг би замінити
+    // slides просто в момент показу, і slides[presentIndex] стане
+    // undefined, якщо нова презентація коротша (реальний ризик
+    // крашу fullscreen Present-режиму, знайдений аналізом коду).
+    isEditing: () => presenting || (!!containerRef.current && containerRef.current.contains(document.activeElement)),
+    onRemoteUpdate: reloadFromServer,
+  });
+  useEffect(() => { notifySavedRef.current = notifySaved; }, [notifySaved]);
+
+  const applyPendingUpdate = useCallback(() => {
+    if (saveTimeout.current) { clearTimeout(saveTimeout.current); saveTimeout.current = null; }
+    applyPendingUpdateRaw();
+  }, [applyPendingUpdateRaw]);
+
 
   function updateActiveSlideBlocks(updater: (blocks: Block[]) => Block[]) {
     setSlides(prev => {
@@ -190,7 +227,22 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
   const activeSlide = slides[activeIndex];
 
   if (presenting) {
-    const slide = slides[presentIndex];
+    // Захист від крашу: якщо slides чомусь порожній (не мало б
+    // траплятись — завжди є хоча б один слайд за задумом, але
+    // дешевше перевірити тут, ніж ловити TypeError у продакшені).
+    // Не викликає setState під час рендеру (react-hooks/purity) —
+    // просто показує безпечний fallback замість краху.
+    const slide = slides[presentIndex] ?? slides[0];
+    if (!slide) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "#0a0a0a" }}>
+          <button onClick={() => setPresenting(false)} className="absolute top-4 right-4 p-2 rounded-lg hover:bg-white/10 text-white/60">
+            <X size={18} />
+          </button>
+          <p className="text-white/40 text-sm">Немає слайдів для показу</p>
+        </div>
+      );
+    }
     return (
       <div className="fixed inset-0 z-50 flex flex-col" style={{ background: "#0a0a0a" }}>
         <button onClick={() => setPresenting(false)} className="absolute top-4 right-4 p-2 rounded-lg hover:bg-white/10 text-white/60 z-10">
@@ -210,7 +262,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
   }
 
   return (
-    <div className="h-full flex">
+    <div ref={containerRef} className="h-full flex">
       <aside className="w-48 shrink-0 overflow-y-auto p-3 space-y-2" style={{ borderRight: "1px solid rgba(255,255,255,0.06)" }}>
         {slides.map((slide, i) => (
           <button
@@ -252,6 +304,14 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
       </aside>
 
       <div className="flex-1 flex flex-col min-w-0">
+        {pendingUpdate && (
+          <div className="px-4 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs" style={{ background: "rgba(140,246,255,0.08)", borderBottom: "1px solid rgba(140,246,255,0.25)" }}>
+            <span style={{ color: "var(--cyan)" }}>Хтось інший оновив цю презентацію, поки ви редагували.</span>
+            <button onClick={applyPendingUpdate} className="font-medium underline shrink-0" style={{ color: "var(--cyan)" }}>
+              Оновити зараз
+            </button>
+          </div>
+        )}
         <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <input
             value={title}

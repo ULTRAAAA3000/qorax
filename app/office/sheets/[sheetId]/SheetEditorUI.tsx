@@ -7,6 +7,7 @@ import { type Cells, type Formats, type CellFormat, type NumberFormat, type Char
 import { SheetChart } from "../SheetChart";
 import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
+import { useLiveSync } from "../../useLiveSync";
 
 interface SheetData {
   columns: number;
@@ -80,6 +81,10 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
   useEffect(() => { formatsRef.current = formats; }, [formats]);
   const chartsRef = useRef(charts);
   useEffect(() => { chartsRef.current = charts; }, [charts]);
+  // notifySavedRef/containerRef — той самий патерн живої синхронізації,
+  // що вже реалізований і задокументований у DocEditorUI.tsx.
+  const notifySavedRef = useRef<() => void>(() => {});
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const persist = useCallback(async (patch: { title?: string; data?: SheetData }) => {
     setSaving(true);
@@ -90,6 +95,7 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify(patch),
       });
+      notifySavedRef.current();
     } finally {
       setSaving(false);
     }
@@ -103,6 +109,36 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
   }, [persist]);
 
   useEffect(() => () => { if (saveTimeout.current) clearTimeout(saveTimeout.current); }, []);
+
+  const reloadFromServer = useCallback(async () => {
+    if (saveTimeout.current) { clearTimeout(saveTimeout.current); saveTimeout.current = null; }
+    const token = await getFreshToken();
+    const res = await fetch(`${API_BASE_URL}/api/office-sheets/${sheetId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.sheet) {
+      setTitle(data.sheet.title);
+      setCells(data.sheet.data?.cells ?? {});
+      setColumns(data.sheet.data?.columns ?? 12);
+      setRows(data.sheet.data?.rows ?? 30);
+      setFormats(data.sheet.data?.formats ?? {});
+      setCharts(data.sheet.data?.charts ?? []);
+    }
+  }, [sheetId]);
+
+  const { pendingUpdate, applyPendingUpdate: applyPendingUpdateRaw, notifySaved } = useLiveSync("office_sheets", sheetId, {
+    isEditing: () => !!containerRef.current && containerRef.current.contains(document.activeElement),
+    onRemoteUpdate: reloadFromServer,
+  });
+  useEffect(() => { notifySavedRef.current = notifySaved; }, [notifySaved]);
+
+  const applyPendingUpdate = useCallback(() => {
+    if (saveTimeout.current) { clearTimeout(saveTimeout.current); saveTimeout.current = null; }
+    applyPendingUpdateRaw();
+  }, [applyPendingUpdateRaw]);
+
 
   function setCellValue(key: string, value: string) {
     setCells(prev => {
@@ -297,7 +333,15 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div ref={containerRef} className="h-full flex flex-col">
+      {pendingUpdate && (
+        <div className="px-4 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs" style={{ background: "rgba(140,246,255,0.08)", borderBottom: "1px solid rgba(140,246,255,0.25)" }}>
+          <span style={{ color: "var(--cyan)" }}>Хтось інший оновив цю таблицю, поки ви редагували.</span>
+          <button onClick={applyPendingUpdate} className="font-medium underline shrink-0" style={{ color: "var(--cyan)" }}>
+            Оновити зараз
+          </button>
+        </div>
+      )}
       <div className="px-4 sm:px-6 py-3 flex items-center justify-between gap-3 flex-wrap" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
         <input
           value={title}
