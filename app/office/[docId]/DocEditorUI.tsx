@@ -5,6 +5,7 @@ import { Loader2, Sparkles, Heading2, List, CheckSquare, Type, Download, LayoutT
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow } from "../BlockEditor";
 import { exportDocToPdf } from "../exportPdf";
+import { exportDocToMarkdown, exportDocToHtml } from "../exportText";
 import { usePresence } from "../usePresence";
 import { PresenceAvatars } from "../PresenceAvatars";
 import { useLiveSync } from "../useLiveSync";
@@ -41,6 +42,7 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
   const [blocks, setBlocks] = useState<Block[]>(initialContent?.blocks ?? []);
   const [saving, setSaving] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateSaved, setTemplateSaved] = useState(false);
   const [showAiWriter, setShowAiWriter] = useState(false);
@@ -225,13 +227,25 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
         <div className="flex items-center gap-3 shrink-0 ml-3">
           <PresenceAvatars users={presentUsers} />
           {saving && <Loader2 size={14} className="animate-spin text-[var(--text-tertiary)]" />}
-          <button
-            onClick={handleExportPdf}
-            disabled={exportingPdf}
-            className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
-          >
-            {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
-          </button>
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(v => !v)}
+              disabled={exportingPdf}
+              className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
+            >
+              {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Експорт
+            </button>
+            {showExportMenu && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
+                <div className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20" style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 140 }}>
+                  <button onClick={() => { setShowExportMenu(false); handleExportPdf(); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">PDF</button>
+                  <button onClick={() => { setShowExportMenu(false); exportDocToMarkdown(title || "Без назви", blocks); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">Markdown (.md)</button>
+                  <button onClick={() => { setShowExportMenu(false); exportDocToHtml(title || "Без назви", blocks); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">HTML</button>
+                </div>
+              </>
+            )}
+          </div>
           <button
             onClick={handleSaveAsTemplate}
             disabled={savingTemplate}

@@ -25,13 +25,13 @@
 
 import type { Block } from "./BlockEditor";
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   const div = document.createElement("div");
   div.textContent = text;
   return div.innerHTML;
 }
 
-function blockToHtml(block: Block): string {
+export function blockToHtml(block: Block): string {
   if (block.type === "paragraph") {
     return `<p style="font-size:13px;line-height:1.6;margin:0 0 10px;white-space:pre-wrap;">${escapeHtml(block.text)}</p>`;
   }

@@ -5,6 +5,7 @@ import { Plus, Loader2, Sparkles, Trash2, Type, Heading2, List, CheckSquare, Pla
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow, BlockStatic } from "../../BlockEditor";
 import { exportSlidesToPdf } from "../../exportPdf";
+import { exportSlidesToMarkdown, exportSlidesToHtml } from "../../exportText";
 import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
 import { useLiveSync } from "../../useLiveSync";
@@ -51,6 +52,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
   const [showAi, setShowAi] = useState(false);
@@ -323,13 +325,25 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
           <div className="flex items-center gap-2">
             <PresenceAvatars users={presentUsers} />
             {saving && <Loader2 size={14} className="animate-spin text-[var(--text-tertiary)]" />}
-            <button
-              onClick={handleExportPdf}
-              disabled={exportingPdf}
-              className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
-            >
-              {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} PDF
-            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowExportMenu(v => !v)}
+                disabled={exportingPdf}
+                className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
+              >
+                {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Експорт
+              </button>
+              {showExportMenu && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
+                  <div className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20" style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 140 }}>
+                    <button onClick={() => { setShowExportMenu(false); handleExportPdf(); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">PDF</button>
+                    <button onClick={() => { setShowExportMenu(false); exportSlidesToMarkdown(title || "Без назви", slides); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">Markdown (.md)</button>
+                    <button onClick={() => { setShowExportMenu(false); exportSlidesToHtml(title || "Без назви", slides); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">HTML</button>
+                  </div>
+                </>
+              )}
+            </div>
             <button onClick={() => setShowAi(v => !v)} className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ background: "rgba(198,255,84,0.08)", border: "1px solid rgba(198,255,84,0.25)", color: "var(--lime)" }}>
               <Sparkles size={12} /> AI
             </button>
