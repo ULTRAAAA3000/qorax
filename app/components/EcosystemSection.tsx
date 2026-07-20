@@ -12,9 +12,11 @@ import { Reveal } from "./Reveal";
  * функціонал для залогінених користувачів (Business/dashboard,
  * Mail/MailApp, Creator/CreatorBoardsListUI, Office/
  * OfficeDocsListUI, Browser/BrowserUI) — усі позначені live: true.
- * Незалогінені відвідувачі бачать ProductComingSoon (маркетинговий
- * опис) на /mail, /office, /browser — це НЕ означає "продукт не
- * готовий", лише що деталі показуються після входу.
+ * Незалогінені відвідувачі одразу редиректяться на /login з /mail,
+ * /office, /browser, /creator (той самий підхід, що вже мав /creator;
+ * ProductComingSoon-заглушка прибрана звідти для незалогінених за
+ * прямою вказівкою Артема — вона вводила в оману, ніби продукт "у
+ * розробці", хоча код давно готовий, просто вимагав входу).
  */
 
 const PRODUCTS = [
