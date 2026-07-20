@@ -16,7 +16,7 @@ Dashboard, Cloudflare Dashboard, Google Cloud Console). Кожна сесія
 
 ---
 
-## 1. Supabase-міграції, ще не накочені (0063–0080)
+## 1. Supabase-міграції, ще не накочені (0063–0081)
 
 **Найкритичніше — без цього більшість нового коду з останніх сесій
 не працює взагалі, навіть якщо код на проді.** Застосовувати
@@ -48,6 +48,7 @@ Dashboard, Cloudflare Dashboard, Google Cloud Console). Кожна сесія
 | `0078_mail_core.sql` | Qorax Mail (Inbox/Compose/Contacts) | Весь `/mail` не працює |
 | `0079_creator_smart_components.sql` | `bound_ref_table`/`bound_ref_id`/`field_bindings` на `canvas_nodes` | Smart Components в Creator не працюють |
 | `0080_creator_history.sql` | `canvas_node_versions` (History) | Кнопка "Історія" в Creator не працює |
+| `0081_browser_workspace_tabs.sql` | Workspace Tabs — групування вкладок у проєкти | Workspace Tabs у `/browser` не працюють |
 
 ---
 
