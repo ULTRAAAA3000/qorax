@@ -212,7 +212,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
-import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare, handleBrowserReadingMode, handleVisualSearch, handleProxyTokenIssue, handleWebsiteTimeline } from "./lib/browserHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare, handleBrowserReadingMode, handleVisualSearch, handleProxyTokenIssue, handleWebsiteTimeline, handleCollectionItemsList, handleCollectionItemAdd, handleCollectionItemDelete } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -1010,6 +1010,17 @@ const worker = {
     const collectionDeleteMatch = url.pathname.match(/^\/api\/browser\/collections\/([^/]+)$/);
     if (collectionDeleteMatch && request.method === "DELETE") {
       return handleCollectionDelete(request, env, corsHeaders(origin), collectionDeleteMatch[1]);
+    }
+    const collectionItemsMatch = url.pathname.match(/^\/api\/browser\/collections\/([^/]+)\/items$/);
+    if (collectionItemsMatch && request.method === "GET") {
+      return handleCollectionItemsList(request, env, corsHeaders(origin), collectionItemsMatch[1]);
+    }
+    if (collectionItemsMatch && request.method === "POST") {
+      return handleCollectionItemAdd(request, env, corsHeaders(origin), collectionItemsMatch[1]);
+    }
+    const collectionItemDeleteMatch = url.pathname.match(/^\/api\/browser\/collection-items\/([^/]+)$/);
+    if (collectionItemDeleteMatch && request.method === "DELETE") {
+      return handleCollectionItemDelete(request, env, corsHeaders(origin), collectionItemDeleteMatch[1]);
     }
     if (url.pathname === "/api/browser/capture/office" && request.method === "POST") {
       return handleCaptureToOffice(request, env, corsHeaders(origin));

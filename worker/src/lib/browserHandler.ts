@@ -1250,3 +1250,142 @@ export async function handleWebsiteTimeline(request: Request, env: Env, corsHead
 
   return json({ snapshots, available: snapshots.length > 0 }, 200, corsHeaders);
 }
+
+// ============================================================
+// Workspace Tabs (MODULE_ROADMAP.md, "Qorax Browser" — десята
+// ітерація). Roadmap: "вкладки групуються в проєкти" (приклад:
+// проєкт "Nike" — 20 сайтів + 3 PDF + 2 Email + 5 документів в
+// одному Workspace). Сайти вже групуються через
+// browser_history.collection_id (Collections, 0077). Ця ітерація
+// розширює ту саму колекцію ще одним типом вмісту — документами
+// Qorax Office (office_documents), єдиним реалістично доступним
+// "іншим типом" зараз (Mail лише має CRM-контакти, не листи як
+// об'єкти; Creator — окремий продукт поза цим роадмап-пунктом).
+
+interface CollectionItemRow {
+  id: string;
+  office_document_id: string;
+  added_at: string;
+}
+
+interface OfficeDocRow {
+  id: string;
+  title: string;
+  updated_at: string;
+}
+
+// GET /api/browser/collections/:id/items — документи, додані в колекцію
+export async function handleCollectionItemsList(request: Request, env: Env, corsHeaders: Record<string, string>, collectionId: string): Promise<Response> {
+  const organizationId = await getCollectionOrgId(collectionId, env);
+  if (!organizationId) return json({ error: "Колекцію не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, organizationId, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const itemsRes = await selectRows<CollectionItemRow>(
+    "browser_collection_items",
+    `select=id,office_document_id,added_at&collection_id=eq.${encodeURIComponent(collectionId)}&order=added_at.desc`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!itemsRes.ok) return json({ error: itemsRes.error }, 500, corsHeaders);
+
+  const items = itemsRes.data ?? [];
+  if (items.length === 0) return json({ items: [] }, 200, corsHeaders);
+
+  // Один додатковий select за назвами документів — items зазвичай
+  // невелика кількість (одна колекція), не вимагає JOIN-запиту.
+  const docIds = items.map(i => i.office_document_id).join(",");
+  const docsRes = await selectRows<OfficeDocRow>(
+    "office_documents",
+    `select=id,title,updated_at&id=in.(${docIds})`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const docsById = new Map((docsRes.data ?? []).map(d => [d.id, d]));
+
+  const result = items.map(item => ({
+    id: item.id,
+    office_document_id: item.office_document_id,
+    added_at: item.added_at,
+    title: docsById.get(item.office_document_id)?.title ?? "Видалений документ",
+  }));
+
+  return json({ items: result }, 200, corsHeaders);
+}
+
+interface AddCollectionItemBody {
+  office_document_id: string;
+}
+
+// POST /api/browser/collections/:id/items
+export async function handleCollectionItemAdd(request: Request, env: Env, corsHeaders: Record<string, string>, collectionId: string): Promise<Response> {
+  const organizationId = await getCollectionOrgId(collectionId, env);
+  if (!organizationId) return json({ error: "Колекцію не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, organizationId, "editor", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  let body: AddCollectionItemBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.office_document_id) return json({ error: "office_document_id обов'язковий" }, 400, corsHeaders);
+
+  // Перевіряємо, що документ належить ТІЙ САМІЙ організації —
+  // інакше можна було б прив'язати чужий документ до своєї колекції.
+  const docRes = await selectRows<{ organization_id: string }>(
+    "office_documents",
+    `select=organization_id&id=eq.${encodeURIComponent(body.office_document_id)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (docRes.data?.[0]?.organization_id !== organizationId) {
+    return json({ error: "Документ не знайдено" }, 404, corsHeaders);
+  }
+
+  const insertRes = await insertRow(
+    "browser_collection_items",
+    { collection_id: collectionId, item_type: "office_document", office_document_id: body.office_document_id, added_by: access.userId ?? null },
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!insertRes.ok) return json({ error: insertRes.error }, 500, corsHeaders);
+
+  return json({ ok: true }, 200, corsHeaders);
+}
+
+// DELETE /api/browser/collection-items/:itemId
+export async function handleCollectionItemDelete(request: Request, env: Env, corsHeaders: Record<string, string>, itemId: string): Promise<Response> {
+  const itemRes = await selectRows<{ collection_id: string }>(
+    "browser_collection_items",
+    `select=collection_id&id=eq.${encodeURIComponent(itemId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const collectionId = itemRes.data?.[0]?.collection_id;
+  if (!collectionId) return json({ error: "Елемент не знайдено" }, 404, corsHeaders);
+
+  const organizationId = await getCollectionOrgId(collectionId, env);
+  if (!organizationId) return json({ error: "Колекцію не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, organizationId, "editor", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const res = await fetch(
+    `${env.SUPABASE_URL}/rest/v1/browser_collection_items?id=eq.${encodeURIComponent(itemId)}`,
+    {
+      method: "DELETE",
+      headers: {
+        apikey: env.SUPABASE_SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
+        Prefer: "return=minimal",
+      },
+    }
+  );
+  if (!res.ok) return json({ error: `Delete failed: ${res.status}` }, 500, corsHeaders);
+
+  return json({ ok: true }, 200, corsHeaders);
+}
