@@ -1,10 +1,11 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { Zap, ScanSearch, Bookmark, Languages, FileStack, ListChecks, Palette, Mail, Loader2, X, Scale, ImageIcon } from "lucide-react";
+import { Zap, ScanSearch, Bookmark, Languages, FileStack, ListChecks, Palette, Mail, Loader2, X, Scale, ImageIcon, History } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { AiCompareModal } from "./AiCompareModal";
 import { VisualSearchModal } from "./VisualSearchModal";
+import { WebsiteTimelineModal } from "./WebsiteTimelineModal";
 
 interface Props {
   organizationId: string;
@@ -32,6 +33,7 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
   const [loading, setLoading] = useState(false);
   const [showCompare, setShowCompare] = useState(false);
   const [showVisualSearch, setShowVisualSearch] = useState(false);
+  const [showTimeline, setShowTimeline] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +109,7 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
           <ActionItem icon={FileStack} label="Summarize" onClick={() => runAiAction("summarize")} />
           <ActionItem icon={ListChecks} label="Add Task" onClick={addTask} />
           <ActionItem icon={ImageIcon} label="Visual Search" onClick={() => { setOpen(false); setShowVisualSearch(true); }} />
+          <ActionItem icon={History} label="Website Timeline" onClick={() => { setOpen(false); setShowTimeline(true); }} />
           <div className="my-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
           <ActionItem icon={Palette} label="Create Design" disabled note="Creator — скоро" />
           <ActionItem icon={Mail} label="Generate Email" disabled note="Mail — скоро" />
@@ -127,6 +130,15 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
           organizationId={organizationId}
           getFreshToken={getFreshToken}
           onClose={() => setShowVisualSearch(false)}
+        />
+      )}
+
+      {showTimeline && (
+        <WebsiteTimelineModal
+          organizationId={organizationId}
+          url={currentUrl}
+          getFreshToken={getFreshToken}
+          onClose={() => setShowTimeline(false)}
         />
       )}
 

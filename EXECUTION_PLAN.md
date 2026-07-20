@@ -4467,3 +4467,39 @@ document-рівня event listener.
 Canvas Creator), Smart Blocks (чекає Smart Components), Workspace/
 папки, Universal Search, Version History, DOCX/PPTX формати, повний
 PDF Studio.
+## Qorax Browser — Website Timeline (дев'ята ітерація)
+
+**Обсяг:** roadmap — "як сайт виглядав раніше, AI показує зміни".
+Research Mode і Component Extractor свідомо пропущено (обидва
+позначені самим roadmap найризикованішими технічно й юридично —
+копірайт чужого контенту).
+
+**Технічне рішення (узгоджено з Артемом):** публічний Wayback
+Machine CDX API (`web.archive.org/cdx/search/cdx`) — безкоштовний,
+без авторизації, єдиний реалістичний шлях без власної інфраструктури
+збереження історії чужих сайтів. Qorax Browser НЕ зберігає власних
+копій чужого контенту — лише посилається на вже існуючі публічні
+архівні записи Internet Archive.
+
+**`worker/src/lib/browserHandler.ts` — `POST /api/browser/timeline`
+(`handleWebsiteTimeline`):**
+- Запит з `collapse=digest` (дедуплікація знімків з ідентичним
+  вмістом — інакше CDX API повертає сотні записів навіть для
+  сторінки, що не змінювалась роками) і `limit=20`
+- Парсить CDX JSON-відповідь (перший рядок — заголовки полів, не
+  дані), формує посилання на архівні знімки
+  (`web.archive.org/web/{timestamp}/{original}`)
+
+**UI:** новий `WebsiteTimelineModal.tsx` — список знімків з датою і
+HTTP-статусом, клік відкриває архівну версію сторінки в новій вкладці
+напряму на `web.archive.org` (не через наш proxy — той не
+призначений для архівного перегляду). Пункт "Website Timeline"
+додано в `QuickActionsMenu.tsx`.
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint`
+чисто, повний `next build` успішно, `wrangler deploy --dry-run`
+успішно (850.12 KiB, gzip 144.00 KiB).
+
+**Свідомо пропущено:** Research Mode, Component Extractor (обидва —
+найризикованіші пункти за оцінкою самого roadmap). Залишається:
+Workspace Tabs, Deep Search, AI Memory, Marketplace.

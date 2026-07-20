@@ -1167,3 +1167,86 @@ export async function handleVisualSearch(request: Request, env: Env, corsHeaders
     corsHeaders
   );
 }
+
+// ============================================================
+// Website Timeline (MODULE_ROADMAP.md, "Qorax Browser" — дев'ята
+// ітерація, продовжуємо список: Research Mode і Component
+// Extractor свідомо пропущено — сам roadmap позначає обидва
+// найризикованішими технічно й юридично, копірайт чужого контенту).
+// ============================================================
+// Roadmap: "як сайт виглядав раніше, AI показує зміни". Єдиний
+// реалістичний шлях без власної інфраструктури збереження історії
+// чужих сайтів — публічний Wayback Machine CDX API (archive.org),
+// безкоштовний, без авторизації (узгоджено з Артемом). НЕ власне
+// збереження знімків — Qorax Browser не зберігає копії чужого
+// контенту, лише посилається на вже існуючі публічні архівні записи
+// Internet Archive.
+
+const WAYBACK_CDX_ENDPOINT = "http://web.archive.org/cdx/search/cdx";
+const WAYBACK_FETCH_TIMEOUT_MS = 10_000;
+
+interface TimelineSnapshot {
+  timestamp: string; // yyyyMMddhhmmss, формат Wayback Machine
+  date: string; // ISO-формат для зручного відображення на фронтенді
+  archiveUrl: string; // посилання на сам знімок на web.archive.org
+  statusCode: string;
+}
+
+interface WebsiteTimelineBody {
+  organization_id: string;
+  url: string;
+}
+
+// POST /api/browser/timeline
+export async function handleWebsiteTimeline(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: WebsiteTimelineBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const targetUrl = isValidHttpUrl(body.url ?? "");
+  if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  // collapse=digest — дедуплікація знімків з ідентичним вмістом
+  // (інакше Wayback Machine повертає сотні записів навіть для
+  // сторінки, що не змінювалась роками — кожен crawl-прохід окремий
+  // запис). limit=20 — досить для огляду історії, не весь архів.
+  const cdxUrl = `${WAYBACK_CDX_ENDPOINT}?url=${encodeURIComponent(targetUrl.toString())}&output=json&collapse=digest&limit=20&fl=timestamp,original,statuscode`;
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), WAYBACK_FETCH_TIMEOUT_MS);
+  let rows: string[][];
+  try {
+    const res = await fetch(cdxUrl, { signal: controller.signal });
+    if (!res.ok) return json({ error: "Wayback Machine недоступний" }, 502, corsHeaders);
+    rows = await res.json();
+  } catch {
+    clearTimeout(timeout);
+    return json({ error: "Не вдалося отримати історію сайту" }, 502, corsHeaders);
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  // Перший рядок відповіді CDX API — заголовки полів, не дані
+  // (["timestamp","original","statuscode"]), решта — самі знімки.
+  const dataRows = rows.slice(1);
+  const snapshots: TimelineSnapshot[] = dataRows.map(row => {
+    const [timestamp, original, statusCode] = row;
+    const year = timestamp.slice(0, 4);
+    const month = timestamp.slice(4, 6);
+    const day = timestamp.slice(6, 8);
+    return {
+      timestamp,
+      date: `${year}-${month}-${day}`,
+      archiveUrl: `https://web.archive.org/web/${timestamp}/${original}`,
+      statusCode,
+    };
+  });
+
+  return json({ snapshots, available: snapshots.length > 0 }, 200, corsHeaders);
+}
