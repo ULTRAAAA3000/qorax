@@ -18,6 +18,7 @@
 import type { Env } from "../types";
 import { selectRows, insertRow, insertRowReturning, updateRows } from "./supabase";
 import { requireOrgAccess } from "./orgAuth";
+import { maybeSnapshotVersion } from "./officeVersions";
 import { callGemini } from "./contentGeneration";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
 
@@ -248,6 +249,10 @@ export async function handleDocUpdate(request: Request, env: Env, corsHeaders: R
 
   const access = await requireOrgAccess(request, orgId, "editor", env);
   if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  // Version History (0081) — знімок стану ДО застосування патчу,
+  // throttled ~10 хв на документ, не на кожне збереження.
+  await maybeSnapshotVersion({ docType: "office_documents", docId, organizationId: orgId, dataColumn: "content", userId: access.userId, env });
 
   let body: { title?: string; content?: { blocks: OfficeBlock[] } };
   try {

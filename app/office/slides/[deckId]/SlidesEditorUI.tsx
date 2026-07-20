@@ -9,6 +9,7 @@ import { exportSlidesToMarkdown, exportSlidesToHtml } from "../../exportText";
 import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
 import { useLiveSync } from "../../useLiveSync";
+import { VersionHistoryButton } from "../../VersionHistoryButton";
 
 interface Slide {
   id: string;
@@ -347,6 +348,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
             <button onClick={() => setShowAi(v => !v)} className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ background: "rgba(198,255,84,0.08)", border: "1px solid rgba(198,255,84,0.25)", color: "var(--lime)" }}>
               <Sparkles size={12} /> AI
             </button>
+            <VersionHistoryButton docType="office_slides" docId={deckId} onRestored={reloadFromServer} />
             <button onClick={startPresenting} className="glow-button text-xs !py-1.5 !px-3 flex items-center gap-1.5">
               <Play size={12} /> Показати
             </button>

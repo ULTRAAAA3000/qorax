@@ -4467,3 +4467,61 @@ document-рівня event listener.
 Canvas Creator), Smart Blocks (чекає Smart Components), Workspace/
 папки, Universal Search, Version History, DOCX/PPTX формати, повний
 PDF Studio.
+
+---
+
+## Qorax Office — Version History (Docs/Sheets/Slides)
+
+Наступний пункт з повного переліку фіч (не MVP) — не заблокований
+на відміну від Whiteboard/Smart Blocks (обидва чекають на Creator).
+
+**Схема (`0081_office_version_history.sql`):** ОДНА таблиця
+`office_document_versions` на всі три редактори (`doc_type`/`doc_id`,
+не три окремі `*_versions` таблиці) — узагальнена схема дешевша для
+спільного worker-модуля й UI-компонента. Той самий проведений
+патерн, що `canvas_node_versions` з Qorax Creator History (0080,
+паралельна сесія) — append-only, insert лише worker'ом, select-only
+RLS для звичайних учасників.
+
+**По дорозі виявлено:** паралельна сесія вже реалізувала
+`0079_creator_smart_components.sql` — один з пунктів, позначених
+у MODULE_ROADMAP.md як "Office Smart Blocks чекає на Smart
+Components в Creator", тепер технічно розблокований. Не займався
+цим у цьому проході (Version History вже в роботі) — окремий
+наступний крок.
+
+**`officeVersions.ts` (новий, спільний worker-модуль):**
+`maybeSnapshotVersion()` — throttle ~10 хв на документ (не на кожне
+600мс-автозбереження, інакше сотні рядків за годину активного
+редагування). Викликається на ПОЧАТКУ кожного з трьох PATCH-
+хендлерів (`handleDocUpdate`/`handleSheetUpdate`/
+`handleSlidesDeckUpdate`) ДО застосування патчу — знімає стан "яким
+він був до цієї зміни". Не кидає виняток при помилці (Version
+History допоміжна, не повинна блокувати основне збереження).
+`handleVersionRestore` — сам процес відновлення теж робить знімок
+поточного стану про запас (той самий throttle діє й тут).
+
+**UI:** `VersionHistoryButton.tsx` (новий, спільний) — кнопка
+"Історія" у всіх трьох редакторах, випадаючий список з відносним
+часом ("5 хв тому") і кнопкою відновлення, `onRestored` перевикористовує
+вже наявну `reloadFromServer()` з живої синхронізації (жодного
+дубльованого коду перезавантаження).
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд), `eslint
+app/office/` чисто (знайдено й виправлено 1 помилку —
+неекранований апостроф у JSX-тексті, `react/no-unescaped-entities`
+— специфічно для сирого тексту в JSX, не для рядкових літералів,
+де апострофи вже всюди використовувались без проблем), `npm run
+build` успішно, `wrangler deploy --dry-run` успішно (853.88 KiB,
+gzip 144.50 KiB).
+
+**Свідомо НЕ зроблено:** diff-перегляд між версіями (лише повне
+відновлення, не порівняння змін), іменовані/закріплені версії
+("зберегти як контрольну точку" вручну — зараз лише автоматичний
+throttled-знімок), обмеження кількості версій, що зберігаються
+(зараз необмежено, `limit=30` лише на видачу в UI).
+
+**Залишилось з повного переліку фіч (не MVP):** Whiteboard (чекає
+стабілізації Canvas Creator), Smart Blocks (технічно розблоковано
+Smart Components з Creator, але не займались), Workspace/папки,
+Universal Search, DOCX/PPTX-формати, повний PDF Studio.

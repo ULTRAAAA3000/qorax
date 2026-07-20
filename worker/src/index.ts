@@ -161,6 +161,7 @@ import {
   handleSlidesDeckDelete,
   handleSlidesAiGenerate,
 } from "./lib/officeSlidesHandler";
+import { handleVersionsList, handleVersionRestore } from "./lib/officeVersions";
 import {
   handleGscAuth,
   handleGscCallback,
@@ -928,6 +929,15 @@ const worker = {
     const slidesAiMatch = url.pathname.match(/^\/api\/office-slides\/([^/]+)\/ai-generate$/);
     if (slidesAiMatch && request.method === "POST") {
       return handleSlidesAiGenerate(request, env, corsHeaders(origin), slidesAiMatch[1]);
+    }
+
+    // ── Qorax Office: Version History (MODULE_ROADMAP.md "Qorax Office") ──
+    if (url.pathname === "/api/office-versions" && request.method === "GET") {
+      return handleVersionsList(request, env, corsHeaders(origin));
+    }
+    const versionRestoreMatch = url.pathname.match(/^\/api\/office-versions\/([^/]+)\/restore$/);
+    if (versionRestoreMatch && request.method === "POST") {
+      return handleVersionRestore(request, env, corsHeaders(origin), versionRestoreMatch[1]);
     }
 
     // ── Qorax Creator: KG Visualization / Diagram Mode (MODULE_ROADMAP.md "Qorax Creator") ──

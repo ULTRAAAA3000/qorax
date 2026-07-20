@@ -14,6 +14,7 @@ import { requireOrgAccess } from "./orgAuth";
 import { callGemini } from "./contentGeneration";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
 import type { OfficeBlock } from "./officeHandler";
+import { maybeSnapshotVersion } from "./officeVersions";
 
 function json(data: unknown, status: number, headers: Record<string, string>): Response {
   return new Response(JSON.stringify(data), { status, headers: { ...headers, "Content-Type": "application/json" } });
@@ -119,6 +120,9 @@ export async function handleSlidesDeckUpdate(request: Request, env: Env, corsHea
 
   const access = await requireOrgAccess(request, orgId, "editor", env);
   if (!access.ok) return accessErrorResponse(access.status, corsHeaders);
+
+  // Version History (0081) — throttled ~10 хв, той самий підхід, що officeHandler.ts.
+  await maybeSnapshotVersion({ docType: "office_slides", docId: deckId, organizationId: orgId, dataColumn: "slides", userId: access.userId, env });
 
   let body: { title?: string; slides?: Slide[] };
   try {
