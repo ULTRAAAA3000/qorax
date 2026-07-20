@@ -241,9 +241,13 @@ export async function handleBrowserAnalyze(request: Request, env: Env, corsHeade
     return json({ summary: cached.ai_summary, cached: true }, 200, corsHeaders);
   }
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
   if (!creditsCheck.ok) {
-    return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
   }
 
   const controller = new AbortController();
@@ -778,8 +782,14 @@ export async function handleBrowserTranslate(request: Request, env: Env, corsHea
   const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
   if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
-  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const html = await fetchAndTruncateHtml(targetUrl);
   if (html === null) return json({ error: "Не вдалося завантажити сайт" }, 502, corsHeaders);
@@ -817,8 +827,14 @@ export async function handleBrowserSummarize(request: Request, env: Env, corsHea
   const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
   if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
-  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const html = await fetchAndTruncateHtml(targetUrl);
   if (html === null) return json({ error: "Не вдалося завантажити сайт" }, 502, corsHeaders);
@@ -873,8 +889,14 @@ export async function handleBrowserCompare(request: Request, env: Env, corsHeade
   const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
   if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
-  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const [yourInspect, competitorInspect] = await Promise.all([inspectUrl(yourUrl), inspectUrl(competitorUrl)]);
   if (!yourInspect || !competitorInspect) {
@@ -1024,9 +1046,13 @@ export async function handleBrowserReadingMode(request: Request, env: Env, corsH
   // додає саме той шар, що roadmap виділяє як відмінність Reading
   // Mode від звичайного reader-режиму браузерів.
   if (body.with_ai) {
-    const creditsCheck = await checkAiCredits(body.organization_id, env);
+    const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
     if (!creditsCheck.ok) {
-      return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+      return json(
+        { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+        creditsCheck.disabledByAdmin ? 503 : 402,
+        corsHeaders
+      );
     }
     const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
     if (apiKey && blocks.length > 0) {
@@ -1108,8 +1134,14 @@ export async function handleVisualSearch(request: Request, env: Env, corsHeaders
   const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
   if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
-  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);

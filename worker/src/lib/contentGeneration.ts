@@ -205,9 +205,13 @@ export async function handleAiGenerate(
   // на запит, який все одно буде відхилено через відсутність кредитів.
   // aiCredits.ts (спільний helper) — безлімітні кредити для organization_id,
   // де є учасник з profiles.platform_role='admin' (Артем, липень 2026).
-  const creditsCheck = await checkAiCredits(orgId, env);
+  const creditsCheck = await checkAiCredits(orgId, "business", env);
   if (!creditsCheck.ok) {
-    return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
   }
 
   const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
@@ -289,7 +293,7 @@ export async function handleAiCredits(
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   const row = res.data?.[0];
-  const creditsCheck = await checkAiCredits(orgId, env);
+  const creditsCheck = await checkAiCredits(orgId, "business", env);
 
   return json(
     { credits_remaining: row?.credits_remaining ?? 0, credits_reset_at: row?.credits_reset_at ?? null, unlimited: creditsCheck.unlimited },
