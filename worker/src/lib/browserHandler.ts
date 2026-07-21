@@ -1561,8 +1561,14 @@ export async function handleDeepSearch(request: Request, env: Env, corsHeaders: 
   const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, `deep-search:${ip}`, 20, 3600);
   if (!rateLimit.allowed) return json({ error: "Забагато запитів. Спробуйте пізніше." }, 429, corsHeaders);
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
-  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "Deep Search тимчасово вимкнено адміністратором" : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
   if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);

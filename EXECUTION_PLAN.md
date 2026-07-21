@@ -4856,3 +4856,77 @@ Business.
 
 **Перевірено:** `tsc --noEmit` чисто, `eslint` чисто на всіх нових і
 змінених файлах, повний `next build` успішний.
+
+## Qorax Browser — Deep Search (одинадцята ітерація)
+
+**Обсяг:** roadmap — "пошук по інтернету з AI, що сам підбирає
+приклади за складним природномовним запитом (не проста видача
+посилань)". Продовжуємо список Browser після Website Timeline
+(дев'ята) і Workspace Tabs (десята).
+
+**Технічне рішення:** у проєкті ще немає жодного окремого пошукового
+API-ключа (перевірено — `env.XXX` звернення в `worker/src/`
+обмежуються SUPABASE/GEMINI/LS/TELEGRAM/RESEND/GOOGLE OAuth). Заводити
+нового зовнішнього провайдера (SerpAPI/Brave/Bing) заради одного
+ендпоінту — зайва інфраструктура для соло-розробника. Gemini API
+нативно підтримує вбудований інструмент `google_search` (grounding):
+модель сама формулює пошукові запити, реально шукає в Google, і
+повертає відповідь разом з переліком джерел (`groundingChunks`) —
+саме "AI сам підбирає приклади", а не голий список посилань.
+
+**`worker/src/lib/browserHandler.ts`:**
+- `callGeminiWithSearch()` — окрема функція виклику Gemini з
+  `tools: [{ google_search: {} }]`, той самий retry-патерн на
+  429/503, що вже в `callGemini()` (`contentGeneration.ts`), але
+  НЕ переюзовує саму `callGemini()` — та не приймає `tools`, і
+  свідомо не чіпаємо `contentGeneration.ts` заради одного викликача
+  (той самий принцип, що вже застосований для `callGeminiVision`,
+  окремої функції для мультимодального входу).
+- `POST /api/browser/deep-search` (`handleDeepSearch`) — приймає
+  `organization_id` + `query` (макс. 500 символів), перевірка
+  `requireOrgAccess` (viewer), rate-limit 20/год на IP через
+  `env.RATE_LIMIT_KV` (`checkRateLimit`/`getClientIp` з
+  `rateLimit.ts` — цей ендпоінт особливо дорогий: реальний зовнішній
+  пошук на кожен виклик, не лише текстова генерація), потім
+  `checkAiCredits(organizationId, "browser", env)` /
+  `deductAiCredits`. Повертає `{ answer, sources, credits_remaining,
+  unlimited }`.
+
+**UI:** новий `DeepSearchPanel.tsx` — НЕ модалка й НЕ пункт
+QuickActionsMenu (на відміну від Translate/Summarize), а окремий
+таб сайдбара ("Пошук") поруч з AI/Inspector/Колекції — Deep Search
+самостійний глобальний пошук, не дія над конкретним відкритим
+сайтом. Textarea для природномовного запиту (до 500 символів),
+відповідь AI у зв'язному вигляді, список знайдених джерел з
+дедуплікацією по `uri` — клік по джерелу відкриває сайт прямо в
+Browser через уже наявний `navigate()` (proxy-перегляд), не в новій
+вкладці. `BrowserUI.tsx` розширено п'ятим значенням `sidebarTab`.
+
+**Паралельна робота під час цієї сесії:** Артем одночасно змержив
+0082 (`ai_product_toggles` — адмінський вимикач AI по продуктах) —
+`checkAiCredits()` отримала нову сигнатуру
+`(organizationId, product: AiProduct, env)` і новий прапор
+`disabledByAdmin` у результаті. Після `git merge` мій щойно написаний
+виклик у `handleDeepSearch` лишався на старій сигнатурі (доданий уже
+після паралельного коміту, автомерж це не міг виправити сам) —
+знайдено й виправлено вручну: `checkAiCredits(organization_id,
+"browser", env)` + окреме повідомлення "Deep Search тимчасово
+вимкнено адміністратором" (503), коли `disabledByAdmin=true`, замість
+загального "кредити вичерпано" (402).
+
+**Перевірено:** `tsc --noEmit` чисто (worker + фронтенд, після
+злиття і виправлення сигнатури), `eslint app/browser/` чисто (worker
+файли поза покриттям ESLint-конфігурації проєкту — те саме, що
+завжди), повний `next build` успішно (43 маршрути), `wrangler deploy
+--dry-run` успішно (870.00 KiB, gzip 146.79 KiB, `RATE_LIMIT_KV`
+binding присутній).
+
+**`DEPLOYMENT_CHECKLIST.md` оновлено:** додано рядок `0082` (був
+відсутній — з'явився під час цієї сесії паралельно, ще не встиг
+потрапити в чек-лист).
+
+**Свідомо НЕ зроблено цим проходом:** обмеження по тарифу для
+Deep Search окремо від загальних `ai_credits` (використовує той
+самий спільний пул кредитів, що решта AI-фіч Browser — жодна інша
+фіча Browser так само не має окремого ліміту, консистентно).
+Залишається зі списку Browser: AI Memory, Marketplace.
