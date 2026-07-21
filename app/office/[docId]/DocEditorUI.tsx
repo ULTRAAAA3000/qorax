@@ -9,6 +9,7 @@ import { exportDocToMarkdown, exportDocToHtml } from "../exportText";
 import { usePresence } from "../usePresence";
 import { PresenceAvatars } from "../PresenceAvatars";
 import { useLiveSync } from "../useLiveSync";
+import { VersionHistoryButton } from "../VersionHistoryButton";
 
 interface Props {
   docId: string;
@@ -254,6 +255,7 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
             {savingTemplate ? <Loader2 size={12} className="animate-spin" /> : templateSaved ? <Check size={12} style={{ color: "var(--lime)" }} /> : <LayoutTemplate size={12} />}
             {templateSaved ? "Збережено" : "Як шаблон"}
           </button>
+          <VersionHistoryButton docType="office_documents" docId={docId} onRestored={reloadFromServer} />
           <button
             onClick={() => setShowAiWriter(v => !v)}
             className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5"

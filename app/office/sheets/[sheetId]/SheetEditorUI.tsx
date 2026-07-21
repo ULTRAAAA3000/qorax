@@ -8,6 +8,7 @@ import { SheetChart } from "../SheetChart";
 import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
 import { useLiveSync } from "../../useLiveSync";
+import { VersionHistoryButton } from "../../VersionHistoryButton";
 
 interface SheetData {
   columns: number;
@@ -367,6 +368,7 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
           <button onClick={exportXlsxHandler} disabled={exportingXlsx} className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50">
             {exportingXlsx ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Експорт XLSX
           </button>
+          <VersionHistoryButton docType="office_sheets" docId={sheetId} onRestored={reloadFromServer} />
           <button onClick={() => setShowChartForm(v => !v)} className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)]">
             <BarChart3 size={12} /> Діаграма
           </button>
