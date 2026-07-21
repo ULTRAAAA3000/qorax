@@ -289,9 +289,13 @@ export async function handleComponentRewrite(request: Request, env: Env, corsHea
   const component = componentRes.data?.[0];
   if (!component) return json({ error: "Компонент не знайдено" }, 404, corsHeaders);
 
-  const creditsCheck = await checkAiCredits(organizationId, env);
+  const creditsCheck = await checkAiCredits(organizationId, "creator", env);
   if (!creditsCheck.ok) {
-    return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
   }
 
   const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;

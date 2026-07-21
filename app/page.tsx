@@ -7,14 +7,23 @@ import { HeroAtmosphere } from "./components/HeroAtmosphere";
 import { HeroGlassCubeLazy as HeroGlassCube } from "./components/HeroGlassCubeLazy";
 import { StatsStrip } from "./components/StatsStrip";
 import { FeatureBento } from "./components/FeatureBento";
-import { PlatformModulesSection } from "./components/PlatformModulesSection";
 import { EcosystemSection } from "./components/EcosystemSection";
 import { HowItWorksSection } from "./components/HowItWorksSection";
 import { FaqSection } from "./components/FaqSection";
 import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
 import { MarketingHeader } from "./components/MarketingHeader";
+import { ProductDivider } from "./components/ProductDivider";
+import { MailInboxPreview } from "./components/MailInboxPreview";
+import { MailAiAgentPreview } from "./components/MailAiAgentPreview";
+import { CreatorCanvasPreview } from "./components/CreatorCanvasPreview";
+import { CreatorBrandKitPreview } from "./components/CreatorBrandKitPreview";
+import { OfficeDocsPreview } from "./components/OfficeDocsPreview";
+import { OfficeSheetsSlidesPreview } from "./components/OfficeSheetsSlidesPreview";
+import { BrowserInspectorPreview } from "./components/BrowserInspectorPreview";
+import { BrowserCollectionsPreview } from "./components/BrowserCollectionsPreview";
 import { createClient } from "./lib/supabase/server";
 import { CHECKOUT_DISABLED } from "./lib/checkoutFlag";
+import { Briefcase, Mail, Palette, FileText, Globe } from "lucide-react";
 
 // LemonSqueezy checkout URLs
 const LS_SUBDOMAIN = process.env.LS_STORE_SUBDOMAIN ?? "qoraxus";
@@ -70,6 +79,15 @@ export default async function Home() {
       <MarketingHeader isLoggedIn={!!user} />
       <Hero />
       <StatsStrip />
+      <EcosystemSection />
+
+      <ProductDivider
+        icon={Briefcase}
+        productName="Qorax Business"
+        tagline="Керуйте бізнесом онлайн"
+        href="/login"
+        accent="lime"
+      />
 
       <ProductSection
         eyebrow="МОНІТОРИНГ"
@@ -102,11 +120,134 @@ export default async function Home() {
       </ProductSection>
 
       <FeatureBento />
-      <EcosystemSection />
-      <PlatformModulesSection />
       <HowItWorksSection />
       <PlansSection starterUrl={starterUrl} growthUrl={growthUrl} agencyUrl={agencyUrl} />
       <FaqSection />
+
+      {/* ============================================================
+          Qorax Mail
+          ============================================================ */}
+      <ProductDivider
+        icon={Mail}
+        productName="Qorax Mail"
+        tagline="Спілкуйтесь з клієнтами"
+        href="/mail"
+        accent="cyan"
+      />
+
+      <ProductSection
+        eyebrow="СПІЛЬНА ПОШТА"
+        title="Вся команда в одних вхідних"
+        description="Корпоративна пошта і контакти клієнтів в одному робочому просторі — без перемикання між Gmail, нотатками і CRM."
+        align="right"
+        accent="cyan"
+      >
+        <MailInboxPreview />
+      </ProductSection>
+
+      <ProductSection
+        eyebrow="AI-АГЕНТИ"
+        title="Відповідь клієнту — за один клік, не за 10 хвилин"
+        description="AI готує чернетку листа на основі попереднього листування й тону вашого бренду. Ви лише перевіряєте й надсилаєте."
+        align="left"
+        accent="cyan"
+      >
+        <MailAiAgentPreview />
+      </ProductSection>
+
+      {/* ============================================================
+          Qorax Creator
+          ============================================================ */}
+      <ProductDivider
+        icon={Palette}
+        productName="Qorax Creator"
+        tagline="Створюйте візуали"
+        href="/creator"
+        accent="purple"
+      />
+
+      <ProductSection
+        eyebrow="НЕСКІНЧЕННЕ ПОЛОТНО"
+        title="Сайти, презентації й банери — на одній дошці"
+        description="Website Mode вбудовує Sites-редактор прямо в канвас. Перетягуйте блоки, компонуйте макет, бачите весь проєкт одразу."
+        align="right"
+        accent="purple"
+      >
+        <CreatorCanvasPreview />
+      </ProductSection>
+
+      <ProductSection
+        eyebrow="BRAND KIT"
+        title="Один бренд — усюди однаковий"
+        description="Кольори, шрифти й готові компоненти застосовуються миттєво на будь-якій дошці — жодного ручного підбору щоразу."
+        align="left"
+        accent="purple"
+      >
+        <CreatorBrandKitPreview />
+      </ProductSection>
+
+      {/* ============================================================
+          Qorax Office
+          ============================================================ */}
+      <ProductDivider
+        icon={FileText}
+        productName="Qorax Office"
+        tagline="Працюйте з документами"
+        href="/office"
+        accent="lime"
+      />
+
+      <ProductSection
+        eyebrow="DOCS"
+        title="AI Writer сам збирає готовий текст"
+        description="Документи з форматуванням, таблицями й AI-помічником, що пише за вас — не аналог Word, а той, хто робить основну роботу."
+        align="right"
+        accent="lime"
+      >
+        <OfficeDocsPreview />
+      </ProductSection>
+
+      <ProductSection
+        eyebrow="SHEETS ТА SLIDES"
+        title="Таблиці з формулами. Презентації за описом"
+        description="Прості таблиці з SUM/AVERAGE/COUNT та CSV-імпортом. Презентації, де AI сам будує структуру — від слайда до готового виступу."
+        align="left"
+        accent="lime"
+      >
+        <OfficeSheetsSlidesPreview />
+      </ProductSection>
+
+      {/* ============================================================
+          Qorax Browser
+          ============================================================ */}
+      <ProductDivider
+        icon={Globe}
+        productName="Qorax Browser"
+        tagline="Досліджуйте інтернет"
+        href="/browser"
+        accent="cyan"
+      />
+
+      <ProductSection
+        eyebrow="AI SIDEBAR"
+        title="AI пояснює будь-який сайт за клік"
+        description="Site Inspector показує технології, кольори, шрифти, SEO та швидкість конкурента — а AI Sidebar одразу пояснює, що це означає."
+        align="right"
+        accent="cyan"
+      >
+        <BrowserInspectorPreview />
+      </ProductSection>
+
+      <ProductSection
+        eyebrow="COLLECTIONS"
+        title="Конкуренти й ідеї в одному місці — не в закладках"
+        description="Збирайте референси просто під час перегляду сайтів і передавайте їх у Creator чи Office одним кліком через Smart Capture."
+        align="left"
+        accent="cyan"
+      >
+        <BrowserCollectionsPreview />
+      </ProductSection>
+
       <FinalCta />
       <SiteFooterExpanded />
     </main>
@@ -135,39 +276,29 @@ function Hero() {
               }}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--lime)] animate-pulse-glow" />
-              Аудит · Моніторинг · AI-аналіз — усе разом
+              Business · Mail · Creator · Office · Browser — один бренд
             </span>
           </Reveal>
 
           <Reveal delay={0.06}>
             <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold leading-[1.05] tracking-tight">
-              Повний контроль
+              Екосистема
               <br />
-              <span className="gradient-text">над сайтом — в одному місці</span>
+              <span className="gradient-text">для ведення бізнесу онлайн</span>
             </h1>
           </Reveal>
 
           <Reveal delay={0.12}>
             <p className="mt-6 text-lg sm:text-xl text-[var(--text-secondary)] leading-relaxed max-w-xl mx-auto">
-              Uptime, швидкість, SEO, безпека та конкуренти — під наглядом щохвилини.
-              AI пояснює кожну проблему простою мовою і каже, скільки вона коштує в грошах.
-            </p>
-          </Reveal>
-
-          <Reveal delay={0.18} className="mt-10 flex justify-center" id="audit">
-            <AuditForm />
-          </Reveal>
-
-          <Reveal delay={0.22}>
-            <p className="mt-3 text-xs text-[var(--text-tertiary)]">
-              Без реєстрації. Результат за 60 секунд.
+              П&apos;ять продуктів під одним дахом: моніторинг сайту, пошта, візуальний
+              редактор, документи та власний браузер — з AI у кожному.
             </p>
           </Reveal>
         </div>
 
         {/* Product preview with glow */}
         <Reveal delay={0.25} y={30}>
-          <div className="mt-16 sm:mt-20 max-w-2xl mx-auto relative">
+          <div className="mt-14 sm:mt-16 max-w-2xl mx-auto relative">
             {/* Glow behind the panel */}
             <div
               className="absolute -inset-10 -z-10"
@@ -177,6 +308,24 @@ function Hero() {
               }}
             />
             <LiveMonitorPanel />
+          </div>
+        </Reveal>
+
+        {/* Audit CTA — конкретна точка конверсії Qorax Business,
+            навмисно нижче загального позиціювання екосистеми, але
+            все ще на першому екрані — головний безкоштовний вхід не
+            можна губити глибше в скролі. */}
+        <Reveal delay={0.3} className="mt-14 sm:mt-16" id="audit">
+          <div className="max-w-xl mx-auto text-center">
+            <p className="text-sm text-[var(--text-tertiary)] mb-5">
+              Хочете почати з безкоштовної перевірки сайту?
+            </p>
+            <div className="flex justify-center">
+              <AuditForm />
+            </div>
+            <p className="mt-3 text-xs text-[var(--text-tertiary)]">
+              Без реєстрації. Результат за 60 секунд.
+            </p>
           </div>
         </Reveal>
       </div>

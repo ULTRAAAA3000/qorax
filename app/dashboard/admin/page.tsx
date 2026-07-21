@@ -9,6 +9,7 @@ import { BusinessMetricsPanel } from "./BusinessMetricsPanel";
 import { FixRequestsPanel } from "./FixRequestsPanel";
 import { ReferralCommissionsPanel } from "./ReferralCommissionsPanel";
 import { PlatformModulesPanel } from "./PlatformModulesPanel";
+import { AiTogglesPanel } from "./AiTogglesPanel";
 
 export const metadata = { title: "Адмін панель — Qorax" };
 
@@ -71,6 +72,9 @@ export default async function AdminPage() {
 
         {/* Модулі платформи — статус для sidebar/лендингу */}
         <PlatformModulesPanel />
+
+        {/* AI-тумблери по продуктах — kill switch на бекенді */}
+        <AiTogglesPanel />
 
         {/* Ручний запуск */}
         <AdminPanel />

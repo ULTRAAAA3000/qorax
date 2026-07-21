@@ -1,6 +1,7 @@
 import { createClient } from "@/app/lib/supabase/server";
 import { ProductComingSoon } from "@/app/components/ProductComingSoon";
 import { MailApp } from "./MailApp";
+import { redirect } from "next/navigation";
 import { Inbox, Send, Bot } from "lucide-react";
 
 export const metadata = { title: "Qorax Mail" };
@@ -11,34 +12,17 @@ export const metadata = { title: "Qorax Mail" };
 // NOT NULL (авторизація через вже наявну Qorax-організацію, рішення
 // прийняте перед 0076_mail_core.sql).
 //
-// Неавторизований відвідувач бачить ProductComingSoon (той самий
-// маркетинговий шаблон, що для решти продуктів екосистеми) —
-// НЕ видаляється, бо це все ще правильна подача для анонімного
-// трафіку. isLoggedIn проп — паралельний UX-фікс (32f8c71, кешування
-// сесії), збережено при мерджі. Авторизований юзер з підключеним
-// mail_account бачить реальний застосунок (MailApp).
+// Незалогінений відвідувач одразу редиректиться на /login (той самий
+// підхід, що /creator, /browser, /office) — ProductComingSoon
+// прибрана для цього випадку за прямою вказівкою Артема: сесія
+// Supabase спільна на весь домен, кешований вхід одразу поверне сюди
+// через middleware. Fallback "залогінений, але без organization"
+// (нижче) — окремий, не про логін, лишається без змін.
 export default async function MailPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    return (
-      <ProductComingSoon
-        activePath="/mail"
-        eyebrow="QORAX MAIL"
-        name="Qorax Mail"
-        tagline="Спілкуйтесь з клієнтами"
-        description="Корпоративна пошта, email-маркетинг та AI-агенти для листування — в одному місці, окремо від решти платформи."
-        accent="cyan"
-        isLoggedIn={false}
-        highlights={[
-          { icon: Inbox, title: "Пошта та контакти", text: "Вхідні, компонування листів та контакти в одному робочому просторі." },
-          { icon: Send, title: "Маркетинг", text: "Кампанії, автоматизації та шаблони листів без стороннього сервісу." },
-          { icon: Bot, title: "AI-агенти", text: "Автовідповіді, продажі, підтримка та пріоритизація листів під наглядом AI." },
-        ]}
-      />
-    );
-  }
+  if (!user) redirect("/login");
 
   const { data: membership } = await supabase
     .from("organization_members")

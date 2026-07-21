@@ -323,8 +323,14 @@ export async function handleAiWriter(request: Request, env: Env, corsHeaders: Re
   const instruction = body.instruction?.trim();
   if (!instruction) return json({ error: "instruction обов'язковий" }, 400, corsHeaders);
 
-  const credits = await checkAiCredits(orgId, env);
-  if (!credits.ok) return json({ error: "Недостатньо AI-кредитів" }, 402, corsHeaders);
+  const credits = await checkAiCredits(orgId, "office", env);
+  if (!credits.ok) {
+    return json(
+      { error: credits.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Недостатньо AI-кредитів" },
+      credits.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const prompt = `Ти — AI Writer у Qorax Office, допомагаєш писати ділові документи.
 Запит користувача: "${instruction}"
