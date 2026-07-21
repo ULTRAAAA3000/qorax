@@ -22,6 +22,7 @@ import {
   handleUpdateMemberRole, handleRemoveMember, handleGetInvitePreview,
 } from "./lib/teamHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
+import { sendTelegramWeeklyDigests } from "./lib/telegramBotHandler";
 import { handleChatRequest, handleGetOrCreateThreadRequest } from "./lib/chatHandler";
 import {
   handleWorkspaceUploadRequest,
@@ -579,6 +580,11 @@ const worker = {
       if (url.pathname === "/api/admin/run-weekly-digest") {
         const r = await sendWeeklyDigests(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.RESEND_API_KEY, env.APP_URL);
         return json({ ok: true, sent: r.sent, skipped: r.skipped, errors: r.errors }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/run-telegram-digest") {
+        const r = await sendTelegramWeeklyDigests(env);
+        return json({ ok: true, sent: r.sent, skipped: r.skipped }, 200, origin);
       }
 
       if (url.pathname === "/api/admin/run-url-speeds") {
@@ -2083,6 +2089,12 @@ const worker = {
         );
         console.log(`Weekly digests: sent=${digestResult.sent}, skipped=${digestResult.skipped}, errors=${digestResult.errors.length}`);
         if (digestResult.errors.length) console.warn("Digest errors:", digestResult.errors);
+
+        const telegramDigestResult = await sendTelegramWeeklyDigests(env).catch(e => {
+          console.error("Telegram weekly digest cron error:", e);
+          return { sent: 0, skipped: 0 };
+        });
+        console.log(`Telegram weekly digests: sent=${telegramDigestResult.sent}, skipped=${telegramDigestResult.skipped}`);
       }
       return;
     }

@@ -22,11 +22,20 @@
 //
 // СВІДОМО НЕ ЗРОБЛЕНО цим проходом (наступні кроки за списком
 // Артема): /speed /report /traffic окремими командами (частково
-// покриті /audit і /score), Weekly Digest AI-текстом (окрема
-// cron-задача), Instant Actions (inline-кнопки з діями), голосові
-// повідомлення, фото/PDF, Smart Alerts (реалізовано, alerts.ts вже
-// має пороги), Business Coach (проактивні поради без запиту
-// користувача).
+// покриті /audit і /score), Instant Actions (inline-кнопки з діями),
+// голосові повідомлення, фото/PDF, Smart Alerts (реалізовано,
+// alerts.ts вже має пороги), Business Coach (проактивні поради без
+// запиту користувача).
+//
+// Weekly Digest AI-текстом (документ Артема, пункт 5: "AI пише...
+// не цифри, а людський текст") — РЕАЛІЗОВАНО, sendTelegramWeeklyDigests()
+// нижче. НЕ переписаний sendWeeklyDigests() з monitoring.ts (той
+// лишається як є — критична вже працююча email-інфраструктура через
+// Resend, ризиковано рефакторити заради Telegram-паралелі). Замість
+// перевикористання по-сайтовій логіки email-версії — власний збір
+// метрик АГРЕГОВАНО по всій організації одразу (документ хоче "один
+// дайджест на тиждень" зв'язним текстом, не по email на кожен сайт
+// окремо).
 // ============================================================
 
 import type { Env } from "../types";
@@ -446,4 +455,194 @@ export async function handleTelegramBotMessage(chatId: string, text: string, env
 
   // Довільний текст без "/" — AI Chat
   await handleAiChatMessage(chatId, organizationId, trimmed, env);
+}
+
+// ============================================================
+// Weekly Digest — AI-текстом, для всіх Telegram-підключених
+// організацій разом (документ Артема, пункт 5: "Раз в неделю. AI
+// пише. Не цифры. А человеческий текст". Приклад з документа:
+// "За неделю сайт ускорился на 18%. Исправлено 12 ошибок...").
+// ============================================================
+
+interface DigestSslRow {
+  site_id: string;
+  days_until_expiry: number | null;
+}
+
+interface DigestIncidentRow {
+  site_id: string;
+  started_at: string;
+  resolved_at: string | null;
+}
+
+interface DigestSpeedRow {
+  site_id: string;
+  load_time_ms: number;
+  checked_at: string;
+}
+
+interface DigestSeoRow {
+  site_id: string;
+  issues: unknown;
+  checked_at: string;
+}
+
+interface TelegramConnectedOrg {
+  organization_id: string;
+  telegram_chat_id: string;
+}
+
+/**
+ * Одна організація: агрегує uptime/простій/швидкість(з трендом
+ * тиждень-до-тижня)/нові SEO-проблеми/SSL по ВСІХ сайтах разом,
+ * просить Gemini написати зв'язний людський текст (не цифровий
+ * шаблон — той є в email-версії), надсилає в Telegram.
+ */
+async function sendTelegramDigestForOrg(organizationId: string, chatId: string, env: Env): Promise<{ ok: boolean }> {
+  const sites = await getOrgSites(organizationId, env);
+  if (sites.length === 0) return { ok: false };
+
+  const siteIds = sites.map(s => s.id);
+  const siteIdFilter = `in.(${siteIds.map(id => encodeURIComponent(id)).join(",")})`;
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [uptimeRes, incidentsRes, speedRes, prevSpeedRes, seoRes, sslRes, insightsRes] = await Promise.all([
+    selectRows<UptimeRow>("uptime_checks", `select=site_id,status,checked_at&site_id=${siteIdFilter}&checked_at=gte.${weekAgo}`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+    selectRows<DigestIncidentRow>("uptime_incidents", `select=site_id,started_at,resolved_at&site_id=${siteIdFilter}&started_at=gte.${weekAgo}`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+    selectRows<DigestSpeedRow>("speed_checks", `select=site_id,load_time_ms,checked_at&site_id=${siteIdFilter}&checked_at=gte.${weekAgo}`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+    selectRows<DigestSpeedRow>("speed_checks", `select=site_id,load_time_ms,checked_at&site_id=${siteIdFilter}&checked_at=gte.${twoWeeksAgo}&checked_at=lt.${weekAgo}`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+    selectRows<DigestSeoRow>("page_seo_audits", `select=site_id,issues,checked_at&site_id=${siteIdFilter}&checked_at=gte.${weekAgo}&order=checked_at.desc`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+    selectRows<DigestSslRow>("ssl_certificates", `select=site_id,days_until_expiry&site_id=${siteIdFilter}`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+    selectRows<InsightRow>("ai_insights", `select=site_id,severity,problem_summary,estimated_monthly_loss_usd,generated_at&site_id=${siteIdFilter}&is_resolved=eq.false&order=generated_at.desc&limit=20`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+  ]);
+
+  const uptimeChecks = uptimeRes.data ?? [];
+  const totalChecks = uptimeChecks.length;
+  const upChecks = uptimeChecks.filter(c => c.status === "up").length;
+  const uptimePct = totalChecks > 0 ? (upChecks / totalChecks) * 100 : 100;
+
+  const incidents = incidentsRes.data ?? [];
+  let totalDowntimeMinutes = 0;
+  for (const inc of incidents) {
+    const start = new Date(inc.started_at).getTime();
+    const end = inc.resolved_at ? new Date(inc.resolved_at).getTime() : Date.now();
+    totalDowntimeMinutes += Math.round((end - start) / 60000);
+  }
+
+  const speeds = (speedRes.data ?? []).map(c => c.load_time_ms);
+  const avgSpeedMs = speeds.length ? Math.round(speeds.reduce((a, b) => a + b, 0) / speeds.length) : null;
+  const prevSpeeds = (prevSpeedRes.data ?? []).map(c => c.load_time_ms);
+  const prevAvgSpeedMs = prevSpeeds.length ? Math.round(prevSpeeds.reduce((a, b) => a + b, 0) / prevSpeeds.length) : null;
+  const speedChangePct = avgSpeedMs !== null && prevAvgSpeedMs !== null && prevAvgSpeedMs > 0
+    ? Math.round(((prevAvgSpeedMs - avgSpeedMs) / prevAvgSpeedMs) * 100) // позитивне = стало швидше
+    : null;
+
+  // Нові SEO-проблеми за тиждень — найостанніший аудит на кожен сайт
+  let totalSeoIssues = 0;
+  const seenSites = new Set<string>();
+  for (const audit of seoRes.data ?? []) {
+    if (seenSites.has(audit.site_id)) continue;
+    seenSites.add(audit.site_id);
+    try {
+      const issues = Array.isArray(audit.issues) ? audit.issues : JSON.parse(String(audit.issues));
+      totalSeoIssues += issues.length;
+    } catch { /* ignore */ }
+  }
+
+  const sslWarnings = (sslRes.data ?? []).filter(s => s.days_until_expiry !== null && s.days_until_expiry <= 30);
+
+  const insights = insightsRes.data ?? [];
+  const criticalCount = insights.filter(i => i.severity === "critical").length;
+
+  // Якщо взагалі немає жодних даних за тиждень — не турбуємо AI-викликом,
+  // сайти щойно додані/моніторинг щойно ввімкнено.
+  if (totalChecks === 0 && speeds.length === 0 && insights.length === 0) {
+    return { ok: false };
+  }
+
+  const creditsCheck = await checkAiCredits(organizationId, "business", env);
+  if (!creditsCheck.ok) {
+    // Дайджест — не запит користувача, а проактивна розсилка:
+    // немає кредитів чи вимкнено адміном — просто мовчки пропускаємо
+    // цю організацію цього тижня, без повідомлення про помилку
+    // (на відміну від команд, де користувач чекає на відповідь).
+    return { ok: false };
+  }
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return { ok: false };
+
+  const factsBlock = [
+    `Сайтів на моніторингу: ${sites.length}`,
+    `Uptime за тиждень: ${uptimePct.toFixed(2)}%`,
+    incidents.length > 0 ? `Інцидентів недоступності: ${incidents.length} (сумарний простій ${totalDowntimeMinutes} хв)` : `Інцидентів недоступності: 0`,
+    avgSpeedMs !== null ? `Середня швидкість завантаження: ${avgSpeedMs}мс${speedChangePct !== null ? ` (${speedChangePct >= 0 ? "швидше" : "повільніше"} на ${Math.abs(speedChangePct)}% порівняно з попереднім тижнем)` : ""}` : "Даних про швидкість за тиждень немає",
+    `Нових SEO-проблем виявлено: ${totalSeoIssues}`,
+    sslWarnings.length > 0 ? `SSL-сертифікати, що скоро закінчуються: ${sslWarnings.length}` : null,
+    `Активних проблем усього: ${insights.length}${criticalCount > 0 ? ` (з них ${criticalCount} критичних)` : ""}`,
+    insights.length > 0 ? `Найважливіші: ${insights.slice(0, 3).map(i => i.problem_summary).join("; ")}` : null,
+  ].filter(Boolean).join("\n");
+
+  const prompt = `Ти пишеш щотижневий дайджест для власника бізнесу про стан його сайтів у Qorax. Ось факти за останній тиждень:
+
+${factsBlock}
+
+Напиши короткий (3-5 речень) людський текст українською мовою — не перелічуй цифри як список, а розкажи зв'язно, що сталося за тиждень, що покращилось, що варто звернути увагу. Тон — як від консультанта, який щиро зацікавлений в успіху бізнесу, без зайвого захвату чи драматизму. Використовуй лише факти з переліку вище, нічого не вигадуй.`;
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS);
+    const resp = await fetch(`${GEMINI_ENDPOINT}?key=${apiKey}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{ role: "user", parts: [{ text: prompt }] }],
+        generationConfig: { temperature: 0.6, maxOutputTokens: 500 },
+      }),
+    });
+    clearTimeout(timeout);
+    if (!resp.ok) return { ok: false };
+
+    interface GeminiResponse { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> }
+    const data = (await resp.json()) as GeminiResponse;
+    const text = (data.candidates?.[0]?.content?.parts?.[0]?.text ?? "").trim();
+    if (!text) return { ok: false };
+
+    await deductAiCredits(organizationId, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+    await sendTelegramMessage(chatId, `📊 <b>Тижневий дайджест</b>\n\n${text}`, env.TELEGRAM_BOT_TOKEN);
+    return { ok: true };
+  } catch (err) {
+    console.error("[telegram-digest] error:", err instanceof Error ? err.message : err);
+    return { ok: false };
+  }
+}
+
+/**
+ * Викликається з cron-хендлера (index.ts) щопонеділка — та сама умова
+ * дня тижня, що вже перевіряється перед sendWeeklyDigests() (email).
+ * Проходить по всіх telegram_enabled організаціях (не по digest_frequency
+ * — Telegram-дайджест поки завжди weekly, налаштування частоти окремо
+ * для Telegram документ не описував; email-версія лишається джерелом
+ * істини для weekly/biweekly/monthly вибору користувача).
+ */
+export async function sendTelegramWeeklyDigests(env: Env): Promise<{ sent: number; skipped: number }> {
+  const connectedRes = await selectRows<TelegramConnectedOrg>(
+    "notification_settings",
+    `select=organization_id,telegram_chat_id&telegram_enabled=eq.true&telegram_chat_id=not.is.null`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const orgs = connectedRes.data ?? [];
+
+  let sent = 0;
+  let skipped = 0;
+
+  for (const org of orgs) {
+    const result = await sendTelegramDigestForOrg(org.organization_id, org.telegram_chat_id, env);
+    if (result.ok) sent++; else skipped++;
+  }
+
+  return { sent, skipped };
 }
