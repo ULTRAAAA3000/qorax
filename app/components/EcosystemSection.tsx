@@ -1,33 +1,75 @@
 "use client";
 
-import { Briefcase, Mail, Palette, FileText, Globe, ArrowUpRight } from "lucide-react";
+import {
+  Briefcase, Mail, Palette, FileText, Globe, ArrowUpRight,
+  ShieldCheck, Layout, Sparkles, TrendingUp, BarChart3,
+  Inbox, Send, Bot,
+  LayoutTemplate, Network, Blocks,
+  BookOpen, Table2, Presentation,
+  ScanSearch, FolderOpen,
+} from "lucide-react";
 import { Reveal } from "./Reveal";
 
 /**
  * EcosystemSection — представляє п'ять продуктів бренду Qorax
  * (PRODUCT_VISION.md, розділ "П'ять продуктів екосистеми Qorax").
- * На відміну від PlatformModulesSection (шість МОДУЛІВ всередині
- * Business), тут — п'ять окремих ПРОДУКТІВ, кожен зі своєю точкою
- * входу. Станом на липень 2026 усі п'ять мають робочий мінімальний
- * функціонал для залогінених користувачів (Business/dashboard,
- * Mail/MailApp, Creator/CreatorBoardsListUI, Office/
- * OfficeDocsListUI, Browser/BrowserUI) — усі позначені live: true.
- * Незалогінені відвідувачі одразу редиректяться на /login з /mail,
- * /office, /browser, /creator (той самий підхід, що вже мав /creator;
- * ProductComingSoon-заглушка прибрана звідти для незалогінених за
- * прямою вказівкою Артема — вона вводила в оману, ніби продукт "у
- * розробці", хоча код давно готовий, просто вимагав входу).
+ *
+ * Артем (липень 2026): продукти губились серед решти секцій лендингу
+ * — виглядали як "ще один звичайний розділ", хоча це найважливіша
+ * структурна ідея бренду ("один бренд, п'ять продуктів"), яку не
+ * можна пропустити скролячи. Тому цей прохід:
+ * 1) Перенесено секцію одразу під Hero/StatsStrip (раніше йшла після
+ *    трьох ProductSection і FeatureBento — глибоко в скролі).
+ * 2) Візуально важче за сусідні секції: великі картки на всю ширину
+ *    (не дрібний grid 1/3 екрана кожна), кожен продукт розкриває, що
+ *    саме в ньому є (список фіч з іконками) — не просто назва +
+ *    один рядок опису, як було.
+ * 3. Об'єднано з колишньою PlatformModulesSection: шість модулів
+ *    Business (Audit/Sites/AI/Content/Rank/Analytics) тепер не окрема
+ *    секція нижче по сторінці, а "що всередині" картки Business —
+ *    той самий рівень деталізації, що фічі інших чотирьох продуктів.
+ *    PlatformModulesSection.tsx лишається в дереві файлів (щоб не
+ *    ламати git-історію), але вже не імпортується в app/page.tsx.
+ *
+ * Дизайн лишається в межах Cyber Minimal — той самий glow-card,
+ * gradient-text, gradient-divider, --lime/--cyan/--purple акценти,
+ * що й решта лендингу; "вагу" додає розмір і структура карток, не
+ * нова візуальна мова.
  */
 
-const PRODUCTS = [
+const ACCENT_COLORS = { lime: "var(--lime)", cyan: "var(--cyan)", purple: "#B98CF7" } as const;
+
+interface Feature {
+  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; strokeWidth?: number }>;
+  name: string;
+}
+
+interface Product {
+  icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; strokeWidth?: number }>;
+  name: string;
+  tagline: string;
+  description: string;
+  href: string;
+  accent: keyof typeof ACCENT_COLORS;
+  features: Feature[];
+}
+
+const PRODUCTS: Product[] = [
   {
     icon: Briefcase,
     name: "Qorax Business",
     tagline: "Керуйте бізнесом",
     description: "Моніторинг, SEO, сайти, CRM та AI-агенти в одній платформі — те, що вже працює сьогодні.",
     href: "/login",
-    accent: "lime" as const,
-    live: true,
+    accent: "lime",
+    features: [
+      { icon: ShieldCheck, name: "Audit — технічний контроль" },
+      { icon: Layout, name: "Sites — присутність в інтернеті" },
+      { icon: Sparkles, name: "AI — розумний асистент" },
+      { icon: FileText, name: "Content — SEO-контент" },
+      { icon: TrendingUp, name: "Rank — позиції у пошуку" },
+      { icon: BarChart3, name: "Analytics — єдина картина" },
+    ],
   },
   {
     icon: Mail,
@@ -35,8 +77,12 @@ const PRODUCTS = [
     tagline: "Спілкуйтесь з клієнтами",
     description: "Корпоративна пошта, email-маркетинг та AI-агенти для листування — в одному місці.",
     href: "/mail",
-    accent: "cyan" as const,
-    live: true,
+    accent: "cyan",
+    features: [
+      { icon: Inbox, name: "Пошта та контакти" },
+      { icon: Send, name: "Маркетинг і кампанії" },
+      { icon: Bot, name: "AI-агенти листування" },
+    ],
   },
   {
     icon: Palette,
@@ -44,8 +90,12 @@ const PRODUCTS = [
     tagline: "Створюйте візуали",
     description: "Дизайн, сайти, презентації та банери на одному нескінченному полотні з AI.",
     href: "/creator",
-    accent: "purple" as const,
-    live: true,
+    accent: "purple",
+    features: [
+      { icon: LayoutTemplate, name: "Website Mode — сайти на дошці" },
+      { icon: Network, name: "Diagram Mode — схеми і карти" },
+      { icon: Blocks, name: "Компоненти — блоки й Brand Kit" },
+    ],
   },
   {
     icon: FileText,
@@ -53,8 +103,12 @@ const PRODUCTS = [
     tagline: "Працюйте з документами",
     description: "Документи, таблиці й презентації з AI, що робить основну роботу за вас.",
     href: "/office",
-    accent: "lime" as const,
-    live: true,
+    accent: "lime",
+    features: [
+      { icon: BookOpen, name: "Docs — редактор з AI Writer" },
+      { icon: Table2, name: "Sheets — таблиці та формули" },
+      { icon: Presentation, name: "Slides — презентації з AI" },
+    ],
   },
   {
     icon: Globe,
@@ -62,18 +116,20 @@ const PRODUCTS = [
     tagline: "Досліджуйте інтернет",
     description: "Робочий браузер: аналізує сайти, збирає ідеї та передає їх у решту екосистеми.",
     href: "/browser",
-    accent: "cyan" as const,
-    live: true,
+    accent: "cyan",
+    features: [
+      { icon: Sparkles, name: "AI Sidebar — пояснює будь-який сайт" },
+      { icon: ScanSearch, name: "Site Inspector — SEO і технології" },
+      { icon: FolderOpen, name: "Collections — референси та ідеї" },
+    ],
   },
 ];
 
-const ACCENT_COLORS = { lime: "var(--lime)", cyan: "var(--cyan)", purple: "#B98CF7" } as const;
-
 export function EcosystemSection() {
   return (
-    <section className="relative">
+    <section className="relative" style={{ background: "rgba(255,255,255,0.015)" }}>
       <div className="gradient-divider" />
-      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-24">
+      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-28">
         <Reveal>
           <div className="text-center mb-4">
             <span
@@ -85,39 +141,63 @@ export function EcosystemSection() {
           </div>
         </Reveal>
         <Reveal delay={0.04}>
-          <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-semibold text-center max-w-2xl mx-auto leading-tight">
+          <h2 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold text-center max-w-3xl mx-auto leading-tight">
             П&apos;ять продуктів.{" "}
             <span className="gradient-text">Один бренд Qorax</span>
           </h2>
         </Reveal>
         <Reveal delay={0.08}>
-          <p className="mt-4 text-center text-[var(--text-secondary)] max-w-xl mx-auto">
+          <p className="mt-5 text-center text-base text-[var(--text-secondary)] max-w-xl mx-auto">
             Кожен продукт цінний окремо — і підсилює решту, коли ви використовуєте їх разом.
           </p>
         </Reveal>
 
-        <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="mt-14 space-y-5">
           {PRODUCTS.map((product, i) => {
             const color = ACCENT_COLORS[product.accent];
             return (
-              <Reveal key={product.name} delay={Math.min(i * 0.05, 0.25)}>
-                <a href={product.href} className="block h-full transition-transform hover:-translate-y-0.5">
-                  <div className="glow-card p-6 h-full flex flex-col relative overflow-hidden">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div
-                        className="h-9 w-9 rounded-xl flex items-center justify-center shrink-0"
-                        style={{ background: `${color}14`, border: `1px solid ${color}33` }}
-                      >
-                        <product.icon size={16} style={{ color }} strokeWidth={1.5} />
+              <Reveal key={product.name} delay={Math.min(i * 0.05, 0.2)}>
+                <a href={product.href} className="block group">
+                  <div
+                    className="glow-card p-7 sm:p-9 grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] gap-6 md:gap-10 items-center"
+                    style={{ boxShadow: `0 0 0 1px ${color}14 inset` }}
+                  >
+                    {/* Ліва частина — назва, опис, CTA */}
+                    <div>
+                      <div className="flex items-center gap-3.5 mb-4">
+                        <div
+                          className="h-12 w-12 rounded-2xl flex items-center justify-center shrink-0"
+                          style={{ background: `${color}14`, border: `1px solid ${color}33` }}
+                        >
+                          <product.icon size={22} style={{ color }} strokeWidth={1.5} />
+                        </div>
+                        <div>
+                          <h3 className="font-display text-xl sm:text-2xl font-semibold leading-tight">{product.name}</h3>
+                          <p className="text-xs font-mono mt-0.5" style={{ color }}>{product.tagline}</p>
+                        </div>
                       </div>
-                      <div>
-                        <h3 className="font-display text-base font-semibold leading-tight">{product.name}</h3>
-                        <p className="text-[11px] font-mono" style={{ color }}>{product.tagline}</p>
+                      <p className="text-sm sm:text-[15px] leading-relaxed text-[var(--text-secondary)]">
+                        {product.description}
+                      </p>
+                      <div
+                        className="mt-5 inline-flex items-center gap-1.5 text-sm font-medium transition-transform group-hover:translate-x-0.5"
+                        style={{ color }}
+                      >
+                        Перейти <ArrowUpRight size={15} />
                       </div>
                     </div>
-                    <p className="text-sm leading-relaxed text-[var(--text-secondary)] flex-1">{product.description}</p>
-                    <div className="mt-4 flex items-center gap-1.5 text-xs font-medium" style={{ color }}>
-                      Перейти <ArrowUpRight size={13} />
+
+                    {/* Права частина — що всередині продукту */}
+                    <div
+                      className="rounded-2xl p-4 sm:p-5 space-y-1"
+                      style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)" }}
+                    >
+                      {product.features.map((f) => (
+                        <div key={f.name} className="flex items-center gap-2.5 py-1.5">
+                          <f.icon size={14} style={{ color }} strokeWidth={1.75} />
+                          <span className="text-[13px] sm:text-sm text-[var(--text-secondary)]">{f.name}</span>
+                        </div>
+                      ))}
                     </div>
                   </div>
                 </a>

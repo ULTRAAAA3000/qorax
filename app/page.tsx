@@ -7,7 +7,6 @@ import { HeroAtmosphere } from "./components/HeroAtmosphere";
 import { HeroGlassCubeLazy as HeroGlassCube } from "./components/HeroGlassCubeLazy";
 import { StatsStrip } from "./components/StatsStrip";
 import { FeatureBento } from "./components/FeatureBento";
-import { PlatformModulesSection } from "./components/PlatformModulesSection";
 import { EcosystemSection } from "./components/EcosystemSection";
 import { HowItWorksSection } from "./components/HowItWorksSection";
 import { FaqSection } from "./components/FaqSection";
@@ -70,6 +69,7 @@ export default async function Home() {
       <MarketingHeader isLoggedIn={!!user} />
       <Hero />
       <StatsStrip />
+      <EcosystemSection />
 
       <ProductSection
         eyebrow="МОНІТОРИНГ"
@@ -102,8 +102,6 @@ export default async function Home() {
       </ProductSection>
 
       <FeatureBento />
-      <EcosystemSection />
-      <PlatformModulesSection />
       <HowItWorksSection />
       <PlansSection starterUrl={starterUrl} growthUrl={growthUrl} agencyUrl={agencyUrl} />
       <FaqSection />
