@@ -274,7 +274,7 @@ export default async function DashboardPage({
       </header>
 
       <div className="flex" style={{ minHeight: "calc(100vh - 56px)" }}>
-        <PlatformSidebar modules={platformModules} />
+        <PlatformSidebar modules={platformModules} organizationId={membership?.organization_id} />
 
         <main className="flex-1 min-w-0 mx-auto max-w-6xl px-6 sm:px-8 py-8 space-y-5">
 

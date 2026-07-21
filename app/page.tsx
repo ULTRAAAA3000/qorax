@@ -3,6 +3,7 @@ import { AuditForm } from "./components/AuditForm";
 import { LiveMonitorPanel } from "./components/LiveMonitorPanel";
 import { AiInsightPreview } from "./components/AiInsightPreview";
 import { SpeedTrendPreview } from "./components/SpeedTrendPreview";
+import { TelegramPreview } from "./components/TelegramPreview";
 import { HeroAtmosphere } from "./components/HeroAtmosphere";
 import { HeroGlassCubeLazy as HeroGlassCube } from "./components/HeroGlassCubeLazy";
 import { StatsStrip } from "./components/StatsStrip";
@@ -117,6 +118,16 @@ export default async function Home() {
         accent="purple"
       >
         <SpeedTrendPreview />
+      </ProductSection>
+
+      <ProductSection
+        eyebrow="TELEGRAM"
+        title="Керуйте бізнесом, не відкриваючи Dashboard"
+        description="Ранковий дайджест, AI-чат про стан сайту, миттєві сповіщення про критичні проблеми — прямо в Telegram. Задайте питання природною мовою: «чому впали позиції» — і отримайте відповідь на основі реальних даних моніторингу."
+        align="left"
+        accent="cyan"
+      >
+        <TelegramPreview />
       </ProductSection>
 
       <FeatureBento />
