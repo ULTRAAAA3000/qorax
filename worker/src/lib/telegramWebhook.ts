@@ -19,6 +19,7 @@
 import type { Env } from "../types";
 import { selectRows, upsertRow } from "./supabase";
 import { sendTelegramMessage } from "./telegram";
+import { handleTelegramBotMessage } from "./telegramBotHandler";
 
 // Telegram Bot API шле апдейти у вигляді JSON-об'єкта Update.
 // Визначаємо тільки поля, які нам потрібні.
@@ -79,7 +80,7 @@ export async function handleTelegramWebhook(
       // /start без параметру — бот запущений напряму, не через наш deep link
       await sendTelegramMessage(
         chatId,
-        `👋 Вітаємо у Qorax Bot!\n\nЦей бот надсилає алерти про стан ваших сайтів.\n\nЩоб підключити сповіщення, перейдіть у <b>Налаштування → Telegram</b> у вашому дашборді Qorax і натисніть кнопку підключення.`,
+        `👋 Вітаємо у Qorax Bot!\n\nЦей бот — AI-помічник вашого бізнесу: сповіщення про стан сайтів, команди <code>/audit /score /issues</code> і AI-чат природною мовою.\n\nЩоб підключити, перейдіть у <b>Налаштування → Telegram</b> у вашому дашборді Qorax і натисніть кнопку підключення.`,
         env.TELEGRAM_BOT_TOKEN
       );
       return new Response("ok", { status: 200 });
@@ -131,19 +132,17 @@ export async function handleTelegramWebhook(
     const firstName = message.from?.first_name ?? "";
     await sendTelegramMessage(
       chatId,
-      `✅ <b>Telegram підключено до Qorax${firstName ? `, ${firstName}` : ""}!</b>\n\nВи отримуватимете сповіщення коли:\n• 🔴 Сайт стає недоступним\n• ✅ Сайт відновлює роботу\n• ⚠️ SSL-сертифікат закінчується\n\nНалаштувати типи сповіщень можна у <b>Налаштування → Сповіщення</b> у дашборді.`,
+      `✅ <b>Telegram підключено до Qorax${firstName ? `, ${firstName}` : ""}!</b>\n\nВи отримуватимете сповіщення коли:\n• 🔴 Сайт стає недоступним\n• ✅ Сайт відновлює роботу\n• ⚠️ SSL-сертифікат закінчується\n\nТакож можна писати боту напряму:\n/audit — звіт по сайтах\n/score — PageSpeed\n/issues — активні проблеми\nАбо просто питання природною мовою — наприклад «чому впали позиції?».`,
       env.TELEGRAM_BOT_TOKEN
     );
 
     return new Response("ok", { status: 200 });
   }
 
-  // Будь-яке інше повідомлення — підказка
-  await sendTelegramMessage(
-    chatId,
-    `Цей бот надсилає автоматичні алерти від Qorax. Для підключення скористайтесь посиланням у налаштуваннях дашборду.`,
-    env.TELEGRAM_BOT_TOKEN
-  );
+  // Будь-яке інше повідомлення — команди (/audit, /score, /issues) або
+  // AI Chat природною мовою (MODULE_ROADMAP.md / Артем: Telegram-бот
+  // "Qorax Business" другого покоління, не лише алерти).
+  await handleTelegramBotMessage(chatId, text, env);
 
   return new Response("ok", { status: 200 });
 }
