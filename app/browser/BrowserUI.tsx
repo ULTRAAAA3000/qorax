@@ -1,11 +1,12 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Globe, Sparkles, Loader2, ArrowRight, Clock, X, ScanSearch, Zap, Palette, Type, Code2, Layers, FileText, BookOpen } from "lucide-react";
+import { Globe, Sparkles, Loader2, ArrowRight, Clock, X, ScanSearch, Zap, Palette, Type, Code2, Layers, FileText, BookOpen, Search } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { QuickActionsMenu } from "./QuickActionsMenu";
 import { ReadingModeView } from "./ReadingModeView";
+import { DeepSearchPanel } from "./DeepSearchPanel";
 
 interface HistoryItem {
   id: string;
@@ -60,7 +61,7 @@ export function BrowserUI({ organizationId }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<"ai" | "inspect" | "collections">("ai");
+  const [sidebarTab, setSidebarTab] = useState<"ai" | "inspect" | "collections" | "deep-search">("ai");
   const [summary, setSummary] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -398,6 +399,13 @@ export function BrowserUI({ organizationId }: Props) {
               >
                 <Layers size={12} /> Колекції
               </button>
+              <button
+                onClick={() => setSidebarTab("deep-search")}
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                style={{ background: sidebarTab === "deep-search" ? "rgba(245,103,90,0.1)" : "transparent", color: sidebarTab === "deep-search" ? "#F5675A" : "var(--text-tertiary)" }}
+              >
+                <Search size={12} /> Пошук
+              </button>
             </div>
             <button onClick={() => setSidebarOpen(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
               <X size={14} />
@@ -535,6 +543,14 @@ export function BrowserUI({ organizationId }: Props) {
               <CollectionsPanel
                 organizationId={organizationId}
                 currentUrl={currentUrl}
+                getFreshToken={getFreshToken}
+                onNavigate={navigate}
+              />
+            )}
+
+            {sidebarTab === "deep-search" && (
+              <DeepSearchPanel
+                organizationId={organizationId}
                 getFreshToken={getFreshToken}
                 onNavigate={navigate}
               />

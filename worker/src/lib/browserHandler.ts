@@ -1389,3 +1389,165 @@ export async function handleCollectionItemDelete(request: Request, env: Env, cor
 
   return json({ ok: true }, 200, corsHeaders);
 }
+
+// ============================================================
+// Deep Search (MODULE_ROADMAP.md, "Qorax Browser" — одинадцята
+// ітерація, продовжуємо список після Website Timeline і Workspace
+// Tabs: "пошук по інтернету з AI, що сам підбирає приклади за
+// складним природномовним запитом (не проста видача посилань)").
+// ============================================================
+// Технічне рішення: жодного окремого пошукового API-ключа в проєкті
+// ще немає (перевірено — SUPABASE/GEMINI/LS/TELEGRAM/RESEND, більше
+// нічого в env.XXX звертань worker/src/). Заводити новий зовнішній
+// провайдер (SerpAPI/Brave/Bing) заради одного ендпоінту — зайва
+// інфраструктура. Gemini API нативно підтримує вбудований інструмент
+// `google_search` (grounding): модель сама формулює запити, реально
+// шукає в Google, і повертає відповідь з переліком джерел
+// (groundingChunks) — саме "AI сам підбирає приклади за
+// природномовним запитом", а не голий список посилань. Тому власна
+// функція виклику Gemini з увімкненим tools, а не переюзання
+// callGemini() (той не приймає tools — свідомо не чіпаємо
+// contentGeneration.ts заради одного викликача, той самий принцип,
+// що вже застосований для callGeminiVision).
+
+const GEMINI_SEARCH_ENDPOINT =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+const DEEP_SEARCH_TIMEOUT_MS = 25_000;
+
+interface DeepSearchBody {
+  organization_id: string;
+  query: string;
+}
+
+interface DeepSearchSource {
+  title: string;
+  uri: string;
+}
+
+interface GeminiGroundingResponse {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+    groundingMetadata?: {
+      groundingChunks?: Array<{ web?: { uri?: string; title?: string } }>;
+    };
+  }>;
+}
+
+async function callGeminiWithSearch(
+  query: string,
+  apiKey: string
+): Promise<
+  | { ok: true; text: string; sources: DeepSearchSource[] }
+  | { ok: false; error: string; status: number }
+> {
+  const body = {
+    contents: [
+      {
+        parts: [
+          {
+            text: `Запит користувача: "${query}"
+
+Знайди актуальну інформацію в інтернеті за цим запитом і дай структуровану відповідь українською мовою. Не просто перелічуй посилання — синтезуй знайдене у зв'язну відповідь по суті запиту, з конкретними прикладами/фактами/назвами, якщо запит цього просить (наприклад "приклади лендінгів для..." → перелічи конкретні знайдені приклади з коротким описом кожного, не загальні поради).`,
+          },
+        ],
+      },
+    ],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.4, maxOutputTokens: 2000 },
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEEP_SEARCH_TIMEOUT_MS);
+  try {
+    const doFetch = () =>
+      fetch(`${GEMINI_SEARCH_ENDPOINT}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify(body),
+      });
+
+    let resp = await doFetch();
+    if (resp.status === 429 || resp.status === 503) {
+      const delay = resp.status === 503 ? 6000 : 4000;
+      console.warn(`[deep-search] Gemini ${resp.status} — retrying in ${delay}ms`);
+      await new Promise(r => setTimeout(r, delay));
+      resp = await doFetch();
+    }
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error("[deep-search] Gemini error:", resp.status, errText.slice(0, 300));
+      return { ok: false, error: resp.status === 429 ? "AI перевантажений — спробуйте через хвилину" : "AI тимчасово недоступний", status: 503 };
+    }
+
+    const data = (await resp.json()) as GeminiGroundingResponse;
+    const candidate = data.candidates?.[0];
+    const text = candidate?.content?.parts?.map(p => p.text ?? "").join("").trim() ?? "";
+    if (!text) return { ok: false, error: "AI не повернув результат — спробуйте переформулювати запит", status: 502 };
+
+    const chunks = candidate?.groundingMetadata?.groundingChunks ?? [];
+    const seen = new Set<string>();
+    const sources: DeepSearchSource[] = [];
+    for (const chunk of chunks) {
+      const uri = chunk.web?.uri;
+      if (!uri || seen.has(uri)) continue;
+      seen.add(uri);
+      sources.push({ title: chunk.web?.title ?? uri, uri });
+    }
+
+    return { ok: true, text, sources };
+  } catch (err) {
+    console.error("[deep-search] fetch error:", err);
+    return { ok: false, error: "AI тимчасово недоступний", status: 503 };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// POST /api/browser/deep-search — природномовний пошук по інтернету
+// з AI-синтезом відповіді (не проста видача посилань, roadmap).
+// Rate-limit на IP (а не лише org) — той самий підхід, що інші дорогі
+// AI-ендпоінти захищені checkRateLimit деінде в кодовій базі, тут
+// додатково важливо через реальний зовнішній пошук за кожен виклик.
+export async function handleDeepSearch(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: DeepSearchBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const query = (body.query ?? "").trim();
+  if (!query) return json({ error: "Запит не може бути порожнім" }, 400, corsHeaders);
+  if (query.length > 500) return json({ error: "Запит завеликий (макс. 500 символів)" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const ip = getClientIp(request);
+  const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, `deep-search:${ip}`, 20, 3600);
+  if (!rateLimit.allowed) return json({ error: "Забагато запитів. Спробуйте пізніше." }, 429, corsHeaders);
+
+  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const result = await callGeminiWithSearch(query, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+
+  return json(
+    {
+      answer: result.text,
+      sources: result.sources,
+      credits_remaining: creditsRemaining,
+      unlimited: creditsCheck.unlimited,
+    },
+    200,
+    corsHeaders
+  );
+}

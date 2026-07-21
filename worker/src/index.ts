@@ -212,7 +212,7 @@ import {
   runCroAggregate,
 } from "./lib/croHandler";
 import { handleBenchmarkGet } from "./lib/benchmarkHandler";
-import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare, handleBrowserReadingMode, handleVisualSearch, handleProxyTokenIssue, handleWebsiteTimeline, handleCollectionItemsList, handleCollectionItemAdd, handleCollectionItemDelete } from "./lib/browserHandler";
+import { handleBrowserProxy, handleBrowserAnalyze, handleBrowserHistory, handleBrowserInspect, handleCollectionsList, handleCollectionCreate, handleCollectionDelete, handleCollectionSaveItem, handleCaptureToOffice, handleBrowserTranslate, handleBrowserSummarize, handleBrowserCompare, handleBrowserReadingMode, handleVisualSearch, handleProxyTokenIssue, handleWebsiteTimeline, handleCollectionItemsList, handleCollectionItemAdd, handleCollectionItemDelete, handleDeepSearch } from "./lib/browserHandler";
 import { runBenchmarkAggregation } from "./lib/benchmarkAggregator";
 import {
   handleAiGenerate,
@@ -1042,6 +1042,9 @@ const worker = {
     }
     if (url.pathname === "/api/browser/timeline" && request.method === "POST") {
       return handleWebsiteTimeline(request, env, corsHeaders(origin));
+    }
+    if (url.pathname === "/api/browser/deep-search" && request.method === "POST") {
+      return handleDeepSearch(request, env, corsHeaders(origin));
     }
 
     // ── CRM routes (MODULE_ROADMAP.md, розділ 7; EXECUTION_PLAN.md Фаза 2.3) ──
