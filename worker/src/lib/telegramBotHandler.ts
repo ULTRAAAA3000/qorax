@@ -9,23 +9,24 @@
 //      довільне природномовне питання, переюзовує вже наявний
 //      buildOrgScopedPrompt() з chatHandler.ts (той самий движок,
 //      що і веб-версія Qorax AI Chat), НЕ новий промпт з нуля
-//   2. Slash-команди: /audit, /score, /issues — на основі РЕАЛЬНИХ
-//      полів БД (uptime_checks.status, core_web_vitals_checks.
-//      performance_score, ai_insights), а не вигаданого єдиного
-//      "SEO Score" (документ Артема згадує "SEO Score 92" ілюстративно,
-//      такого поля в БД немає — команди побудовані на тому, що
-//      реально вимірюється, той самий принцип чесності, що вже в
-//      STYLE_INSTRUCTIONS чату: "Забороняється вигадувати дані")
+//   2. Slash-команди: /audit, /score, /issues, /rank — на основі
+//      РЕАЛЬНИХ полів БД (uptime_checks.status, core_web_vitals_checks.
+//      performance_score, ai_insights, rank_tracked_queries+gsc_metrics),
+//      а не вигаданого єдиного "SEO Score" (документ Артема згадує
+//      "SEO Score 92" ілюстративно, такого поля в БД немає — команди
+//      побудовані на тому, що реально вимірюється, той самий принцип
+//      чесності, що вже в STYLE_INSTRUCTIONS чату: "Забороняється
+//      вигадувати дані")
 //   3. Priority-емодзі (🟢🟡🟠🔴) для issues — простий візуальний
 //      маркер severity, як в документі
 //
 // СВІДОМО НЕ ЗРОБЛЕНО цим проходом (наступні кроки за списком
-// Артема): /rank (прив'язаний до GSC per-site, складніша агрегація),
-// /speed /report /traffic окремими командами (частково покриті
-// /audit і /score), Weekly Digest AI-текстом (окрема cron-задача),
-// Instant Actions (inline-кнопки з діями), голосові повідомлення,
-// фото/PDF, Smart Alerts (реалізовано, alerts.ts вже має пороги),
-// Business Coach (проактивні поради без запиту користувача).
+// Артема): /speed /report /traffic окремими командами (частково
+// покриті /audit і /score), Weekly Digest AI-текстом (окрема
+// cron-задача), Instant Actions (inline-кнопки з діями), голосові
+// повідомлення, фото/PDF, Smart Alerts (реалізовано, alerts.ts вже
+// має пороги), Business Coach (проактивні поради без запиту
+// користувача).
 // ============================================================
 
 import type { Env } from "../types";
@@ -210,6 +211,100 @@ async function handleIssuesCommand(chatId: string, organizationId: string, env: 
   await sendTelegramMessage(chatId, lines.join("\n").trim(), env.TELEGRAM_BOT_TOKEN);
 }
 
+// ── /rank — позиція по tracked-запитах (rank_tracked_queries, 0041)
+// з найостаннішим average_position з gsc_metrics + тренд відносно
+// попереднього виміру. Вимагає підключеного GSC (gsc_connections) —
+// без нього tracked-запитів у сайта просто немає, повідомляємо про
+// це прямо, не показуємо порожній список без пояснення.
+interface RankTrackedRow {
+  site_id: string;
+  query: string;
+}
+
+interface GscMetricRow {
+  site_id: string;
+  query: string | null;
+  average_position: number | null;
+  date: string;
+}
+
+async function handleRankCommand(chatId: string, organizationId: string, env: Env): Promise<void> {
+  const sites = await getOrgSites(organizationId, env);
+  if (sites.length === 0) {
+    await sendTelegramMessage(chatId, "У вас ще немає жодного сайту на моніторингу.", env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+  const siteIds = sites.map(s => s.id);
+  const siteIdFilter = `in.(${siteIds.map(id => encodeURIComponent(id)).join(",")})`;
+
+  const trackedRes = await selectRows<RankTrackedRow>(
+    "rank_tracked_queries",
+    `select=site_id,query&site_id=${siteIdFilter}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const tracked = trackedRes.data ?? [];
+
+  if (tracked.length === 0) {
+    await sendTelegramMessage(
+      chatId,
+      "Ще немає жодного відстежуваного запиту. Додайте запити в дашборді → Rank, щоб бачити позицію тут.",
+      env.TELEGRAM_BOT_TOKEN
+    );
+    return;
+  }
+
+  // Останні 2 виміри на кожен (site_id, query) — для тренду ↑/↓.
+  // gsc_metrics зберігає добову агрегацію по кожному tracked-запиту
+  // окремим рядком (query IS NOT NULL) — беремо запас 4 останніх
+  // днів на запит з рестом, щоб точно захопити 2 останні різні дати
+  // навіть якщо якийсь день синк пропустив.
+  const metricsRes = await selectRows<GscMetricRow>(
+    "gsc_metrics",
+    `select=site_id,query,average_position,date&site_id=${siteIdFilter}&query=not.is.null&order=date.desc&limit=${tracked.length * 4}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const metrics = metricsRes.data ?? [];
+
+  const lines: string[] = ["🔍 <b>Позиції у пошуку</b>\n"];
+
+  for (const site of sites) {
+    const siteTracked = tracked.filter(t => t.site_id === site.id);
+    if (siteTracked.length === 0) continue;
+
+    lines.push(`<b>${site.display_name}</b>`);
+    for (const t of siteTracked) {
+      const rows = metrics
+        .filter(m => m.site_id === site.id && m.query === t.query && m.average_position !== null)
+        .sort((a, b) => (a.date < b.date ? 1 : -1));
+      const latest = rows[0];
+      const prev = rows.find(r => r.date !== latest?.date);
+
+      if (!latest) {
+        lines.push(`• «${t.query}» — даних ще немає`);
+        continue;
+      }
+      const pos = latest.average_position!.toFixed(1);
+      let trend = "";
+      if (prev?.average_position != null) {
+        const delta = prev.average_position - latest.average_position!; // позитивна = позиція покращилась (менше число)
+        if (delta > 0.5) trend = ` ↑ (було ${prev.average_position.toFixed(1)})`;
+        else if (delta < -0.5) trend = ` ↓ (було ${prev.average_position.toFixed(1)})`;
+      }
+      lines.push(`• «${t.query}» — ${pos}${trend}`);
+    }
+    lines.push("");
+  }
+
+  if (lines.length === 1) {
+    await sendTelegramMessage(chatId, "Ще немає жодного відстежуваного запиту. Додайте запити в дашборді → Rank.", env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+
+  await sendTelegramMessage(chatId, lines.join("\n").trim(), env.TELEGRAM_BOT_TOKEN);
+}
+
 // ── AI Chat — довільне природномовне питання. Переюзовує
 // buildOrgScopedPrompt() з chatHandler.ts (той самий движок веб-версії:
 // Memory + Knowledge Graph + агрегація по всіх сайтах), окремий
@@ -298,6 +393,7 @@ const HELP_TEXT = `🤖 <b>Qorax Bot</b>
 /audit — короткий звіт по всіх сайтах
 /score — PageSpeed (Lighthouse) кожного сайту
 /issues — активні проблеми з пріоритетом
+/rank — позиції по відстежуваних запитах
 
 Або просто напишіть питання природною мовою, наприклад:
 <i>«Чому впали позиції?»</i>
@@ -337,6 +433,10 @@ export async function handleTelegramBotMessage(chatId: string, text: string, env
   }
   if (trimmed === "/issues") {
     await handleIssuesCommand(chatId, organizationId, env);
+    return;
+  }
+  if (trimmed === "/rank") {
+    await handleRankCommand(chatId, organizationId, env);
     return;
   }
   if (trimmed.startsWith("/")) {
