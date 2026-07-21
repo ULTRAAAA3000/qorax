@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Trash2, Loader2, FolderOpen, Bookmark, ChevronLeft } from "lucide-react";
+import { Plus, Trash2, Loader2, FolderOpen, Bookmark, ChevronLeft, FileText } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 
 interface Collection {
@@ -20,6 +20,18 @@ interface CollectionItem {
   visited_at: string;
 }
 
+interface OfficeDoc {
+  id: string;
+  title: string;
+}
+
+interface DocItem {
+  id: string;
+  office_document_id: string;
+  title: string;
+  added_at: string;
+}
+
 interface Props {
   organizationId: string;
   currentUrl: string | null;
@@ -36,6 +48,10 @@ export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, on
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [openCollection, setOpenCollection] = useState<Collection | null>(null);
   const [items, setItems] = useState<CollectionItem[] | null>(null);
+  const [docItems, setDocItems] = useState<DocItem[] | null>(null);
+  const [availableDocs, setAvailableDocs] = useState<OfficeDoc[] | null>(null);
+  const [showDocPicker, setShowDocPicker] = useState(false);
+  const [addingDoc, setAddingDoc] = useState(false);
   const [newTitle, setNewTitle] = useState("");
   const [creating, setCreating] = useState(false);
   const [showCreateForm, setShowCreateForm] = useState(false);
@@ -62,13 +78,55 @@ export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, on
   async function loadItems(collection: Collection) {
     setOpenCollection(collection);
     setItems(null);
+    setDocItems(null);
     const token = await getFreshToken();
-    const res = await fetch(`${API_BASE_URL}/api/browser/history?organization_id=${organizationId}&collection_id=${collection.id}`, {
+    const [historyRes, docsRes] = await Promise.all([
+      fetch(`${API_BASE_URL}/api/browser/history?organization_id=${organizationId}&collection_id=${collection.id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+      fetch(`${API_BASE_URL}/api/browser/collections/${collection.id}/items`, {
+        headers: { Authorization: `Bearer ${token}` },
+      }),
+    ]);
+    if (historyRes.ok) setItems((await historyRes.json()).history ?? []);
+    if (docsRes.ok) setDocItems((await docsRes.json()).items ?? []);
+  }
+
+  async function loadAvailableDocs() {
+    const token = await getFreshToken();
+    const res = await fetch(`${API_BASE_URL}/api/organizations/${organizationId}/office-documents`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) return;
     const data = await res.json();
-    setItems(data.history ?? []);
+    setAvailableDocs(data.documents ?? []);
+  }
+
+  async function addDocToCollection(docId: string) {
+    if (!openCollection) return;
+    setAddingDoc(true);
+    try {
+      const token = await getFreshToken();
+      await fetch(`${API_BASE_URL}/api/browser/collections/${openCollection.id}/items`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ office_document_id: docId }),
+      });
+      setShowDocPicker(false);
+      await loadItems(openCollection);
+    } finally {
+      setAddingDoc(false);
+    }
+  }
+
+  async function removeDocItem(itemId: string) {
+    if (!openCollection) return;
+    const token = await getFreshToken();
+    await fetch(`${API_BASE_URL}/api/browser/collection-items/${itemId}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    await loadItems(openCollection);
   }
 
   async function createCollection(e: React.FormEvent) {
@@ -191,6 +249,65 @@ export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, on
             ))}
           </div>
         )}
+
+        {/* Workspace Tabs (MODULE_ROADMAP.md, "Qorax Browser"):
+            документи Qorax Office прикріплені до цієї колекції —
+            той самий проєкт, що групує сайти вище, тепер і документи. */}
+        <div className="pt-1">
+          <div className="flex items-center justify-between mb-2">
+            <p className="text-xs text-[var(--text-tertiary)] flex items-center gap-1.5">
+              <FileText size={11} /> Документи Office
+            </p>
+            <button
+              onClick={() => { setShowDocPicker(v => !v); if (!availableDocs) loadAvailableDocs(); }}
+              className="text-[11px] text-[var(--text-tertiary)] hover:text-[var(--text-secondary)]"
+            >
+              + Додати
+            </button>
+          </div>
+
+          {showDocPicker && (
+            <div className="space-y-1 mb-2 max-h-40 overflow-y-auto rounded-lg p-1.5" style={{ background: "rgba(255,255,255,0.03)" }}>
+              {!availableDocs && (
+                <div className="flex items-center gap-2 text-[11px] text-[var(--text-tertiary)] py-1.5 px-1.5">
+                  <Loader2 size={11} className="animate-spin" /> Завантаження...
+                </div>
+              )}
+              {availableDocs && availableDocs.length === 0 && (
+                <p className="text-[11px] text-[var(--text-tertiary)] px-1.5 py-1">Немає документів в Office.</p>
+              )}
+              {availableDocs?.map(doc => (
+                <button
+                  key={doc.id}
+                  onClick={() => addDocToCollection(doc.id)}
+                  disabled={addingDoc}
+                  className="w-full text-left px-2 py-1.5 rounded-md text-xs truncate hover:bg-white/5 transition-colors disabled:opacity-50"
+                >
+                  {doc.title}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {docItems && docItems.length === 0 && !showDocPicker && (
+            <p className="text-[11px] text-[var(--text-tertiary)]">Ще немає доданих документів.</p>
+          )}
+
+          {docItems && docItems.length > 0 && (
+            <div className="space-y-1.5">
+              {docItems.map(doc => (
+                <div key={doc.id} className="flex items-center justify-between gap-2 px-2.5 py-2 rounded-lg" style={{ background: "rgba(255,255,255,0.03)" }}>
+                  <a href={`/office/${doc.office_document_id}`} target="_blank" rel="noopener noreferrer" className="text-xs truncate text-[var(--text-secondary)] hover:text-[var(--text-primary)]">
+                    {doc.title}
+                  </a>
+                  <button onClick={() => removeDocItem(doc.id)} className="text-[var(--text-tertiary)] hover:text-[#F5675A] flex-shrink-0">
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
         <button
           onClick={() => deleteCollection(openCollection.id)}

@@ -1,4 +1,4 @@
--- 0081_office_version_history.sql
+-- 0082_office_version_history.sql
 -- Qorax Office — Version History: append-only знімки Docs/Sheets/
 -- Slides (MODULE_ROADMAP.md "Qorax Office", "Стан реалізації",
 -- пункт "Version History" з повного переліку фіч — не MVP, окрема
