@@ -4800,3 +4800,59 @@ pathname === "/login"` → `/dashboard`, тому кешований вхід з
 
 **Перевірено:** `tsc --noEmit` чисто, `eslint` чисто на змінених
 файлах, повний `next build` успішний.
+
+## Лендинг переосмислено під "екосистему", а не лише Business
+
+**Артем:** весь лендинг (Hero, три ProductSection, HowItWorks, Plans,
+FAQ) був написаний виключно про Qorax Business/Audit — нове
+позиціювання "один бренд, п'ять продуктів" (EcosystemSection,
+попередній прохід) виглядало як острівець серед сторінки, що
+насправді продає лише один продукт з п'яти.
+
+**Зроблено (сторінка збільшена приблизно втричі):**
+
+1. **Hero переписано** під ширше позиціювання — "Екосистема для
+   ведення бізнесу онлайн" замість "Повний контроль над сайтом".
+   Audit-форма (головна безкоштовна точка конверсії) залишається на
+   першому екрані, але тепер нижче, під власним заголовком "Хочете
+   почати з безкоштовної перевірки сайту?" — явно позначена як вхід
+   саме в Audit/Business, не в усю екосистему одразу.
+
+2. **Новий компонент `ProductDivider.tsx`** — великий якір-заголовок
+   ("ЦЕ — QORAX BUSINESS" / MAIL / CREATOR / OFFICE / BROWSER) з
+   іконкою продукту, тегляйном і кнопкою "Перейти в X". Розставлено
+   перед кожною групою ProductSection — тепер зрозуміло, чому
+   лендинг раптом заглиблюється в конкретний продукт, а не мовчки
+   перемикається з екосистеми на Business.
+
+3. **10 нових mockup-компонентів** (по 2 на кожен з 4 продуктів,
+   окрім Business — той вже мав 3 готових): `MailInboxPreview` +
+   `MailAiAgentPreview`, `CreatorCanvasPreview` + `CreatorBrandKitPreview`,
+   `OfficeDocsPreview` + `OfficeSheetsSlidesPreview`,
+   `BrowserInspectorPreview` + `BrowserCollectionsPreview`. Усі —
+   той самий glassmorphism-паттерн, що вже усталений
+   (LiveMonitorPanel/AiInsightPreview): window-dot header, рядки,
+   footer з live-індикатором для "панельного" стилю; badge + текст +
+   виділений блок для "карткового" стилю.
+
+4. **8 нових ProductSection** (по 2 на кожен з 4 продуктів),
+   переставлені через існуючий `ProductSection` wrapper — жодного
+   нового layout-компонента, той самий left/right alternating
+   pattern, що вже в Business-блоці.
+
+5. Порядок сторінки тепер: Hero → StatsStrip → EcosystemSection
+   (огляд 5 продуктів) → **Business** (divider + 3 секції +
+   HowItWorks + Plans + FAQ) → **Mail** (divider + 2 секції) →
+   **Creator** (divider + 2 секції) → **Office** (divider + 2 секції)
+   → **Browser** (divider + 2 секції) → FinalCta → Footer.
+
+**Свідомо НЕ зроблено:** окремі тарифні плани для Mail/Creator/
+Office/Browser — `PlansSection` лишається лише для Business (єдиний
+продукт з реальним білінгом станом на липень 2026). Інтерактивні
+mockup-віджети (drag-and-drop, реальні дані) — усі 10 нових прев'ю
+статичні, той самий рівень "правдоподібний, але не функціональний
+приклад", що вже було в LiveMonitorPanel/AiInsightPreview для
+Business.
+
+**Перевірено:** `tsc --noEmit` чисто, `eslint` чисто на всіх нових і
+змінених файлах, повний `next build` успішний.
