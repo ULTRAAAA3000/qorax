@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { Globe, Sparkles, Loader2, ArrowRight, Clock, X, ScanSearch, Zap, Palette, Type, Code2, Layers, FileText, BookOpen, Search } from "lucide-react";
+import { Globe, Sparkles, Loader2, ArrowRight, Clock, X, ScanSearch, Zap, Palette, Type, Code2, Layers, FileText, BookOpen, Search, Brain } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { CollectionsPanel } from "./CollectionsPanel";
 import { QuickActionsMenu } from "./QuickActionsMenu";
 import { ReadingModeView } from "./ReadingModeView";
 import { DeepSearchPanel } from "./DeepSearchPanel";
+import { AiMemoryPanel } from "./AiMemoryPanel";
 
 interface HistoryItem {
   id: string;
@@ -61,7 +62,7 @@ export function BrowserUI({ organizationId }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [iframeLoading, setIframeLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sidebarTab, setSidebarTab] = useState<"ai" | "inspect" | "collections" | "deep-search">("ai");
+  const [sidebarTab, setSidebarTab] = useState<"ai" | "inspect" | "collections" | "deep-search" | "ai-memory">("ai");
   const [summary, setSummary] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -406,6 +407,13 @@ export function BrowserUI({ organizationId }: Props) {
               >
                 <Search size={12} /> Пошук
               </button>
+              <button
+                onClick={() => setSidebarTab("ai-memory")}
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                style={{ background: sidebarTab === "ai-memory" ? "rgba(198,255,84,0.1)" : "transparent", color: sidebarTab === "ai-memory" ? "var(--lime)" : "var(--text-tertiary)" }}
+              >
+                <Brain size={12} /> Пам&apos;ять
+              </button>
             </div>
             <button onClick={() => setSidebarOpen(false)} className="text-[var(--text-tertiary)] hover:text-[var(--text-primary)]">
               <X size={14} />
@@ -553,6 +561,13 @@ export function BrowserUI({ organizationId }: Props) {
                 organizationId={organizationId}
                 getFreshToken={getFreshToken}
                 onNavigate={navigate}
+              />
+            )}
+
+            {sidebarTab === "ai-memory" && (
+              <AiMemoryPanel
+                organizationId={organizationId}
+                getFreshToken={getFreshToken}
               />
             )}
           </div>

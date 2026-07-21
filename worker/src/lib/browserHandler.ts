@@ -1589,3 +1589,141 @@ export async function handleDeepSearch(request: Request, env: Env, corsHeaders: 
     corsHeaders
   );
 }
+
+// ============================================================
+// AI Memory (MODULE_ROADMAP.md, "Qorax Browser" — дванадцята
+// ітерація, продовжуємо список після Deep Search: "браузер пам'ятає,
+// що вже вивчено, які сайти проаналізовано, які ідеї збережено").
+// ============================================================
+// Технічне рішення: НЕ нова таблиця подій. `browser_history`
+// (0074) і `browser_collections` (0077) вже накопичують саме ці дані
+// — сама міграція 0074 прямо документує `browser_history.ai_summary`
+// як "перший цеглинка майбутньої AI Memory з roadmap, не сама AI
+// Memory — та вимагає окремої логіки семантичного пошуку/
+// summarization". Це і є ця ітерація: не сховище, а СЕМАНТИЧНИЙ
+// ДОСТУП до вже накопиченого — природномовний запит ("що я вже
+// дізнався про конкурентів у fashion-ніші?") проти реальної історії
+// організації. Той самий Gemini-виклик, що Deep Search, але БЕЗ
+// `google_search` grounding (контекст — вже наявні власні дані
+// організації, не веб) — тому переюзовує вже наявний `callGemini()`
+// з `contentGeneration.ts`, а не `callGeminiWithSearch()` вище.
+//
+// Не окрема таблиця "ai_memory" з AI Hub (MODULE_ROADMAP.md, розділ
+// AI Operating System) — та таблиця про інше: один рядок на
+// organization_id з business_summary/tone/competitors/goals (профіль
+// бізнесу для AI Chat), не історія подій пізнання. Різне призначення,
+// свідомо не переюзовується.
+
+const AI_MEMORY_HISTORY_LIMIT = 60; // досить для контексту одного Gemini-запиту, не вся історія без обмежень
+
+interface AiMemoryQueryBody {
+  organization_id: string;
+  query: string;
+}
+
+interface AiMemoryHistoryRow {
+  url: string;
+  title: string | null;
+  ai_summary: string | null;
+  note: string | null;
+  visited_at: string;
+}
+
+interface AiMemoryCollectionRow {
+  id: string;
+  title: string;
+  description: string | null;
+}
+
+// POST /api/browser/ai-memory — природномовний запит проти
+// накопиченої історії Browser (browser_history + browser_collections
+// організації), не веб-пошук.
+export async function handleAiMemoryQuery(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: AiMemoryQueryBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const query = (body.query ?? "").trim();
+  if (!query) return json({ error: "Запит не може бути порожнім" }, 400, corsHeaders);
+  if (query.length > 500) return json({ error: "Запит завеликий (макс. 500 символів)" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const [historyRes, collectionsRes] = await Promise.all([
+    selectRows<AiMemoryHistoryRow>(
+      "browser_history",
+      `select=url,title,ai_summary,note,visited_at&organization_id=eq.${encodeURIComponent(body.organization_id)}&order=visited_at.desc&limit=${AI_MEMORY_HISTORY_LIMIT}`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    ),
+    selectRows<AiMemoryCollectionRow>(
+      "browser_collections",
+      `select=id,title,description&organization_id=eq.${encodeURIComponent(body.organization_id)}&order=created_at.desc`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    ),
+  ]);
+  if (!historyRes.ok) return json({ error: historyRes.error }, 500, corsHeaders);
+
+  const history = historyRes.data ?? [];
+  const collections = collectionsRes.data ?? [];
+
+  if (history.length === 0) {
+    return json({ answer: "Ще немає накопиченої історії перегляду в Browser — AI Memory працює на основі вже відвіданих сайтів і збережених колекцій.", used_entries: 0 }, 200, corsHeaders);
+  }
+
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI Memory тимчасово вимкнено адміністратором" : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const collectionsBlock = collections.length > 0
+    ? `Колекції (проєкти), створені організацією:\n${collections.map(c => `- "${c.title}"${c.description ? `: ${c.description}` : ""}`).join("\n")}\n\n`
+    : "";
+
+  const historyBlock = history
+    .map(h => {
+      const parts = [`URL: ${h.url}`];
+      if (h.title) parts.push(`Заголовок: ${h.title}`);
+      if (h.ai_summary) parts.push(`AI-аналіз при відвіданні: ${h.ai_summary}`);
+      if (h.note) parts.push(`Нотатка користувача: ${h.note}`);
+      return parts.join(" | ");
+    })
+    .join("\n");
+
+  const prompt = `Ти — пам'ять браузера Qorax Browser. Ось накопичена історія відвіданих сайтів організації і збережені колекції:
+
+${collectionsBlock}Історія переглядів (від найновіших):
+${historyBlock}
+
+Запит користувача: "${query}"
+
+Дай відповідь українською мовою СУВОРО на основі наведеної вище історії й колекцій — не вигадуй сайти чи факти, яких немає у списку. Якщо в історії немає релевантної інформації для запиту — прямо скажи про це, не намагайся підлаштувати відповідь. Якщо релевантне є — синтезуй у зв'язну відповідь з конкретними посиланнями на URL/назви сайтів зі списку.`;
+
+  const result = await callGemini(prompt, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+
+  return json(
+    {
+      answer: result.text,
+      used_entries: history.length,
+      credits_remaining: creditsRemaining,
+      unlimited: creditsCheck.unlimited,
+    },
+    200,
+    corsHeaders
+  );
+}
