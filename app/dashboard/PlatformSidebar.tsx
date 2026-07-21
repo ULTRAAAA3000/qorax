@@ -8,6 +8,7 @@ import {
   GraduationCap, Target, ChevronDown, Grid2x2, ArrowUpRight, Languages, ShoppingCart, Users2,
 } from "lucide-react";
 import type { PlatformModule } from "@/app/lib/getPlatformModules";
+import { TelegramConnectButton } from "@/app/components/TelegramConnectButton";
 
 const ICONS: Record<string, React.ComponentType<{ size?: number; className?: string }>> = {
   ShieldCheck, Layout, Sparkles, FileText, TrendingUp, BarChart3, Users, Send, GraduationCap, Target, Languages, ShoppingCart, Users2,
@@ -28,7 +29,7 @@ const TOP_LEVEL_KEYS = new Set(["audit", "ai"]);
  * показуються заблокованими — клік відкриває легкий tooltip замість
  * переходу на неіснуючу сторінку.
  */
-export function PlatformSidebar({ modules }: { modules: PlatformModule[] }) {
+export function PlatformSidebar({ modules, organizationId }: { modules: PlatformModule[]; organizationId?: string }) {
   const pathname = usePathname();
   const [comingSoonHint, setComingSoonHint] = useState<string | null>(null);
   const [appsOpen, setAppsOpen] = useState(true);
@@ -134,7 +135,15 @@ export function PlatformSidebar({ modules }: { modules: PlatformModule[] }) {
         )}
       </nav>
 
-      <div className="px-2 py-3" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+      <div className="px-2 py-3 space-y-2" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}>
+        {organizationId && (
+          <TelegramConnectButton
+            organizationId={organizationId}
+            variant="ghost"
+            label="Telegram-бот"
+            className="!w-full !justify-start !text-xs !px-2.5 !py-2"
+          />
+        )}
         <Link
           href="/dashboard/apps"
           className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors"

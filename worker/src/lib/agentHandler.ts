@@ -476,8 +476,11 @@ async function runContentAgentCore(site: SiteRow, env: Env): Promise<ContentAgen
   // адмінської організації. Для unlimited=true поріг MAX_PAGES_PER_RUN
   // лишається (це ліміт "сторінок за один запуск", не кредитний ліміт
   // сам собою) — просто не звужується додатково залишком кредитів.
-  const creditsCheck = await checkAiCredits(site.organization_id, env);
+  const creditsCheck = await checkAiCredits(site.organization_id, "business", env);
   if (!creditsCheck.ok) {
+    if (creditsCheck.disabledByAdmin) {
+      return { error: "AI тимчасово вимкнено адміністратором платформи.", status: 503 };
+    }
     return { error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу.", status: 402 };
   }
   let creditsRemaining = creditsCheck.creditsRemaining;

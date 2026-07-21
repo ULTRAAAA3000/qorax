@@ -1,33 +1,19 @@
 import { createClient } from "@/app/lib/supabase/server";
 import { OfficeHeader } from "../OfficeHeader";
 import { OfficeSlidesListUI } from "./OfficeSlidesListUI";
-import { ProductComingSoon } from "@/app/components/ProductComingSoon";
 import { redirect } from "next/navigation";
 import { Presentation } from "lucide-react";
 
 export const metadata = { title: "Qorax Office — Slides" };
 
-// Той самий підхід, що /office/page.tsx (Docs) і /office/sheets/page.tsx.
+// Той самий підхід, що /office/page.tsx (Docs) і /office/sheets/page.tsx:
+// незалогінений відвідувач одразу редиректиться на /login, без
+// ProductComingSoon-заглушки (прибрана за прямою вказівкою Артема).
 export default async function OfficeSlidesPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    return (
-      <ProductComingSoon
-        activePath="/office"
-        eyebrow="QORAX OFFICE"
-        name="Qorax Office"
-        tagline="Створюйте презентації"
-        description="Презентації з AI, що сам будує структуру за описом — від слайда до готового виступу."
-        accent="lime"
-        isLoggedIn={false}
-        highlights={[
-          { icon: Presentation, title: "Slides", text: "Слайди з тими самими блоками, що Docs, і AI-генерацією структури." },
-        ]}
-      />
-    );
-  }
+  if (!user) redirect("/login");
 
   const { data: membership } = await supabase
     .from("organization_members")

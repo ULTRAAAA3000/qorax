@@ -1,9 +1,8 @@
-import { ProductComingSoon } from "@/app/components/ProductComingSoon";
 import { createClient } from "@/app/lib/supabase/server";
 import { QoraxLogo } from "@/app/components/QoraxLogo";
 import { BrowserUI } from "./BrowserUI";
 import { redirect } from "next/navigation";
-import { Sparkles, ScanSearch, FolderOpen, Globe } from "lucide-react";
+import { Globe } from "lucide-react";
 
 export const metadata = { title: "Qorax Browser" };
 
@@ -11,31 +10,23 @@ export const metadata = { title: "Qorax Browser" };
 // екосистеми") — ОКРЕМИЙ продукт, той самий рівень, що Creator і
 // Office: власний топ-левел роут, БЕЗ Dashboard-каркасу. MVP
 // (узгоджено з Артемом): лише URL bar + proxy-перегляд сайту + AI
-// Sidebar ("що це за сайт?"). Незалогінений відвідувач бачить
-// ProductComingSoon — той самий підхід, що вже прийнятий для
-// /creator і /office.
+// Sidebar ("що це за сайт?").
+//
+// Незалогінений відвідувач одразу редиректиться на /login (той самий
+// підхід, що вже був у /creator) — Артем явно попросив прибрати
+// ProductComingSoon-заглушку для незалогінених: сесія Supabase
+// спільна на весь домен (cookie path="/"), тому якщо вхід уже
+// кешований в іншій вкладці/раніше, redirect на /login одразу ж сам
+// поверне користувача назад сюди через middleware (user && pathname
+// === "/login" → /dashboard, звідки Sidebar веде в реальний продукт).
+// Якщо кешу немає — людина одразу бачить форму входу, а не маркетинг-
+// текст "У розробці", який раніше вводив в оману, ніби продукту
+// нема, хоча код давно готовий.
 export default async function BrowserPage() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  if (!user) {
-    return (
-      <ProductComingSoon
-        activePath="/browser"
-        eyebrow="QORAX BROWSER"
-        name="Qorax Browser"
-        tagline="Досліджуйте інтернет"
-        description="Робочий браузер для творців, маркетологів і підприємців: аналізує сайти, збирає ідеї та передає їх у решту екосистеми Qorax."
-        accent="cyan"
-        isLoggedIn={false}
-        highlights={[
-          { icon: Sparkles, title: "AI Sidebar", text: "AI на будь-якій сторінці — пояснює сайт, робить SEO-аудит, готує макет чи лист одним запитом." },
-          { icon: ScanSearch, title: "Site Inspector", text: "Шрифти, кольори, компоненти, SEO, швидкість і технології будь-якого сайту в один клік." },
-          { icon: FolderOpen, title: "Collections", text: "Конкуренти, референси, статті та ідеї одного проєкту в одному місці — заміна закладкам." },
-        ]}
-      />
-    );
-  }
+  if (!user) redirect("/login");
 
   const { data: membership } = await supabase
     .from("organization_members")

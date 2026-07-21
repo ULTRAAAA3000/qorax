@@ -249,8 +249,14 @@ export async function handleTranslate(request: Request, env: Env, corsHeaders: R
   // aiCredits.ts (спільний helper) — той самий credit-check, що
   // AI/Content і Social, з безлімітом для адмінської організації.
   const organizationId = access.organizationId!;
-  const creditsCheck = await checkAiCredits(organizationId, env);
-  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  const creditsCheck = await checkAiCredits(organizationId, "business", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
   if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);

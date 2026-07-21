@@ -21,13 +21,17 @@
 import type { Env } from "../types";
 import { selectRows, updateRows } from "./supabase";
 
+export type AiProduct = "business" | "mail" | "creator" | "office" | "browser";
+
 export interface CreditsCheckResult {
-  /** true, якщо генерацію можна виконувати (є кредити АБО unlimited). */
+  /** true, якщо генерацію можна виконувати (є кредити АБО unlimited) І продукт не вимкнено адміном. */
   ok: boolean;
   /** true для organization_id, що належить platform_role='admin' — списання credit пропускається. */
   unlimited: boolean;
   /** Поточний залишок кредитів. Для unlimited — те саме значення з ai_credits (не Infinity), лише інформаційно. */
   creditsRemaining: number;
+  /** true, якщо ok=false саме через ai_product_toggles.enabled=false (0082), а не через брак кредитів — фронт показує інше повідомлення. */
+  disabledByAdmin: boolean;
 }
 
 /**
@@ -59,13 +63,35 @@ async function orgHasAdminMember(organizationId: string, env: Env): Promise<bool
 }
 
 /**
+ * Чи вимкнено AI для цього продукту глобально (0082, admin-тумблер
+ * в /dashboard/admin). За замовчуванням true (fail-open), якщо рядок
+ * з якоїсь причини відсутній — новий продукт без явного toggle-рядка
+ * не повинен випадково заблокувати AI для всіх.
+ */
+async function isProductAiEnabled(product: AiProduct, env: Env): Promise<boolean> {
+  const res = await selectRows<{ enabled: boolean }>(
+    "ai_product_toggles",
+    `select=enabled&product=eq.${encodeURIComponent(product)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const row = res.data?.[0];
+  return row ? row.enabled : true;
+}
+
+/**
  * Перевіряє, чи можна витрачати AI-кредит для organizationId.
  * Викликати ДО важкої роботи (виклику Gemini) — той самий принцип,
  * що вже був у кожному з 5 місць окремо ("не витрачати квоту на
- * запит, який все одно буде відхилено").
+ * запит, який все одно буде відхилено"). Тепер додатково перевіряє
+ * ai_product_toggles (0082) — вимкнений адміном продукт блокує
+ * запит ще ДО перевірки кредитів організації, навіть для unlimited
+ * адмінської організації (сам тумблер вважається вищим пріоритетом,
+ * ніж unlimited — інакше admin-вимикач не мав би сенсу для власного
+ * тестового акаунта Артема).
  */
-export async function checkAiCredits(organizationId: string, env: Env): Promise<CreditsCheckResult> {
-  const [creditsRes, isAdminOrg] = await Promise.all([
+export async function checkAiCredits(organizationId: string, product: AiProduct, env: Env): Promise<CreditsCheckResult> {
+  const [creditsRes, isAdminOrg, productEnabled] = await Promise.all([
     selectRows<{ credits_remaining: number }>(
       "ai_credits",
       `select=credits_remaining&organization_id=eq.${encodeURIComponent(organizationId)}`,
@@ -73,11 +99,16 @@ export async function checkAiCredits(organizationId: string, env: Env): Promise<
       env.SUPABASE_SERVICE_ROLE_KEY
     ),
     orgHasAdminMember(organizationId, env),
+    isProductAiEnabled(product, env),
   ]);
 
   const creditsRemaining = creditsRes.data?.[0]?.credits_remaining ?? 0;
-  if (isAdminOrg) return { ok: true, unlimited: true, creditsRemaining };
-  return { ok: creditsRemaining > 0, unlimited: false, creditsRemaining };
+
+  if (!productEnabled) {
+    return { ok: false, unlimited: isAdminOrg, creditsRemaining, disabledByAdmin: true };
+  }
+  if (isAdminOrg) return { ok: true, unlimited: true, creditsRemaining, disabledByAdmin: false };
+  return { ok: creditsRemaining > 0, unlimited: false, creditsRemaining, disabledByAdmin: false };
 }
 
 /**

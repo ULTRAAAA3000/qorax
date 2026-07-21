@@ -241,9 +241,13 @@ export async function handleBrowserAnalyze(request: Request, env: Env, corsHeade
     return json({ summary: cached.ai_summary, cached: true }, 200, corsHeaders);
   }
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
   if (!creditsCheck.ok) {
-    return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
   }
 
   const controller = new AbortController();
@@ -778,8 +782,14 @@ export async function handleBrowserTranslate(request: Request, env: Env, corsHea
   const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
   if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
-  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const html = await fetchAndTruncateHtml(targetUrl);
   if (html === null) return json({ error: "Не вдалося завантажити сайт" }, 502, corsHeaders);
@@ -817,8 +827,14 @@ export async function handleBrowserSummarize(request: Request, env: Env, corsHea
   const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
   if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
-  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const html = await fetchAndTruncateHtml(targetUrl);
   if (html === null) return json({ error: "Не вдалося завантажити сайт" }, 502, corsHeaders);
@@ -873,8 +889,14 @@ export async function handleBrowserCompare(request: Request, env: Env, corsHeade
   const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
   if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
-  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const [yourInspect, competitorInspect] = await Promise.all([inspectUrl(yourUrl), inspectUrl(competitorUrl)]);
   if (!yourInspect || !competitorInspect) {
@@ -1024,9 +1046,13 @@ export async function handleBrowserReadingMode(request: Request, env: Env, corsH
   // додає саме той шар, що roadmap виділяє як відмінність Reading
   // Mode від звичайного reader-режиму браузерів.
   if (body.with_ai) {
-    const creditsCheck = await checkAiCredits(body.organization_id, env);
+    const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
     if (!creditsCheck.ok) {
-      return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+      return json(
+        { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+        creditsCheck.disabledByAdmin ? 503 : 402,
+        corsHeaders
+      );
     }
     const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
     if (apiKey && blocks.length > 0) {
@@ -1108,8 +1134,14 @@ export async function handleVisualSearch(request: Request, env: Env, corsHeaders
   const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
   if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
 
-  const creditsCheck = await checkAiCredits(body.organization_id, env);
-  if (!creditsCheck.ok) return json({ error: "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." }, 402, corsHeaders);
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI тимчасово вимкнено адміністратором платформи." : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -1388,4 +1420,310 @@ export async function handleCollectionItemDelete(request: Request, env: Env, cor
   if (!res.ok) return json({ error: `Delete failed: ${res.status}` }, 500, corsHeaders);
 
   return json({ ok: true }, 200, corsHeaders);
+}
+
+// ============================================================
+// Deep Search (MODULE_ROADMAP.md, "Qorax Browser" — одинадцята
+// ітерація, продовжуємо список після Website Timeline і Workspace
+// Tabs: "пошук по інтернету з AI, що сам підбирає приклади за
+// складним природномовним запитом (не проста видача посилань)").
+// ============================================================
+// Технічне рішення: жодного окремого пошукового API-ключа в проєкті
+// ще немає (перевірено — SUPABASE/GEMINI/LS/TELEGRAM/RESEND, більше
+// нічого в env.XXX звертань worker/src/). Заводити новий зовнішній
+// провайдер (SerpAPI/Brave/Bing) заради одного ендпоінту — зайва
+// інфраструктура. Gemini API нативно підтримує вбудований інструмент
+// `google_search` (grounding): модель сама формулює запити, реально
+// шукає в Google, і повертає відповідь з переліком джерел
+// (groundingChunks) — саме "AI сам підбирає приклади за
+// природномовним запитом", а не голий список посилань. Тому власна
+// функція виклику Gemini з увімкненим tools, а не переюзання
+// callGemini() (той не приймає tools — свідомо не чіпаємо
+// contentGeneration.ts заради одного викликача, той самий принцип,
+// що вже застосований для callGeminiVision).
+
+const GEMINI_SEARCH_ENDPOINT =
+  "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
+const DEEP_SEARCH_TIMEOUT_MS = 25_000;
+
+interface DeepSearchBody {
+  organization_id: string;
+  query: string;
+}
+
+interface DeepSearchSource {
+  title: string;
+  uri: string;
+}
+
+interface GeminiGroundingResponse {
+  candidates?: Array<{
+    content?: { parts?: Array<{ text?: string }> };
+    groundingMetadata?: {
+      groundingChunks?: Array<{ web?: { uri?: string; title?: string } }>;
+    };
+  }>;
+}
+
+async function callGeminiWithSearch(
+  query: string,
+  apiKey: string
+): Promise<
+  | { ok: true; text: string; sources: DeepSearchSource[] }
+  | { ok: false; error: string; status: number }
+> {
+  const body = {
+    contents: [
+      {
+        parts: [
+          {
+            text: `Запит користувача: "${query}"
+
+Знайди актуальну інформацію в інтернеті за цим запитом і дай структуровану відповідь українською мовою. Не просто перелічуй посилання — синтезуй знайдене у зв'язну відповідь по суті запиту, з конкретними прикладами/фактами/назвами, якщо запит цього просить (наприклад "приклади лендінгів для..." → перелічи конкретні знайдені приклади з коротким описом кожного, не загальні поради).`,
+          },
+        ],
+      },
+    ],
+    tools: [{ google_search: {} }],
+    generationConfig: { temperature: 0.4, maxOutputTokens: 2000 },
+  };
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), DEEP_SEARCH_TIMEOUT_MS);
+  try {
+    const doFetch = () =>
+      fetch(`${GEMINI_SEARCH_ENDPOINT}?key=${apiKey}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
+        body: JSON.stringify(body),
+      });
+
+    let resp = await doFetch();
+    if (resp.status === 429 || resp.status === 503) {
+      const delay = resp.status === 503 ? 6000 : 4000;
+      console.warn(`[deep-search] Gemini ${resp.status} — retrying in ${delay}ms`);
+      await new Promise(r => setTimeout(r, delay));
+      resp = await doFetch();
+    }
+
+    if (!resp.ok) {
+      const errText = await resp.text();
+      console.error("[deep-search] Gemini error:", resp.status, errText.slice(0, 300));
+      return { ok: false, error: resp.status === 429 ? "AI перевантажений — спробуйте через хвилину" : "AI тимчасово недоступний", status: 503 };
+    }
+
+    const data = (await resp.json()) as GeminiGroundingResponse;
+    const candidate = data.candidates?.[0];
+    const text = candidate?.content?.parts?.map(p => p.text ?? "").join("").trim() ?? "";
+    if (!text) return { ok: false, error: "AI не повернув результат — спробуйте переформулювати запит", status: 502 };
+
+    const chunks = candidate?.groundingMetadata?.groundingChunks ?? [];
+    const seen = new Set<string>();
+    const sources: DeepSearchSource[] = [];
+    for (const chunk of chunks) {
+      const uri = chunk.web?.uri;
+      if (!uri || seen.has(uri)) continue;
+      seen.add(uri);
+      sources.push({ title: chunk.web?.title ?? uri, uri });
+    }
+
+    return { ok: true, text, sources };
+  } catch (err) {
+    console.error("[deep-search] fetch error:", err);
+    return { ok: false, error: "AI тимчасово недоступний", status: 503 };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// POST /api/browser/deep-search — природномовний пошук по інтернету
+// з AI-синтезом відповіді (не проста видача посилань, roadmap).
+// Rate-limit на IP (а не лише org) — той самий підхід, що інші дорогі
+// AI-ендпоінти захищені checkRateLimit деінде в кодовій базі, тут
+// додатково важливо через реальний зовнішній пошук за кожен виклик.
+export async function handleDeepSearch(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: DeepSearchBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const query = (body.query ?? "").trim();
+  if (!query) return json({ error: "Запит не може бути порожнім" }, 400, corsHeaders);
+  if (query.length > 500) return json({ error: "Запит завеликий (макс. 500 символів)" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const ip = getClientIp(request);
+  const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, `deep-search:${ip}`, 20, 3600);
+  if (!rateLimit.allowed) return json({ error: "Забагато запитів. Спробуйте пізніше." }, 429, corsHeaders);
+
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "Deep Search тимчасово вимкнено адміністратором" : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const result = await callGeminiWithSearch(query, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+
+  return json(
+    {
+      answer: result.text,
+      sources: result.sources,
+      credits_remaining: creditsRemaining,
+      unlimited: creditsCheck.unlimited,
+    },
+    200,
+    corsHeaders
+  );
+}
+
+// ============================================================
+// AI Memory (MODULE_ROADMAP.md, "Qorax Browser" — дванадцята
+// ітерація, продовжуємо список після Deep Search: "браузер пам'ятає,
+// що вже вивчено, які сайти проаналізовано, які ідеї збережено").
+// ============================================================
+// Технічне рішення: НЕ нова таблиця подій. `browser_history`
+// (0074) і `browser_collections` (0077) вже накопичують саме ці дані
+// — сама міграція 0074 прямо документує `browser_history.ai_summary`
+// як "перший цеглинка майбутньої AI Memory з roadmap, не сама AI
+// Memory — та вимагає окремої логіки семантичного пошуку/
+// summarization". Це і є ця ітерація: не сховище, а СЕМАНТИЧНИЙ
+// ДОСТУП до вже накопиченого — природномовний запит ("що я вже
+// дізнався про конкурентів у fashion-ніші?") проти реальної історії
+// організації. Той самий Gemini-виклик, що Deep Search, але БЕЗ
+// `google_search` grounding (контекст — вже наявні власні дані
+// організації, не веб) — тому переюзовує вже наявний `callGemini()`
+// з `contentGeneration.ts`, а не `callGeminiWithSearch()` вище.
+//
+// Не окрема таблиця "ai_memory" з AI Hub (MODULE_ROADMAP.md, розділ
+// AI Operating System) — та таблиця про інше: один рядок на
+// organization_id з business_summary/tone/competitors/goals (профіль
+// бізнесу для AI Chat), не історія подій пізнання. Різне призначення,
+// свідомо не переюзовується.
+
+const AI_MEMORY_HISTORY_LIMIT = 60; // досить для контексту одного Gemini-запиту, не вся історія без обмежень
+
+interface AiMemoryQueryBody {
+  organization_id: string;
+  query: string;
+}
+
+interface AiMemoryHistoryRow {
+  url: string;
+  title: string | null;
+  ai_summary: string | null;
+  note: string | null;
+  visited_at: string;
+}
+
+interface AiMemoryCollectionRow {
+  id: string;
+  title: string;
+  description: string | null;
+}
+
+// POST /api/browser/ai-memory — природномовний запит проти
+// накопиченої історії Browser (browser_history + browser_collections
+// організації), не веб-пошук.
+export async function handleAiMemoryQuery(request: Request, env: Env, corsHeaders: Record<string, string>): Promise<Response> {
+  let body: AiMemoryQueryBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Некоректний JSON" }, 400, corsHeaders);
+  }
+  if (!body.organization_id) return json({ error: "organization_id обов'язковий" }, 400, corsHeaders);
+  const query = (body.query ?? "").trim();
+  if (!query) return json({ error: "Запит не може бути порожнім" }, 400, corsHeaders);
+  if (query.length > 500) return json({ error: "Запит завеликий (макс. 500 символів)" }, 400, corsHeaders);
+
+  const access = await requireOrgAccess(request, body.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  const [historyRes, collectionsRes] = await Promise.all([
+    selectRows<AiMemoryHistoryRow>(
+      "browser_history",
+      `select=url,title,ai_summary,note,visited_at&organization_id=eq.${encodeURIComponent(body.organization_id)}&order=visited_at.desc&limit=${AI_MEMORY_HISTORY_LIMIT}`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    ),
+    selectRows<AiMemoryCollectionRow>(
+      "browser_collections",
+      `select=id,title,description&organization_id=eq.${encodeURIComponent(body.organization_id)}&order=created_at.desc`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    ),
+  ]);
+  if (!historyRes.ok) return json({ error: historyRes.error }, 500, corsHeaders);
+
+  const history = historyRes.data ?? [];
+  const collections = collectionsRes.data ?? [];
+
+  if (history.length === 0) {
+    return json({ answer: "Ще немає накопиченої історії перегляду в Browser — AI Memory працює на основі вже відвіданих сайтів і збережених колекцій.", used_entries: 0 }, 200, corsHeaders);
+  }
+
+  const creditsCheck = await checkAiCredits(body.organization_id, "browser", env);
+  if (!creditsCheck.ok) {
+    return json(
+      { error: creditsCheck.disabledByAdmin ? "AI Memory тимчасово вимкнено адміністратором" : "Кредити вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу." },
+      creditsCheck.disabledByAdmin ? 503 : 402,
+      corsHeaders
+    );
+  }
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) return json({ error: "AI не налаштований — зверніться до адміністратора" }, 503, corsHeaders);
+
+  const collectionsBlock = collections.length > 0
+    ? `Колекції (проєкти), створені організацією:\n${collections.map(c => `- "${c.title}"${c.description ? `: ${c.description}` : ""}`).join("\n")}\n\n`
+    : "";
+
+  const historyBlock = history
+    .map(h => {
+      const parts = [`URL: ${h.url}`];
+      if (h.title) parts.push(`Заголовок: ${h.title}`);
+      if (h.ai_summary) parts.push(`AI-аналіз при відвіданні: ${h.ai_summary}`);
+      if (h.note) parts.push(`Нотатка користувача: ${h.note}`);
+      return parts.join(" | ");
+    })
+    .join("\n");
+
+  const prompt = `Ти — пам'ять браузера Qorax Browser. Ось накопичена історія відвіданих сайтів організації і збережені колекції:
+
+${collectionsBlock}Історія переглядів (від найновіших):
+${historyBlock}
+
+Запит користувача: "${query}"
+
+Дай відповідь українською мовою СУВОРО на основі наведеної вище історії й колекцій — не вигадуй сайти чи факти, яких немає у списку. Якщо в історії немає релевантної інформації для запиту — прямо скажи про це, не намагайся підлаштувати відповідь. Якщо релевантне є — синтезуй у зв'язну відповідь з конкретними посиланнями на URL/назви сайтів зі списку.`;
+
+  const result = await callGemini(prompt, apiKey);
+  if (!result.ok) return json({ error: result.error }, result.status, corsHeaders);
+
+  const creditsRemaining = await deductAiCredits(body.organization_id, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+
+  return json(
+    {
+      answer: result.text,
+      used_entries: history.length,
+      credits_remaining: creditsRemaining,
+      unlimited: creditsCheck.unlimited,
+    },
+    200,
+    corsHeaders
+  );
 }
