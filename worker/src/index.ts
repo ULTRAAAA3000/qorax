@@ -22,7 +22,7 @@ import {
   handleUpdateMemberRole, handleRemoveMember, handleGetInvitePreview,
 } from "./lib/teamHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
-import { sendTelegramWeeklyDigests } from "./lib/telegramBotHandler";
+import { sendTelegramWeeklyDigests, runBusinessCoachCheck } from "./lib/telegramBotHandler";
 import { handleChatRequest, handleGetOrCreateThreadRequest } from "./lib/chatHandler";
 import {
   handleWorkspaceUploadRequest,
@@ -2082,6 +2082,18 @@ const worker = {
       console.log("Automations:", JSON.stringify(automationsSummary));
       console.log("Predictive:", JSON.stringify(predictiveSummary));
       console.log("Benchmark aggregation:", JSON.stringify(benchmarkSummary));
+
+      // Business Coach (документ Артема, пункт 16) — навмисно ПІСЛЯ
+      // Promise.all вище, не всередині нього: читає speed_checks/
+      // social_posts, і має сенс лише коли runSpeedChecks уже дописав
+      // сьогоднішні заміри, інакше сигнал "покращення швидкості"
+      // будувався б на застарілих даних попереднього дня.
+      const coachResult = await runBusinessCoachCheck(env).catch(err => {
+        console.error("Business Coach error:", err instanceof Error ? err.message : err);
+        return { checked: 0 };
+      });
+      console.log("Business Coach:", JSON.stringify(coachResult));
+
       return;
     }
 

@@ -25,8 +25,16 @@
 // PDF-файлу з бота — вимагає headless-browser інфраструктури, немає
 // в Cloudflare Workers, /report замість цього направляє в дашборд —
 // див. коментар над handleReportCommand), Smart Alerts (реалізовано,
-// alerts.ts вже має пороги), Business Coach (проактивні поради без
-// запиту користувача).
+// alerts.ts вже має пороги).
+//
+// Business Coach (документ Артема, пункт 16, ⭐⭐⭐⭐⭐) — РЕАЛІЗОВАНО,
+// runBusinessCoachCheck() нижче. Викликається щодня з того самого
+// cron-циклу, що вже робить speed/SEO/конкуренти (0 3 * * *,
+// index.ts) — не новий Cloudflare cron trigger. Два сигнали:
+// тиша в контенті (14+ днів без Social-публікації) і похвала за
+// помітне покращення швидкості (>20%). Дедуплікація через нову
+// telegram_coach_messages (0085) — один тип сигналу на організацію
+// не частіше ніж раз на 10 днів.
 //
 // Weekly Digest AI-текстом (документ Артема, пункт 5) — РЕАЛІЗОВАНО,
 // sendTelegramWeeklyDigests() нижче. НЕ переписаний sendWeeklyDigests()
@@ -47,7 +55,7 @@
 // ============================================================
 
 import type { Env } from "../types";
-import { selectRows } from "./supabase";
+import { selectRows, insertRow } from "./supabase";
 import { sendTelegramMessage, sendTelegramMessageWithButtons, answerTelegramCallbackQuery, clearTelegramMessageButtons } from "./telegram";
 import { buildOrgScopedPrompt } from "./chatHandler";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
@@ -936,4 +944,159 @@ export async function handleTelegramCallbackQuery(
       : "✅ Заявку на виправлення надіслано. Це понад безкоштовний ліміт цього місяця — вартість узгодимо окремо.",
     env.TELEGRAM_BOT_TOKEN
   );
+}
+
+// ============================================================
+// Business Coach (документ Артема, пункт 16, ⭐⭐⭐⭐⭐: "Telegram сам
+// пише. Не по ошибкам. А как консультант" — на відміну від Weekly
+// Digest, не за фіксованим розкладом, а коли є значуща подія;
+// не лише проблеми, а й похвала за покращення).
+// ============================================================
+// Викликається щодня з того самого cron-циклу, що вже робить
+// speed/SEO/конкуренти (0 3 * * *) — не додає новий Cloudflare cron
+// trigger (пам'ять: додавання тригерів вручну в Dashboard болюче,
+// wrangler.toml [triggers] не працює на цьому акаунті). Дедуплікація
+// через telegram_coach_messages (0085) — один тип сигналу на
+// організацію не частіше що N днів, щоб справді відповідати "не
+// спамити" з документа Артема (пункт 10, Smart Alerts — той самий
+// принцип застосовано і тут).
+//
+// Перший прохід — два сигнали, обмежено реалістичним обсягом даних,
+// які вже надійно доступні:
+//   1. Тиша в контенті — немає published Social-постів 14+ днів
+//   2. Похвала за швидкість — помітне покращення (>20%) за останні
+//      3 дні порівняно з попередніми 7, БЕЗ дублювання з
+//      checkSpeedDegradation (той — про погіршення, протилежний сигнал)
+// ============================================================
+
+const COACH_SIGNAL_COOLDOWN_DAYS = 10; // один тип сигналу на організацію не частіше ніж раз на 10 днів
+
+interface CoachSocialPostRow {
+  organization_id: string;
+  published_at: string;
+}
+
+interface CoachSpeedRow {
+  site_id: string;
+  load_time_ms: number;
+  checked_at: string;
+}
+
+async function wasCoachSignalSentRecently(organizationId: string, signalType: string, env: Env): Promise<boolean> {
+  const cutoff = new Date(Date.now() - COACH_SIGNAL_COOLDOWN_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  const res = await selectRows<{ id: string }>(
+    "telegram_coach_messages",
+    `select=id&organization_id=eq.${encodeURIComponent(organizationId)}&signal_type=eq.${encodeURIComponent(signalType)}&sent_at=gte.${cutoff}&limit=1`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  return (res.data?.length ?? 0) > 0;
+}
+
+/**
+ * Одна організація — перевіряє обидва сигнали по черзі, надсилає
+ * НАЙБІЛЬШЕ ОДНЕ повідомлення (не заспамлювати кількома coach-
+ * порадами за один день навіть якщо спрацювало кілька сигналів).
+ */
+async function checkBusinessCoachForOrg(organizationId: string, chatId: string, env: Env): Promise<void> {
+  const sites = await getOrgSites(organizationId, env);
+  if (sites.length === 0) return;
+
+  // ── Сигнал 1: тиша в контенті (14+ днів без published Social-посту)
+  const silenceAlreadySent = await wasCoachSignalSentRecently(organizationId, "content_silence", env);
+  if (!silenceAlreadySent) {
+    const fourteenDaysAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString();
+    const recentPostsRes = await selectRows<CoachSocialPostRow>(
+      "social_posts",
+      `select=organization_id,published_at&organization_id=eq.${encodeURIComponent(organizationId)}&status=eq.published&published_at=gte.${fourteenDaysAgo}&limit=1`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    // Перевіряємо, що організація взагалі колись публікувала (інакше
+    // "тиша" не значуща подія — можливо, Social модуль просто не
+    // використовується цією організацією, і нагадування недоречне).
+    const everPostedRes = await selectRows<{ id: string }>(
+      "social_posts",
+      `select=id&organization_id=eq.${encodeURIComponent(organizationId)}&status=eq.published&limit=1`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    const hasEverPosted = (everPostedRes.data?.length ?? 0) > 0;
+    const hasRecentPost = (recentPostsRes.data?.length ?? 0) > 0;
+
+    if (hasEverPosted && !hasRecentPost) {
+      await sendTelegramMessage(
+        chatId,
+        `💡 <b>Порада від Qorax</b>\n\nВже понад два тижні не було нових публікацій у соцмережах. Свіжий контент допомагає утримувати аудиторію та підтримує SEO-видимість.`,
+        env.TELEGRAM_BOT_TOKEN
+      );
+      await insertCoachSignalRecord(organizationId, "content_silence", env);
+      return; // одне повідомлення на день максимум
+    }
+  }
+
+  // ── Сигнал 2: похвала за помітне покращення швидкості
+  const speedAlreadySent = await wasCoachSignalSentRecently(organizationId, "speed_improvement", env);
+  if (!speedAlreadySent) {
+    const siteIds = sites.map(s => s.id);
+    const siteIdFilter = `in.(${siteIds.map(id => encodeURIComponent(id)).join(",")})`;
+    const threeDaysAgo = new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString();
+    const tenDaysAgo = new Date(Date.now() - 10 * 24 * 60 * 60 * 1000).toISOString();
+
+    const [recentRes, priorRes] = await Promise.all([
+      selectRows<CoachSpeedRow>("speed_checks", `select=site_id,load_time_ms,checked_at&site_id=${siteIdFilter}&checked_at=gte.${threeDaysAgo}`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+      selectRows<CoachSpeedRow>("speed_checks", `select=site_id,load_time_ms,checked_at&site_id=${siteIdFilter}&checked_at=gte.${tenDaysAgo}&checked_at=lt.${threeDaysAgo}`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+    ]);
+    const recentTimes = (recentRes.data ?? []).map(r => r.load_time_ms);
+    const priorTimes = (priorRes.data ?? []).map(r => r.load_time_ms);
+
+    if (recentTimes.length >= 2 && priorTimes.length >= 3) {
+      const recentAvg = recentTimes.reduce((a, b) => a + b, 0) / recentTimes.length;
+      const priorAvg = priorTimes.reduce((a, b) => a + b, 0) / priorTimes.length;
+      const improvementPct = priorAvg > 0 ? Math.round(((priorAvg - recentAvg) / priorAvg) * 100) : 0;
+
+      // Той самий принцип, що checkSpeedDegradation: значний відсоток
+      // ЗАМІСТЬ дрібних коливань, щоб не хвалити за шум вимірювання.
+      if (improvementPct >= 20) {
+        await sendTelegramMessage(
+          chatId,
+          `🎉 <b>Гарна новина від Qorax</b>\n\nШвидкість завантаження помітно покращилась — на ${improvementPct}% за останні дні. Що б це не було (оптимізація, деплой, хостинг) — це працює, продовжуйте в тому ж напрямку!`,
+          env.TELEGRAM_BOT_TOKEN
+        );
+        await insertCoachSignalRecord(organizationId, "speed_improvement", env);
+      }
+    }
+  }
+}
+
+async function insertCoachSignalRecord(organizationId: string, signalType: string, env: Env): Promise<void> {
+  await insertRow(
+    "telegram_coach_messages",
+    { organization_id: organizationId, signal_type: signalType },
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  ).catch(() => {});
+}
+
+/**
+ * Викликається з cron-хендлера (index.ts) щодня в тому самому циклі,
+ * що вже виконує speed/SEO/конкуренти — не новий Cloudflare cron
+ * trigger. Проходить по всіх Telegram-підключених організаціях.
+ */
+export async function runBusinessCoachCheck(env: Env): Promise<{ checked: number }> {
+  const connectedRes = await selectRows<TelegramConnectedOrg>(
+    "notification_settings",
+    `select=organization_id,telegram_chat_id&telegram_enabled=eq.true&telegram_chat_id=not.is.null`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const orgs = connectedRes.data ?? [];
+
+  for (const org of orgs) {
+    await checkBusinessCoachForOrg(org.organization_id, org.telegram_chat_id, env).catch(err => {
+      console.error("[business-coach] error for org:", err instanceof Error ? err.message : err);
+    });
+  }
+
+  return { checked: orgs.length };
 }

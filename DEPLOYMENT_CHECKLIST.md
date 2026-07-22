@@ -52,6 +52,7 @@ Dashboard, Cloudflare Dashboard, Google Cloud Console). Кожна сесія
 | `0082_ai_product_toggles.sql` | `ai_product_toggles` — адмінський вимикач AI по продуктах (Business/Mail/Creator/Office/Browser) | `/dashboard/admin` AI-тумблери не працюють; `checkAiCredits()` за замовчуванням fail-open (AI лишається доступним, не блокером) |
 | `0083_office_version_history.sql` | `office_document_versions` — Version History для Docs/Sheets/Slides (append-only знімки, узагальнена схема на всі три редактори) | Кнопка "Історія версій" у `/office`, `/office/sheets/[id]`, `/office/slides/[id]` не працює |
 | `0084_developer_api_keys.sql` | `developer_api_keys` — фундамент Qorax SEO Platform (Developer API), SHA-256 хеш ключів, один на organization | `POST /api/v1/audit` (SEO Audit API) і генерація ключів у `/dashboard/settings` не працюють |
+| `0085_telegram_coach_messages.sql` | `telegram_coach_messages` — дедуплікація Business Coach повідомлень у Telegram-боті | Business Coach (щоденна перевірка сигналів "тиша в контенті"/"покращення швидкості") впаде на insert, сигнали не надсилатимуться взагалі |
 
 ---
 
