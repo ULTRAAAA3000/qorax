@@ -5733,3 +5733,86 @@ attribution логіку, додану пізніше в `0034_team_invites.sql`
   3 варіанти Qorax One, заповнити `ls_variant_id` в `plans`
 - Оновити `PlansSection`/checkout-флоу на лендінгу під нову лінійку
 - UI для Qorax One (окрема сторінка/картка на лендінгу)
+
+## Перехід на екосистемну модель тарифів — Крок 2: webhook + checkout лендінгу
+
+**Продовження Кроку 1 (0086, схема БД)** — тепер сам код, що
+використовує нові тарифи: `lemonSqueezyWebhook.ts` і checkout-URL на
+лендінгу. LemonSqueezy-варіанти (20 нових + 3 Qorax One) Артем
+створює вручну — цей крок готує КОД, що очікуватиме на них.
+
+**`worker/src/lib/lemonSqueezyWebhook.ts`:**
+
+1. **`AI_CREDITS_BY_PLAN`** — додано 4 нові ключі (business_free/
+   starter/pro/agency: 20/500/5000/25000), легасі-ключі (starter/
+   growth/agency/enterprise) лишені без змін — старі організації, що
+   ще не мігровані, продовжують працювати як раніше.
+
+2. **`handleSubscriptionActive` — найбільша зміна:**
+   - `selectRows` тепер тягне `product`+`site_limit` з `plans`
+     (раніше лише `code`)
+   - **Conflict-ключ upsert `subscriptions` тепер
+     `organization_id,product`** (не просто `organization_id`) —
+     0086 дозволяє кільком активним підпискам на organization
+     одночасно (окремо Business/Mail/Creator/...). Для легасі-планів
+     (`product IS NULL`) лишається старий conflict-ключ
+     `organization_id`, поведінка не змінюється
+   - **`orgType`/`siteLimit` більше НЕ хардкодяться** (`planCode ===
+     "agency" ? 5 : 1`) — беруться напряму з `plans.site_limit`
+     (`-1` → практичний максимум 999999, той самий підхід, що
+     `rank_keywords_limit`/`analytics_history_days` в 0086)
+   - **Sync org_type/site_limit і видача ai_credits тепер лише для
+     `isBusinessPlan`** (`product === "business" || product === null`)
+     — Mail/Creator/Office/Browser не мають "кількості сайтів" чи
+     спільного `ai_credits`-пулу (той пул лишається Business-
+     специфічним, PRICING.md Частина C)
+
+3. **`handleSubscriptionCancelled` — виправлено серйозний
+   архітектурний ризик:** стара версія фільтрувала
+   `organization_id=eq.${orgId}` при UPDATE — коли одна organization
+   могла мати лише одну підписку, це було безпечно. Тепер, коли
+   organization може мати кілька активних підписок (Business + Mail
+   одночасно), той самий фільтр **відмінив би ВСІ продукти разом**,
+   навіть якщо LemonSqueezy повідомляє про скасування лише ОДНОГО з
+   них. Виправлено: спочатку `selectRows` знаходить конкретну
+   підписку за `ls_subscription_id` (унікальний на кожну LS-
+   підписку), UPDATE фільтрується по `id=eq.<знайдений id>` —
+   зачіпає рівно ту підписку, що реально скасовується. Free-план для
+   fallback тепер теж product-specific (`{product}_free`, не
+   застарілий `code=eq.free`).
+
+**`app/page.tsx` — checkout на лендінгу:**
+- `LS_VARIANTS`: `Starter/Growth/Agency` → `Starter/Pro/Agency` (нові
+  env-змінні `LS_VARIANT_BUSINESS_STARTER/PRO/AGENCY`, старі
+  `LS_VARIANT_STARTER/GROWTH/AGENCY` більше не читаються)
+- `PlansSection`/`PlanCard`: 3 картки → 4 картки (Free/Starter/Pro/
+  Agency), grid `lg:grid-cols-[0.85fr_1.15fr_0.85fr]` (3 колонки
+  нерівної ширини) → `sm:grid-cols-2 lg:grid-cols-4` (адаптивний
+  4-колонковий грід), Pro тепер "ПОПУЛЯРНИЙ" (`highlighted`) замість
+  колишнього Growth
+- Ціни й фічі в картках — дослівно з PRICING.md Частина A (Business
+  рядок кожного тарифу)
+- Free-картка веде на `/dashboard` (залогінені) чи `/register`
+  (незалогінені) — ніколи на LemonSqueezy checkout, Free призначається
+  автоматично при реєстрації (handle_new_user, 0086)
+
+**Важливо — `CHECKOUT_DISABLED = true`** (`app/lib/checkoutFlag.ts`)
+досі активний: реальні checkout-кнопки на проді зараз показують
+"Скоро відкриємо реєстрацію" незалежно від цих змін — контрольований
+ризик, жодних живих грошей через цю кнопку зараз не проходить, поки
+прапорець не знято окремим рішенням Артема.
+
+**Перевірено:** `tsc --noEmit` чисто (worker + frontend), `eslint`
+чисто, `next build` успішний, `wrangler deploy --dry-run` для
+`qorax-api` успішний (956.41 KiB, gzip 160.60 KiB). Реальний webhook-
+виклик від LemonSqueezy НЕ протестовано (немає тестового акаунту/
+sandbox LemonSqueezy з цього sandbox) — покладаємось на ретельний
+ручний рев'ю логіки й наявні `tsc`-перевірки типів.
+
+**Наступний крок (не цей коміт):** 16 worker-хендлерів з жорстко
+закодованими старими кодами тарифів (`crmHandler.ts`,
+`socialHandler.ts`, `academyHandler.ts`, `benchmarkHandler.ts`,
+`brokenLinksChecker.ts`, `chatHandler.ts`, `competitorChecker.ts`,
+`croHandler.ts`, `fixRequestHandler.ts`, `gscHandler.ts`,
+`pdfReport.ts`, `reportHandler.ts`, `seoChecker.ts`, `teamHandler.ts`,
+`translatorHandler.ts`).
