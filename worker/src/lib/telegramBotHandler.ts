@@ -21,11 +21,20 @@
 //      маркер severity, як в документі
 //
 // СВІДОМО НЕ ЗРОБЛЕНО цим проходом (наступні кроки за списком
-// Артема): голосові повідомлення, фото/PDF (справжня генерація
-// PDF-файлу з бота — вимагає headless-browser інфраструктури, немає
-// в Cloudflare Workers, /report замість цього направляє в дашборд —
-// див. коментар над handleReportCommand), Smart Alerts (реалізовано,
-// alerts.ts вже має пороги).
+// Артема): голосові повідомлення — Gemini вміє РОЗПІЗНАВАТИ голос
+// (STT технічно можливо), але НЕ вміє генерувати голос у відповідь
+// (TTS — окремий сервіс, нова інфраструктура), а документ хоче саме
+// "AI відповідає голосом" (пункт 12). Узгоджено з Артемом: пропустити
+// голос повністю, а не робити половинчастий компроміс (голос
+// вхід/текст вихід) — якщо колись знадобиться TTS-інтеграція, це
+// окрема майбутня ітерація. Smart Alerts реалізовано (alerts.ts вже
+// має пороги).
+//
+// Фото-аналіз (документ Артема, пункт 13: "Відправив скрін. AI
+// аналізує.") — РЕАЛІЗОВАНО, handleTelegramPhotoMessage() нижче.
+// downloadTelegramFile() (telegram.ts) + callGeminiVision()
+// (contentGeneration.ts, та сама vision-функція, що вже
+// переюзовується для Visual Search у Qorax Browser).
 //
 // Business Coach (документ Артема, пункт 16, ⭐⭐⭐⭐⭐) — РЕАЛІЗОВАНО,
 // runBusinessCoachCheck() нижче. Викликається щодня з того самого
@@ -56,10 +65,11 @@
 
 import type { Env } from "../types";
 import { selectRows, insertRow } from "./supabase";
-import { sendTelegramMessage, sendTelegramMessageWithButtons, answerTelegramCallbackQuery, clearTelegramMessageButtons } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageWithButtons, answerTelegramCallbackQuery, clearTelegramMessageButtons, downloadTelegramFile } from "./telegram";
 import { buildOrgScopedPrompt } from "./chatHandler";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
 import { createFixRequest } from "./fixRequestHandler";
+import { callGeminiVision } from "./contentGeneration";
 
 interface SiteRow {
   id: string;
@@ -584,7 +594,9 @@ const HELP_TEXT = `🤖 <b>Qorax Bot</b>
 
 Або просто напишіть питання природною мовою, наприклад:
 <i>«Чому впали позиції?»</i>
-<i>«Що зараз найважливіше виправити?»</i>`;
+<i>«Що зараз найважливіше виправити?»</i>
+
+Можна також надіслати скріншот (Google Search Console, Analytics, PageSpeed) — AI проаналізує.`;
 
 /**
  * Головна точка входу для будь-якого текстового повідомлення від
@@ -1099,4 +1111,79 @@ export async function runBusinessCoachCheck(env: Env): Promise<{ checked: number
   }
 
   return { checked: orgs.length };
+}
+
+// ============================================================
+// Фото-аналіз (документ Артема, пункт 13: "Відправив скрін. Google
+// Search Console. AI аналізує.") Приймає скріншот (GSC, Analytics,
+// Lighthouse-звіт тощо), передає в callGeminiVision (contentGeneration.ts
+// — та сама vision-функція, що вже переюзовується для Visual Search
+// у Qorax Browser, не новий шлях виклику Gemini) з промптом, що
+// орієнтує AI саме на бізнес-контекст Qorax (SEO/аналітика/
+// продуктивність), а не загальний опис зображення.
+// ============================================================
+
+const PHOTO_ANALYSIS_MAX_BYTES = 4 * 1024 * 1024; // Gemini inline_data ліміт з запасом
+
+export async function handleTelegramPhotoMessage(
+  chatId: string,
+  photos: Array<{ file_id: string; width: number; height: number }>,
+  caption: string,
+  env: Env
+): Promise<void> {
+  const organizationId = await getOrgIdByChatId(chatId, env);
+  if (!organizationId) {
+    await sendTelegramMessage(
+      chatId,
+      "Цей чат ще не підключено до жодної організації Qorax. Перейдіть у дашборд → Налаштування → Telegram, щоб підключити.",
+      env.TELEGRAM_BOT_TOKEN
+    );
+    return;
+  }
+
+  const creditsCheck = await checkAiCredits(organizationId, "business", env);
+  if (!creditsCheck.ok) {
+    await sendTelegramMessage(
+      chatId,
+      creditsCheck.disabledByAdmin ? "⚠️ AI-аналіз тимчасово вимкнено адміністратором." : "⚠️ Кредити AI вичерпано. Ліміт оновлюється щомісяця відповідно до тарифу.",
+      env.TELEGRAM_BOT_TOKEN
+    );
+    return;
+  }
+
+  const apiKey = env.GEMINI_CHAT_API_KEY ?? env.GEMINI_API_KEY;
+  if (!apiKey) {
+    await sendTelegramMessage(chatId, "⚠️ AI не налаштований — зверніться до підтримки.", env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+
+  // Telegram надсилає кілька розмірів того самого фото — беремо
+  // найбільший (найкраща якість для аналізу деталей на скріншоті).
+  const largest = photos.reduce((best, p) => (p.width > best.width ? p : best), photos[0]);
+
+  const downloadResult = await downloadTelegramFile(largest.file_id, env.TELEGRAM_BOT_TOKEN);
+  if (!downloadResult.ok) {
+    console.error("[telegram-photo] download error:", downloadResult.error);
+    await sendTelegramMessage(chatId, "⚠️ Не вдалося завантажити фото. Спробуйте ще раз.", env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+
+  // Приблизна перевірка розміру base64 (base64 ≈ 4/3 від бінарного розміру)
+  if (downloadResult.base64.length > PHOTO_ANALYSIS_MAX_BYTES * 1.4) {
+    await sendTelegramMessage(chatId, "⚠️ Зображення завелике для аналізу. Спробуйте надіслати менший скріншот.", env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+
+  const prompt = `Це скріншот, надісланий власником бізнесу в Telegram-боті Qorax (платформа технічного моніторингу сайтів і SEO). Це може бути звіт з Google Search Console, Google Analytics, PageSpeed Insights, панель іншого SEO-інструменту, або просто скріншот сайту.${caption ? `\n\nПідпис від користувача: "${caption}"` : ""}
+
+Проаналізуй зображення і дай коротку (3-5 речень) відповідь українською мовою: що це за дані, які там ключові цифри/тренди помітні, і чи є щось, на що варто звернути увагу. Якщо на зображенні немає нічого схожого на аналітику/метрики сайту — просто чесно опиши, що бачиш, не вигадуй SEO-контекст, якого там немає.`;
+
+  const result = await callGeminiVision(prompt, downloadResult.base64, downloadResult.mimeType, apiKey);
+  if (!result.ok) {
+    await sendTelegramMessage(chatId, "⚠️ Не вдалося проаналізувати зображення, спробуйте ще раз.", env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+
+  await deductAiCredits(organizationId, creditsCheck.creditsRemaining, creditsCheck.unlimited, env);
+  await sendTelegramMessage(chatId, `🖼 <b>Аналіз зображення</b>\n\n${result.text}`, env.TELEGRAM_BOT_TOKEN);
 }

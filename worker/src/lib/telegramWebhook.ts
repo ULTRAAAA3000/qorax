@@ -19,7 +19,7 @@
 import type { Env } from "../types";
 import { selectRows, upsertRow } from "./supabase";
 import { sendTelegramMessage } from "./telegram";
-import { handleTelegramBotMessage, handleTelegramCallbackQuery } from "./telegramBotHandler";
+import { handleTelegramBotMessage, handleTelegramCallbackQuery, handleTelegramPhotoMessage } from "./telegramBotHandler";
 
 // Telegram Bot API шле апдейти у вигляді JSON-об'єкта Update.
 // Визначаємо тільки поля, які нам потрібні.
@@ -30,6 +30,11 @@ interface TelegramUpdate {
     from?: { id: number; first_name?: string; username?: string };
     chat: { id: number; type: string };
     text?: string;
+    // Фото-аналіз (документ Артема, пункт 13: "Відправив скрін.
+    // Google Search Console. AI аналізує."). Telegram надсилає масив
+    // розмірів того самого фото — беремо найбільший.
+    photo?: Array<{ file_id: string; width: number; height: number }>;
+    caption?: string;
   };
   // Instant Actions (документ Артема, пункт 8) — натискання inline-
   // кнопки під critical issue з /issues.
@@ -80,8 +85,18 @@ export async function handleTelegramWebhook(
   }
 
   const message = update.message;
+
+  // Фото-аналіз (документ Артема, пункт 13) — обробляється до
+  // перевірки message.text, бо photo-повідомлення часто взагалі не
+  // має text (лише опційний caption).
+  if (message?.photo && message.photo.length > 0) {
+    const chatIdForPhoto = String(message.chat.id);
+    await handleTelegramPhotoMessage(chatIdForPhoto, message.photo, message.caption ?? "", env);
+    return new Response("ok", { status: 200 });
+  }
+
   // Нас цікавлять тільки текстові повідомлення — ігноруємо решту апдейтів
-  // (фото, стікери, inline query і т.д.) без помилки.
+  // (стікери, inline query і т.д.) без помилки.
   if (!message?.text) {
     return new Response("ok", { status: 200 });
   }

@@ -86,11 +86,45 @@ export async function sendTelegramMessageWithButtons(
 }
 
 /**
- * Telegram Bot API вимагає відповіді на кожен callback_query протягом
- * кількох секунд — інакше кнопка в клієнті нескінченно показує
- * "завантаження". showAlert=true показує спливаюче вікно замість
- * тихого тоста (для явного підтвердження дії користувачу).
+ * Завантажує файл з Telegram (фото/документ) за file_id — потребує
+ * двох запитів: getFile повертає file_path, потім прямий GET на
+ * файловий сервер Telegram. Повертає base64 для передачі в Gemini
+ * vision (callGeminiVision очікує саме base64 + mimeType).
  */
+export async function downloadTelegramFile(
+  fileId: string,
+  botToken: string
+): Promise<{ ok: true; base64: string; mimeType: string } | { ok: false; error: string }> {
+  try {
+    const getFileResp = await fetch(`${TELEGRAM_ENDPOINT}/bot${botToken}/getFile?file_id=${encodeURIComponent(fileId)}`);
+    if (!getFileResp.ok) return { ok: false, error: `getFile ${getFileResp.status}` };
+    const getFileData = await getFileResp.json() as { result?: { file_path?: string } };
+    const filePath = getFileData.result?.file_path;
+    if (!filePath) return { ok: false, error: "file_path відсутній у відповіді Telegram" };
+
+    const fileResp = await fetch(`${TELEGRAM_ENDPOINT}/file/bot${botToken}/${filePath}`);
+    if (!fileResp.ok) return { ok: false, error: `завантаження файлу ${fileResp.status}` };
+
+    const buffer = await fileResp.arrayBuffer();
+    // Cloudflare Workers має btoa, але не Buffer — конвертуємо через
+    // Uint8Array напряму, той самий підхід, що вже десь у кодовій базі
+    // для роботи з бінарними даними без Node.js Buffer API.
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 8192; // уникаємо переповнення стеку на великих файлах через apply()
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64 = btoa(binary);
+
+    const ext = filePath.split(".").pop()?.toLowerCase();
+    const mimeType = ext === "png" ? "image/png" : ext === "webp" ? "image/webp" : "image/jpeg";
+
+    return { ok: true, base64, mimeType };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
 export async function answerTelegramCallbackQuery(
   callbackQueryId: string,
   text: string | undefined,
