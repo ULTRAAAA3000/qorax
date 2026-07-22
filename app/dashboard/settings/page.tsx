@@ -7,6 +7,7 @@ import { CopyButton } from "@/app/components/CopyButton";
 import { NotificationSettingsForm } from "./NotificationSettingsForm";
 import { WhiteLabelSettingsForm } from "./WhiteLabelSettingsForm";
 import { TeamSettingsForm } from "./TeamSettingsForm";
+import { DeveloperApiSettingsForm } from "./DeveloperApiSettingsForm";
 
 export const metadata = { title: "Налаштування — Qorax" };
 
@@ -166,6 +167,9 @@ export default async function SettingsPage() {
           planName={planName}
           telegramBotName={process.env.NEXT_PUBLIC_TELEGRAM_BOT_NAME ?? "QoraxBot"}
         />
+
+        {/* Developer API — Qorax SEO Platform MVP */}
+        <DeveloperApiSettingsForm />
       </main>
     </div>
   );
