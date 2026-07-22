@@ -19,7 +19,7 @@
 import type { Env } from "../types";
 import { selectRows, upsertRow } from "./supabase";
 import { sendTelegramMessage } from "./telegram";
-import { handleTelegramBotMessage } from "./telegramBotHandler";
+import { handleTelegramBotMessage, handleTelegramCallbackQuery } from "./telegramBotHandler";
 
 // Telegram Bot API шле апдейти у вигляді JSON-об'єкта Update.
 // Визначаємо тільки поля, які нам потрібні.
@@ -30,6 +30,16 @@ interface TelegramUpdate {
     from?: { id: number; first_name?: string; username?: string };
     chat: { id: number; type: string };
     text?: string;
+  };
+  // Instant Actions (документ Артема, пункт 8) — натискання inline-
+  // кнопки під critical issue з /issues.
+  callback_query?: {
+    id: string;
+    data?: string;
+    message?: {
+      message_id: number;
+      chat: { id: number; type: string };
+    };
   };
 }
 
@@ -52,6 +62,21 @@ export async function handleTelegramWebhook(
     update = (await request.json()) as TelegramUpdate;
   } catch {
     return new Response("Bad Request", { status: 400 });
+  }
+
+  // Instant Actions — натискання inline-кнопки (документ Артема,
+  // пункт 8). Обробляється до перевірки message.text, бо callback_query
+  // update не містить message.text взагалі.
+  const callbackQuery = update.callback_query;
+  if (callbackQuery?.message && callbackQuery.data) {
+    await handleTelegramCallbackQuery(
+      callbackQuery.id,
+      String(callbackQuery.message.chat.id),
+      callbackQuery.message.message_id,
+      callbackQuery.data,
+      env
+    );
+    return new Response("ok", { status: 200 });
   }
 
   const message = update.message;

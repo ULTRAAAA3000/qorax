@@ -40,6 +40,95 @@ export async function sendTelegramMessage(
   }
 }
 
+// ─── Instant Actions (документ Артема, пункт 8: "Telegram пишет.
+// [Исправить] [Позже]. Нажал. Qorax сделал.") ──────────────────
+// Реальна дія за кнопкою "Виправити" — не магічний автофікс коду
+// (такого механізму на платформі немає й не планується цим проходом),
+// а той самий fix_requests flow, що вже є на вебі (заявка студії
+// Qorax на ручне виправлення, handleFixRequest) — тут просто
+// подається в один клік з Telegram замість форми на сайті.
+
+export interface TelegramInlineButton {
+  text: string;
+  callback_data: string; // максимум 64 байти за обмеженням Telegram Bot API
+}
+
+export async function sendTelegramMessageWithButtons(
+  chatId: string,
+  text: string,
+  buttons: TelegramInlineButton[][],
+  botToken: string
+): Promise<{ ok: boolean; messageId?: number; error?: string }> {
+  try {
+    const response = await fetch(
+      `${TELEGRAM_ENDPOINT}/bot${botToken}/sendMessage`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text,
+          parse_mode: "HTML",
+          disable_web_page_preview: true,
+          reply_markup: { inline_keyboard: buttons },
+        }),
+      }
+    );
+    if (!response.ok) {
+      const body = await response.text();
+      return { ok: false, error: `Telegram API error ${response.status}: ${body.slice(0, 200)}` };
+    }
+    const data = await response.json() as { result?: { message_id?: number } };
+    return { ok: true, messageId: data.result?.message_id };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+/**
+ * Telegram Bot API вимагає відповіді на кожен callback_query протягом
+ * кількох секунд — інакше кнопка в клієнті нескінченно показує
+ * "завантаження". showAlert=true показує спливаюче вікно замість
+ * тихого тоста (для явного підтвердження дії користувачу).
+ */
+export async function answerTelegramCallbackQuery(
+  callbackQueryId: string,
+  text: string | undefined,
+  botToken: string,
+  showAlert = false
+): Promise<void> {
+  try {
+    await fetch(`${TELEGRAM_ENDPOINT}/bot${botToken}/answerCallbackQuery`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ callback_query_id: callbackQueryId, text, show_alert: showAlert }),
+    });
+  } catch {
+    // best-effort — якщо не вдалось, кнопка просто покрутиться
+    // трохи довше в клієнті, не критично
+  }
+}
+
+/**
+ * Прибирає inline-кнопки з уже надісланого повідомлення (після дії —
+ * щоб не можна було натиснути "Виправити" вдруге на той самий issue).
+ */
+export async function clearTelegramMessageButtons(
+  chatId: string,
+  messageId: number,
+  botToken: string
+): Promise<void> {
+  try {
+    await fetch(`${TELEGRAM_ENDPOINT}/bot${botToken}/editMessageReplyMarkup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] } }),
+    });
+  } catch {
+    // best-effort
+  }
+}
+
 // ─── Message builders ─────────────────────────────────────────
 
 export function buildSiteDownTelegram(params: {

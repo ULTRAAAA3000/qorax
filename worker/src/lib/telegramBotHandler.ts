@@ -22,27 +22,34 @@
 //
 // СВІДОМО НЕ ЗРОБЛЕНО цим проходом (наступні кроки за списком
 // Артема): /speed /report /traffic окремими командами (частково
-// покриті /audit і /score), Instant Actions (inline-кнопки з діями),
-// голосові повідомлення, фото/PDF, Smart Alerts (реалізовано,
-// alerts.ts вже має пороги), Business Coach (проактивні поради без
-// запиту користувача).
+// покриті /audit і /score), голосові повідомлення, фото/PDF, Smart
+// Alerts (реалізовано, alerts.ts вже має пороги), Business Coach
+// (проактивні поради без запиту користувача).
 //
-// Weekly Digest AI-текстом (документ Артема, пункт 5: "AI пише...
-// не цифри, а людський текст") — РЕАЛІЗОВАНО, sendTelegramWeeklyDigests()
-// нижче. НЕ переписаний sendWeeklyDigests() з monitoring.ts (той
-// лишається як є — критична вже працююча email-інфраструктура через
-// Resend, ризиковано рефакторити заради Telegram-паралелі). Замість
-// перевикористання по-сайтовій логіки email-версії — власний збір
-// метрик АГРЕГОВАНО по всій організації одразу (документ хоче "один
-// дайджест на тиждень" зв'язним текстом, не по email на кожен сайт
-// окремо).
+// Weekly Digest AI-текстом (документ Артема, пункт 5) — РЕАЛІЗОВАНО,
+// sendTelegramWeeklyDigests() нижче. НЕ переписаний sendWeeklyDigests()
+// з monitoring.ts (той лишається як є — критична вже працююча
+// email-інфраструктура через Resend). Замість перевикористання
+// по-сайтової логіки email-версії — власний збір метрик АГРЕГОВАНО
+// по всій організації одразу.
+//
+// Instant Actions (документ Артема, пункт 8: "[Исправить] [Позже].
+// Нажал. Qorax сделал.") — РЕАЛІЗОВАНО, handleTelegramCallbackQuery()
+// нижче. "Виправити" — НЕ автофікс коду (такого механізму на
+// платформі немає), а той самий fix_requests flow, що вже на вебі
+// (заявка студії Qorax на ручне виправлення) — ядро винесено в
+// createFixRequest() (fixRequestHandler.ts), переюзовується і
+// HTTP-хендлером, і цим Telegram-шляхом. requested_by береться як
+// organization_members.role='owner' (немає Supabase JWT з Telegram —
+// chat_id прив'язаний до організації, не до конкретного profiles.id).
 // ============================================================
 
 import type { Env } from "../types";
 import { selectRows } from "./supabase";
-import { sendTelegramMessage } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageWithButtons, answerTelegramCallbackQuery, clearTelegramMessageButtons } from "./telegram";
 import { buildOrgScopedPrompt } from "./chatHandler";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
+import { createFixRequest } from "./fixRequestHandler";
 
 interface SiteRow {
   id: string;
@@ -63,6 +70,7 @@ interface CwvRow {
 }
 
 interface InsightRow {
+  id: string;
   site_id: string;
   severity: string;
   problem_summary: string;
@@ -132,7 +140,7 @@ async function handleAuditCommand(chatId: string, organizationId: string, env: E
     ),
     selectRows<InsightRow>(
       "ai_insights",
-      `select=site_id,severity,problem_summary,estimated_monthly_loss_usd&site_id=${siteIdFilter}&is_resolved=eq.false`,
+      `select=id,site_id,severity,problem_summary,estimated_monthly_loss_usd&site_id=${siteIdFilter}&is_resolved=eq.false`,
       env.SUPABASE_URL,
       env.SUPABASE_SERVICE_ROLE_KEY
     ),
@@ -194,7 +202,7 @@ async function handleIssuesCommand(chatId: string, organizationId: string, env: 
 
   const insightsRes = await selectRows<InsightRow>(
     "ai_insights",
-    `select=site_id,severity,problem_summary,estimated_monthly_loss_usd,generated_at&site_id=${siteIdFilter}&is_resolved=eq.false&order=generated_at.desc&limit=50`,
+    `select=id,site_id,severity,problem_summary,estimated_monthly_loss_usd,generated_at&site_id=${siteIdFilter}&is_resolved=eq.false&order=generated_at.desc&limit=50`,
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
@@ -218,6 +226,25 @@ async function handleIssuesCommand(chatId: string, organizationId: string, env: 
   }
 
   await sendTelegramMessage(chatId, lines.join("\n").trim(), env.TELEGRAM_BOT_TOKEN);
+
+  // Instant Actions (документ Артема, пункт 8: "[Исправить] [Позже].
+  // Нажал. Qorax сделал.") — окремі повідомлення з кнопками лише для
+  // critical, і лише перші 3, щоб не заспамити чат: некритичні issues
+  // (warning/info) не варті negайного запиту на ручне виправлення,
+  // для них досить самого списку вище.
+  const criticalOnes = insights.filter(i => i.severity === "critical").slice(0, 3);
+  for (const ins of criticalOnes) {
+    const site = siteById.get(ins.site_id);
+    await sendTelegramMessageWithButtons(
+      chatId,
+      `🔴 ${ins.problem_summary}${site ? `\n<code>${safeHostname(site.url)}</code>` : ""}`,
+      [[
+        { text: "🛠 Замовити виправлення", callback_data: `fix:${ins.id}` },
+        { text: "Пізніше", callback_data: `snooze:${ins.id}` },
+      ]],
+      env.TELEGRAM_BOT_TOKEN
+    );
+  }
 }
 
 // ── /rank — позиція по tracked-запитах (rank_tracked_queries, 0041)
@@ -514,7 +541,7 @@ async function sendTelegramDigestForOrg(organizationId: string, chatId: string, 
     selectRows<DigestSpeedRow>("speed_checks", `select=site_id,load_time_ms,checked_at&site_id=${siteIdFilter}&checked_at=gte.${twoWeeksAgo}&checked_at=lt.${weekAgo}`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
     selectRows<DigestSeoRow>("page_seo_audits", `select=site_id,issues,checked_at&site_id=${siteIdFilter}&checked_at=gte.${weekAgo}&order=checked_at.desc`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
     selectRows<DigestSslRow>("ssl_certificates", `select=site_id,days_until_expiry&site_id=${siteIdFilter}`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
-    selectRows<InsightRow>("ai_insights", `select=site_id,severity,problem_summary,estimated_monthly_loss_usd,generated_at&site_id=${siteIdFilter}&is_resolved=eq.false&order=generated_at.desc&limit=20`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
+    selectRows<InsightRow>("ai_insights", `select=id,site_id,severity,problem_summary,estimated_monthly_loss_usd,generated_at&site_id=${siteIdFilter}&is_resolved=eq.false&order=generated_at.desc&limit=20`, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY),
   ]);
 
   const uptimeChecks = uptimeRes.data ?? [];
@@ -645,4 +672,113 @@ export async function sendTelegramWeeklyDigests(env: Env): Promise<{ sent: numbe
   }
 
   return { sent, skipped };
+}
+
+// ============================================================
+// Instant Actions callback — обробка натискання inline-кнопки
+// ("🛠 Замовити виправлення" / "Пізніше") під critical issue, яку
+// показав /issues (документ Артема, пункт 8). Викликається з
+// telegramWebhook.ts для будь-якого update.callback_query.
+// ============================================================
+
+interface InsightForFix {
+  id: string;
+  site_id: string;
+  problem_summary: string;
+}
+
+interface OwnerMembership {
+  user_id: string;
+}
+
+/**
+ * "Замовити виправлення" — та сама заявка, що вебова форма створює
+ * через handleFixRequest (createFixRequest, спільне ядро з
+ * fixRequestHandler.ts). Немає Supabase JWT з Telegram — тому
+ * requested_by беремо як owner-учасника організації (перший
+ * знайдений з role='owner'), а не намагаємось встановити "хто саме
+ * написав у Telegram" (chat_id прив'язаний до організації, не до
+ * конкретного profiles.id — той самий компроміс, що вже є в дизайні
+ * notification_settings).
+ */
+export async function handleTelegramCallbackQuery(
+  callbackQueryId: string,
+  chatId: string,
+  messageId: number,
+  data: string,
+  env: Env
+): Promise<void> {
+  const organizationId = await getOrgIdByChatId(chatId, env);
+  if (!organizationId) {
+    await answerTelegramCallbackQuery(callbackQueryId, "Чат не підключено до організації", env.TELEGRAM_BOT_TOKEN, true);
+    return;
+  }
+
+  const [action, insightId] = data.split(":");
+
+  if (action === "snooze") {
+    await answerTelegramCallbackQuery(callbackQueryId, "Гаразд, нагадаємо пізніше", env.TELEGRAM_BOT_TOKEN);
+    await clearTelegramMessageButtons(chatId, messageId, env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+
+  if (action !== "fix" || !insightId) {
+    await answerTelegramCallbackQuery(callbackQueryId, undefined, env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+
+  const insightRes = await selectRows<InsightForFix>(
+    "ai_insights",
+    `select=id,site_id,problem_summary&id=eq.${encodeURIComponent(insightId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const insight = insightRes.data?.[0];
+  if (!insight) {
+    await answerTelegramCallbackQuery(callbackQueryId, "Проблему не знайдено — можливо, вже вирішена", env.TELEGRAM_BOT_TOKEN, true);
+    return;
+  }
+
+  const ownerRes = await selectRows<OwnerMembership>(
+    "organization_members",
+    `select=user_id&organization_id=eq.${encodeURIComponent(organizationId)}&role=eq.owner&limit=1`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const ownerId = ownerRes.data?.[0]?.user_id;
+  if (!ownerId) {
+    await answerTelegramCallbackQuery(callbackQueryId, "Не вдалося визначити власника організації", env.TELEGRAM_BOT_TOKEN, true);
+    return;
+  }
+
+  const result = await createFixRequest(
+    {
+      siteId: insight.site_id,
+      organizationId,
+      requestedByUserId: ownerId,
+      requestedByEmail: null,
+      problemDescription: insight.problem_summary,
+      insightId: insight.id,
+    },
+    env
+  );
+
+  if (!result.ok && result.reason === "upgrade_required") {
+    await answerTelegramCallbackQuery(callbackQueryId, "Замовлення виправлень доступне з плану Growth", env.TELEGRAM_BOT_TOKEN, true);
+    return;
+  }
+  if (!result.ok) {
+    await answerTelegramCallbackQuery(callbackQueryId, "Не вдалося створити заявку, спробуйте пізніше", env.TELEGRAM_BOT_TOKEN, true);
+    return;
+  }
+
+  await answerTelegramCallbackQuery(callbackQueryId, "✅ Заявку надіслано", env.TELEGRAM_BOT_TOKEN);
+  await clearTelegramMessageButtons(chatId, messageId, env.TELEGRAM_BOT_TOKEN);
+  await sendTelegramMessage(
+    chatId,
+    result.isFree
+      ? "✅ Заявку на виправлення надіслано — це безкоштовна заявка в межах вашого плану. Ми зв'яжемось найближчим часом."
+      : "✅ Заявку на виправлення надіслано. Це понад безкоштовний ліміт цього місяця — вартість узгодимо окремо.",
+    env.TELEGRAM_BOT_TOKEN
+  );
 }

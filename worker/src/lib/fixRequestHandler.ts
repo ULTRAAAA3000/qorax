@@ -53,6 +53,126 @@ const PLATFORM_LABELS: Record<string, string> = {
   other: "Інше / не знаю",
 };
 
+// ── Спільне ядро — переюзовується і HTTP-хендлером (handleFixRequest,
+// нижче), і Telegram Instant Actions (telegramBotHandler.ts, кнопка
+// "🛠 Замовити виправлення" під critical issues). Той самий план-
+// гейтинг, ліміт безкоштовних заявок і подвійне сповіщення
+// (email+Telegram власнику студії) для обох шляхів — не дублюємо
+// бізнес-правила.
+export interface CreateFixRequestParams {
+  siteId: string;
+  organizationId: string;
+  requestedByUserId: string;
+  requestedByEmail: string | null;
+  problemDescription: string;
+  insightId?: string | null;
+  sitePlatform?: string | null;
+}
+
+export type CreateFixRequestResult =
+  | { ok: true; isFree: boolean }
+  | { ok: false; reason: "upgrade_required" | "save_failed" };
+
+export async function createFixRequest(params: CreateFixRequestParams, env: Env): Promise<CreateFixRequestResult> {
+  const siteResult = await selectRows<SiteRow>(
+    "sites",
+    `select=id,url,display_name,organization_id&id=eq.${params.siteId}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const site = siteResult.data[0];
+  if (!site) return { ok: false, reason: "save_failed" };
+
+  const subResult = await selectRows<SubscriptionRow>(
+    "subscriptions",
+    `select=status,plans(code)&organization_id=eq.${encodeURIComponent(params.organizationId)}&status=in.(trialing,active)&order=created_at.desc&limit=1`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const sub = subResult.data[0];
+  const planCode = (sub?.plans as PlanRow | null)?.code ?? "free";
+  const hasAccess = ["growth", "agency", "admin", "trial"].includes(planCode);
+  if (!hasAccess) return { ok: false, reason: "upgrade_required" };
+
+  const monthStart = new Date();
+  monthStart.setDate(1);
+  monthStart.setHours(0, 0, 0, 0);
+
+  const usedThisMonthResult = await selectRows<{ id: string }>(
+    "fix_requests",
+    `select=id&organization_id=eq.${encodeURIComponent(params.organizationId)}&is_free=eq.true&created_at=gte.${monthStart.toISOString()}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const freeUsedThisMonth = usedThisMonthResult.data?.length ?? 0;
+  const FREE_REQUESTS_PER_MONTH = 1;
+  const isFree = freeUsedThisMonth < FREE_REQUESTS_PER_MONTH;
+
+  const insertResult = await insertRow(
+    "fix_requests",
+    {
+      organization_id: params.organizationId,
+      site_id: site.id,
+      insight_id: params.insightId ?? null,
+      requested_by: params.requestedByUserId,
+      problem_description: params.problemDescription,
+      site_platform: params.sitePlatform ?? null,
+      is_free: isFree,
+      status: "new",
+    },
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  if (!insertResult.ok) return { ok: false, reason: "save_failed" };
+
+  const platformLabel = params.sitePlatform ? (PLATFORM_LABELS[params.sitePlatform] ?? params.sitePlatform) : "Не вказано";
+  const dashboardUrl = `${env.APP_URL}/dashboard/admin`;
+  const notifyPromises: Promise<unknown>[] = [];
+
+  if (env.OWNER_EMAIL) {
+    const html = `
+      <div style="font-family:sans-serif;max-width:560px;">
+        <h2 style="margin-bottom:4px;">${isFree ? "🆓" : "💰"} Нова заявка на виправлення</h2>
+        <p style="color:#666;margin-top:0;">${isFree ? "Безкоштовна (в межах ліміту плану)" : "Платна — узгодити ціну з клієнтом"}</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
+          <tr><td style="padding:6px 0;color:#666;">Сайт</td><td style="padding:6px 0;font-weight:600;">${site.display_name}</td></tr>
+          <tr><td style="padding:6px 0;color:#666;">URL</td><td style="padding:6px 0;"><code>${site.url}</code></td></tr>
+          <tr><td style="padding:6px 0;color:#666;">Платформа</td><td style="padding:6px 0;">${platformLabel}</td></tr>
+          <tr><td style="padding:6px 0;color:#666;">Клієнт</td><td style="padding:6px 0;">${params.requestedByEmail ?? "—"}</td></tr>
+        </table>
+        <p style="white-space:pre-wrap;background:#f5f5f5;padding:12px;border-radius:8px;">${params.problemDescription}</p>
+        <p><a href="${dashboardUrl}" style="color:#0066cc;">→ Відкрити адмін-панель</a></p>
+      </div>`;
+    notifyPromises.push(
+      sendEmail(
+        { to: env.OWNER_EMAIL, subject: `${isFree ? "🆓" : "💰"} Заявка на виправлення — ${site.display_name}`, html },
+        env.RESEND_API_KEY
+      ).catch(() => {})
+    );
+  }
+
+  if (env.OWNER_TELEGRAM_CHAT_ID && env.TELEGRAM_BOT_TOKEN) {
+    const tgText = `${isFree ? "🆓" : "💰"} <b>Нова заявка на виправлення</b>
+
+<b>${site.display_name}</b>
+<code>${site.url}</code>
+
+Платформа: <b>${platformLabel}</b>
+Клієнт: ${params.requestedByEmail ?? "—"}
+Тип: ${isFree ? "Безкоштовна (ліміт плану)" : "Платна"}
+
+${params.problemDescription}
+
+<a href="${dashboardUrl}">→ Адмін-панель</a>`;
+    notifyPromises.push(
+      sendTelegramMessage(env.OWNER_TELEGRAM_CHAT_ID, tgText, env.TELEGRAM_BOT_TOKEN).catch(() => {})
+    );
+  }
+
+  await Promise.allSettled(notifyPromises);
+  return { ok: true, isFree };
+}
+
 export async function handleFixRequest(
   request: Request,
   env: Env,
@@ -103,113 +223,29 @@ export async function handleFixRequest(
   }
   const site = siteResult.data[0];
 
-  // Перевіряємо план — доступно з Growth+
-  const subResult = await selectRows<SubscriptionRow>(
-    "subscriptions",
-    `select=status,plans(code)&organization_id=eq.${encodeURIComponent(site.organization_id)}&status=in.(trialing,active)&order=created_at.desc&limit=1`,
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
+  const result = await createFixRequest(
+    {
+      siteId: site.id,
+      organizationId: site.organization_id,
+      requestedByUserId: user.id,
+      requestedByEmail: user.email ?? null,
+      problemDescription,
+      insightId: body.insight_id ?? null,
+      sitePlatform: body.site_platform ?? null,
+    },
+    env
   );
-  const sub = subResult.data[0];
-  const planCode = (sub?.plans as PlanRow | null)?.code ?? "free";
-  const hasAccess = ["growth", "agency", "admin", "trial"].includes(planCode);
-  if (!hasAccess) {
+
+  if (!result.ok && result.reason === "upgrade_required") {
     return json(
-      {
-        error: "upgrade_required",
-        message: "Замовлення виправлень доступне з плану Growth ($99/міс)",
-      },
+      { error: "upgrade_required", message: "Замовлення виправлень доступне з плану Growth ($99/міс)" },
       403,
       origin
     );
   }
-
-  // Рахуємо скільки безкоштовних заявок вже використано цього місяця
-  // (по всій організації, а не по конкретному сайту)
-  const monthStart = new Date();
-  monthStart.setDate(1);
-  monthStart.setHours(0, 0, 0, 0);
-
-  const usedThisMonthResult = await selectRows<{ id: string }>(
-    "fix_requests",
-    `select=id&organization_id=eq.${encodeURIComponent(site.organization_id)}&is_free=eq.true&created_at=gte.${monthStart.toISOString()}`,
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
-  const freeUsedThisMonth = usedThisMonthResult.data?.length ?? 0;
-  const FREE_REQUESTS_PER_MONTH = 1;
-  const isFree = freeUsedThisMonth < FREE_REQUESTS_PER_MONTH;
-
-  // Створюємо тикет
-  const insertResult = await insertRow(
-    "fix_requests",
-    {
-      organization_id: site.organization_id,
-      site_id: site.id,
-      insight_id: body.insight_id ?? null,
-      requested_by: user.id,
-      problem_description: problemDescription,
-      site_platform: body.site_platform ?? null,
-      is_free: isFree,
-      status: "new",
-    },
-    env.SUPABASE_URL,
-    env.SUPABASE_SERVICE_ROLE_KEY
-  );
-
-  if (!insertResult.ok) {
+  if (!result.ok) {
     return json({ error: "Не вдалося створити заявку. Спробуйте пізніше." }, 500, origin);
   }
 
-  // Сповіщення власнику студії — email + Telegram. Не блокуємо відповідь
-  // клієнту якщо сповіщення не надішлються (тикет уже збережено в БД,
-  // видно в адмінці навіть без сповіщень).
-  const platformLabel = body.site_platform ? (PLATFORM_LABELS[body.site_platform] ?? body.site_platform) : "Не вказано";
-  const dashboardUrl = `${env.APP_URL}/dashboard/admin`;
-
-  const notifyPromises: Promise<unknown>[] = [];
-
-  if (env.OWNER_EMAIL) {
-    const html = `
-      <div style="font-family:sans-serif;max-width:560px;">
-        <h2 style="margin-bottom:4px;">${isFree ? "🆓" : "💰"} Нова заявка на виправлення</h2>
-        <p style="color:#666;margin-top:0;">${isFree ? "Безкоштовна (в межах ліміту плану)" : "Платна — узгодити ціну з клієнтом"}</p>
-        <table style="width:100%;border-collapse:collapse;margin:16px 0;">
-          <tr><td style="padding:6px 0;color:#666;">Сайт</td><td style="padding:6px 0;font-weight:600;">${site.display_name}</td></tr>
-          <tr><td style="padding:6px 0;color:#666;">URL</td><td style="padding:6px 0;"><code>${site.url}</code></td></tr>
-          <tr><td style="padding:6px 0;color:#666;">Платформа</td><td style="padding:6px 0;">${platformLabel}</td></tr>
-          <tr><td style="padding:6px 0;color:#666;">Клієнт</td><td style="padding:6px 0;">${user.email ?? "—"}</td></tr>
-        </table>
-        <p style="white-space:pre-wrap;background:#f5f5f5;padding:12px;border-radius:8px;">${problemDescription}</p>
-        <p><a href="${dashboardUrl}" style="color:#0066cc;">→ Відкрити адмін-панель</a></p>
-      </div>`;
-    notifyPromises.push(
-      sendEmail(
-        { to: env.OWNER_EMAIL, subject: `${isFree ? "🆓" : "💰"} Заявка на виправлення — ${site.display_name}`, html },
-        env.RESEND_API_KEY
-      ).catch(() => {})
-    );
-  }
-
-  if (env.OWNER_TELEGRAM_CHAT_ID && env.TELEGRAM_BOT_TOKEN) {
-    const tgText = `${isFree ? "🆓" : "💰"} <b>Нова заявка на виправлення</b>
-
-<b>${site.display_name}</b>
-<code>${site.url}</code>
-
-Платформа: <b>${platformLabel}</b>
-Клієнт: ${user.email ?? "—"}
-Тип: ${isFree ? "Безкоштовна (ліміт плану)" : "Платна"}
-
-${problemDescription}
-
-<a href="${dashboardUrl}">→ Адмін-панель</a>`;
-    notifyPromises.push(
-      sendTelegramMessage(env.OWNER_TELEGRAM_CHAT_ID, tgText, env.TELEGRAM_BOT_TOKEN).catch(() => {})
-    );
-  }
-
-  await Promise.allSettled(notifyPromises);
-
-  return json({ ok: true, isFree }, 200, origin);
+  return json({ ok: true, isFree: result.isFree }, 200, origin);
 }
