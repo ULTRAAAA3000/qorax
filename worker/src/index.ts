@@ -231,6 +231,8 @@ import { handleBusinessMetrics } from "./lib/businessMetrics";
 import { checkRateLimit, getClientIp } from "./lib/rateLimit";
 import { corsHeaders } from "./lib/cors";
 import { sendSlackMessage } from "./lib/slack";
+import { handleDeveloperAuditV1 } from "./lib/developerApiHandler";
+import { handleDeveloperApiKeys, handleDeveloperApiKeyRevoke } from "./lib/developerApiKeysHandler";
 
 function json(data: unknown, status: number, origin: string | null): Response {
   return new Response(JSON.stringify(data), {
@@ -281,6 +283,32 @@ const worker = {
 
     if (url.pathname === "/api/audit" && request.method === "POST") {
       return handleAuditRequest(request, env, origin, ctx);
+    }
+
+    // ─── Qorax SEO Platform (Developer API), MVP — фундамент ───
+    // Публічний ендпоінт для зовнішніх розробників/агентств, окрема
+    // авторизація через API-ключ (Authorization: Bearer qrx_xxx),
+    // не через Supabase-сесію. /api/developer/keys — управління
+    // ключами з Dashboard (звичайна Supabase-сесія користувача).
+    if (url.pathname === "/api/v1/audit" && request.method === "POST") {
+      return handleDeveloperAuditV1(request, env);
+    }
+    if (url.pathname === "/api/v1/audit" && request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        },
+      });
+    }
+    if (url.pathname === "/api/developer/keys" && (request.method === "GET" || request.method === "POST")) {
+      return handleDeveloperApiKeys(request, env, origin);
+    }
+    if (url.pathname.startsWith("/api/developer/keys/") && request.method === "DELETE") {
+      const keyId = url.pathname.split("/api/developer/keys/")[1];
+      return handleDeveloperApiKeyRevoke(keyId, request, env, origin);
     }
 
     // /api/cro/track — публічний, без авторизації, довільний Origin

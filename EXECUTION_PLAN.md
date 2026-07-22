@@ -5349,3 +5349,138 @@ Telegram-сторони — той самий компроміс, що вже в
 вебу — переюзати), Business Coach (проактивні поради без запиту
 користувача, концептуально частіша й контекстніша версія Weekly
 Digest).
+
+## Qorax SEO Platform (Developer API) — фундамент MVP: SEO Audit API
+
+**Артем поділився стратегічним документом:** ідея публічного
+"Qorax SEO Platform" — Developer API для сторонніх розробників/
+агентств/сервісів (за аналогією зі Stripe/Cloudflare, тільки в світі
+SEO), з п'ятьма запланованими API (SEO Audit/AI SEO/Schema/
+Monitoring/Reporting), SDK, White Label, кількома тарифними планами.
+Узгоджено з Артемом: старт лише з **SEO Audit API**, і лише
+**фундамент** — API-ключі + автентифікація + один ендпоінт + базовий
+rate limit. Білінг/Stripe, SDK, White Label, решта чотирьох API —
+свідомо не цей прохід.
+
+**Перевикористано наявне ядро замість написання з нуля:**
+`handleAuditRequest` (вже існуючий `/api/audit` — безкоштовний lead-
+magnet аудит на лендінгу) вже мав чисте ядро без прив'язки до
+таблиці `sites`: `runBasicCheck` + `runPageSpeedChecks`. Саме воно
+перевикористане в новому `/api/v1/audit`, без AI-аналізу
+(`runAiAnalysis` коштує Gemini-виклик — свідомо не включено в MVP,
+потенційний окремий платний "AI SEO API" пізніше).
+
+**Нові файли:**
+- `supabase/migrations/0084_developer_api_keys.sql` — таблиці
+  `developer_api_keys` (один ключ на organization, зберігається лише
+  SHA-256 хеш, ніколи сирий ключ) і `developer_api_requests`
+  (легкий audit-лог викликів). RLS той самий паттерн, що інші
+  org-scoped ресурси (`user_organization_ids()`/`is_platform_admin()`).
+- `worker/src/lib/developerApiAuth.ts` — `validateAndConsumeApiKey()`:
+  парсить `Authorization: Bearer qrx_xxx`, хешує через Web Crypto
+  SHA-256 (доступний у Workers runtime без залежностей), атомарно
+  інкрementує `requests_used` з optimistic-lock guard'ом
+  (`requests_used=eq.N` у WHERE) — захист від подвійного інкременту
+  при паралельних запитах на межі ліміту.
+- `worker/src/lib/developerApiHandler.ts` — `POST /api/v1/audit`,
+  CORS навмисно відкритий (`Access-Control-Allow-Origin: *`) — це
+  серверний виклик стороннього backend'у, не браузерний fetch,
+  origin-allowlist з `cors.ts` тут не застосовний.
+- `worker/src/lib/developerApiKeysHandler.ts` — управління ключами
+  з Dashboard (GET список / POST створити / DELETE відкликати),
+  авторизація через звичайну Supabase-сесію користувача (не плутати
+  з самим Developer API, де авторизація через API-ключ). Сирий ключ
+  повертається ОДИН РАЗ при створенні (той самий принцип, що GitHub
+  PAT/Stripe secret key) — далі лише `key_prefix` для розпізнавання
+  в списку.
+- `app/dashboard/settings/DeveloperApiSettingsForm.tsx` — UI-панель
+  у `/dashboard/settings`, той самий паттерн `authedFetch`, що
+  `TeamSettingsForm.tsx` (прямий виклик worker API з Supabase JWT).
+
+**Роутинг** у `worker/src/index.ts`: `/api/v1/audit` (+ OPTIONS
+preflight), `/api/developer/keys` (GET/POST), `/api/developer/keys/:id`
+(DELETE) — усі поруч із наявним `/api/audit`, з коментарем, що
+відрізняє їх (rate-limit по IP для анонімного лендінг-трафіку проти
+API-ключа + місячний ліміт на organization).
+
+**Перевірено (включно з реальним рантаймом, не лише збіркою):**
+`tsc --noEmit` чисто (worker + frontend), `eslint` чисто на всіх
+нових файлах, `next build` успішний, `wrangler deploy --dry-run`
+для `qorax-api` успішний (895.46 KiB, gzip 150.48 KiB — приріст
+~34 KiB від попереднього стану). **Критично, з огляду на попередній
+інцидент з 500 на проді:** протестовано через реальний `wrangler dev
+--local` (справжній Workers runtime, не лише статичну збірку):
+- `POST /api/v1/audit` без ключа → `401 "Відсутній або невірний
+  заголовок Authorization"`
+- `POST /api/v1/audit` з неіснуючим ключем → `401 "API-ключ не
+  знайдено"` (підтверджує, що хешування й запит до реального
+  Supabase працюють коректно)
+- `OPTIONS /api/v1/audit` → `204` з коректними CORS-заголовками
+- `GET /api/developer/keys` без сесії → `401 "Необхідна авторизація"`
+- `DELETE /api/developer/keys/:id` без сесії → `401 "Необхідна
+  авторизація"`
+- Жодного runtime-виключення в логах жодного з тестів
+
+**Свідомо НЕ зроблено цим проходом:** білінг/Stripe-інтеграція для
+Developer API (requests_limit зараз фіксований `1000`/місяць,
+незалежний від тарифного плану організації — змінюється вручну через
+SQL до появи UI), решта чотирьох API з плану (AI SEO/Schema/
+Monitoring/Reporting), SDK (JS/Python/PHP/Go), інтерактивна
+документація а-ля Stripe, White Label, Plugin SDK, скидання
+`requests_used`/`period_start` на новий місяць (потрібна окрема
+nightly cron-задача — не цей прохід, зараз ліміт технічно "на
+завжди", не щомісяця, доки cron не додано).
+
+**Відомий борг (не в цьому проході):** `USER_AGENT` у
+`basicCheck.ts` досі посилається на старий домен `qorax.app` —
+частина вже задокументованого платформо-широкого sweep
+`qorax.app` → `qorax-sites.com` (DEPLOYMENT_CHECKLIST.md), не
+торкався цим проходом навмисно (поза межами задачі Developer API).
+
+## PRICING.md переписано: цільова стратегія екосистеми + факт БД
+
+**Артем поділився повною стратегією монетизації** для всієї
+екосистеми (5 продуктів × 4 тарифи Free/Starter/Pro/Agency кожен +
+Qorax One як надбудова з ексклюзивними cross-product перевагами).
+Це принципово інша комерційна модель, ніж те, що реально є в БД
+(один продукт Business, чотири тарифи $49/$99/$199/$499, без
+Free-тіру, без Qorax One).
+
+**Рішення (узгоджено з Артемом):** не заміняти стару документацію
+фактичного стану БД новою стратегією — об'єднати обидва в одному
+`PRICING.md` з трьома чіткими частинами:
+- **Частина A** — нова цільова стратегія Артема дослівно
+  структурована (Free/Starter/Pro/Agency по кожному з 5 продуктів,
+  Qorax One, AI Credits для One, Bundle Upgrade психологія,
+  принципи монетизації)
+- **Частина B** — уся попередня фактична документація збережена
+  (реальні тарифи $49-$499, фіче-флаги, `CONTACT_LIMIT_BY_PLAN`,
+  `MONTHLY_POST_LIMIT_BY_PLAN`, `AI_CREDITS_BY_PLAN`, відомі
+  техборги), з явним застереженням на початку — усе це лише про
+  Business, інші 4 продукти не мають власного тарифу в БД взагалі
+- **Частина C** — новий розділ, мапінг розривів між А і Б: таблиця
+  з кожним елементом нової стратегії (Free-тір/Qorax One/Cross
+  Product Automations/Shared Asset Library/тощо) і чітким статусом
+  ("не існує" / "частково є" / "вже реалізовано") + що технічно
+  потрібно для переходу
+
+**Ключова знахідка при мапінгу:** з усієї нової стратегії єдиний
+елемент, що вже частково реалізовано — **Developer API** (0084,
+попередній прохід цієї сесії) як монетизований ресурс, окремий від
+`ai_credits`. Усе інше (Free-тір, тарифи per-продукт, Qorax One,
+Cross Product Automations/Actions/Shared Library) — не існує в коді
+взагалі, окрім Browser Smart Capture bridge (вже задокументований
+раніше), який частково відповідає ідеї "Cross Product Actions".
+
+**Найважливіший висновок документа:** перехід на нову стратегію —
+не косметичне оновлення цін, а нова таблична структура
+(`plans.product` або окрема таблиця тарифів на продукт), новий тип
+підписки (Qorax One), і велика кросс-продуктова інтеграційна робота.
+Потребує окремого архітектурного рішення Артема про долю наявних
+платних Business-клієнтів на старій лінійці ($49-$499) — скасувати
+чи лишити паралельно як legacy.
+
+**Свідомо НЕ зроблено цим проходом:** жодних змін у БД чи коді —
+це суто документаційний прохід, що фіксує стратегію й розриви для
+майбутнього планування, за прямим запитом Артема ("створи док
+PRICING.md").
