@@ -21,10 +21,12 @@
 //      маркер severity, як в документі
 //
 // СВІДОМО НЕ ЗРОБЛЕНО цим проходом (наступні кроки за списком
-// Артема): /speed /report /traffic окремими командами (частково
-// покриті /audit і /score), голосові повідомлення, фото/PDF, Smart
-// Alerts (реалізовано, alerts.ts вже має пороги), Business Coach
-// (проактивні поради без запиту користувача).
+// Артема): голосові повідомлення, фото/PDF (справжня генерація
+// PDF-файлу з бота — вимагає headless-browser інфраструктури, немає
+// в Cloudflare Workers, /report замість цього направляє в дашборд —
+// див. коментар над handleReportCommand), Smart Alerts (реалізовано,
+// alerts.ts вже має пороги), Business Coach (проактивні поради без
+// запиту користувача).
 //
 // Weekly Digest AI-текстом (документ Артема, пункт 5) — РЕАЛІЗОВАНО,
 // sendTelegramWeeklyDigests() нижче. НЕ переписаний sendWeeklyDigests()
@@ -66,6 +68,9 @@ interface UptimeRow {
 interface CwvRow {
   site_id: string;
   performance_score: number | null;
+  lcp_ms: number | null;
+  inp_ms: number | null;
+  cls_score: number | null;
   checked_at: string;
 }
 
@@ -187,6 +192,141 @@ async function handleScoreCommand(chatId: string, organizationId: string, env: E
   }
 
   await sendTelegramMessage(chatId, lines.join("\n"), env.TELEGRAM_BOT_TOKEN);
+}
+
+// ── /speed — детальні Core Web Vitals (LCP/INP/CLS), не лише один
+// підсумковий score як /score. Документ Артема, пункт 2: окрема
+// команда "Core Web Vitals".
+function cwvThresholdEmoji(value: number | null, good: number, needsImprovement: number): string {
+  if (value === null) return "⚪";
+  if (value <= good) return "🟢";
+  if (value <= needsImprovement) return "🟡";
+  return "🔴";
+}
+
+async function handleSpeedCommand(chatId: string, organizationId: string, env: Env): Promise<void> {
+  const sites = await getOrgSites(organizationId, env);
+  if (sites.length === 0) {
+    await sendTelegramMessage(chatId, "У вас ще немає жодного сайту на моніторингу.", env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+
+  const lines: string[] = ["🚀 <b>Core Web Vitals</b>\n"];
+
+  for (const site of sites) {
+    const cwvRes = await selectRows<CwvRow>(
+      "core_web_vitals_checks",
+      `select=site_id,performance_score,lcp_ms,inp_ms,cls_score,checked_at&site_id=eq.${encodeURIComponent(site.id)}&order=checked_at.desc&limit=1`,
+      env.SUPABASE_URL,
+      env.SUPABASE_SERVICE_ROLE_KEY
+    );
+    const latest = cwvRes.data?.[0];
+
+    lines.push(`<b>${site.display_name}</b>`);
+    if (!latest) {
+      lines.push("Даних ще немає\n");
+      continue;
+    }
+    // Порогові значення — офіційні Google Core Web Vitals thresholds
+    lines.push(`${cwvThresholdEmoji(latest.lcp_ms, 2500, 4000)} LCP: ${latest.lcp_ms !== null ? `${(latest.lcp_ms / 1000).toFixed(1)}с` : "—"} (завантаження основного контенту)`);
+    lines.push(`${cwvThresholdEmoji(latest.inp_ms, 200, 500)} INP: ${latest.inp_ms !== null ? `${latest.inp_ms}мс` : "—"} (відгук на дії користувача)`);
+    lines.push(`${cwvThresholdEmoji(latest.cls_score, 0.1, 0.25)} CLS: ${latest.cls_score !== null ? latest.cls_score.toFixed(3) : "—"} (стабільність верстки)`);
+    lines.push("");
+  }
+
+  await sendTelegramMessage(chatId, lines.join("\n").trim(), env.TELEGRAM_BOT_TOKEN);
+}
+
+// ── /traffic — GSC clicks/impressions за тиждень з трендом до
+// попереднього тижня. Документ Артема, пункт 2: окрема команда
+// "Трафик". Агрегат по всьому сайту (page_url IS NULL AND
+// query IS NULL — той самий рядок, що gscHandler.ts вставляє окремо
+// від per-page/per-query розбивки, підтверджено звіркою коду синку).
+interface TrafficRow {
+  site_id: string;
+  clicks: number;
+  impressions: number;
+  date: string;
+}
+
+async function handleTrafficCommand(chatId: string, organizationId: string, env: Env): Promise<void> {
+  const sites = await getOrgSites(organizationId, env);
+  if (sites.length === 0) {
+    await sendTelegramMessage(chatId, "У вас ще немає жодного сайту на моніторингу.", env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+  const siteIds = sites.map(s => s.id);
+  const siteIdFilter = `in.(${siteIds.map(id => encodeURIComponent(id)).join(",")})`;
+  const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const twoWeeksAgo = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+  const trafficRes = await selectRows<TrafficRow>(
+    "gsc_metrics",
+    `select=site_id,clicks,impressions,date&site_id=${siteIdFilter}&page_url=is.null&query=is.null&date=gte.${twoWeeksAgo}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const rows = trafficRes.data ?? [];
+
+  if (rows.length === 0) {
+    await sendTelegramMessage(
+      chatId,
+      "Немає даних Google Search Console. Підключіть GSC у дашборді → сайт → SEO, щоб бачити трафік тут.",
+      env.TELEGRAM_BOT_TOKEN
+    );
+    return;
+  }
+
+  const lines: string[] = ["📈 <b>Трафік з пошуку (GSC)</b>\n"];
+
+  for (const site of sites) {
+    const siteRows = rows.filter(r => r.site_id === site.id);
+    if (siteRows.length === 0) continue;
+
+    const thisWeek = siteRows.filter(r => r.date >= weekAgo);
+    const prevWeek = siteRows.filter(r => r.date < weekAgo);
+    const thisClicks = thisWeek.reduce((sum, r) => sum + r.clicks, 0);
+    const thisImpr = thisWeek.reduce((sum, r) => sum + r.impressions, 0);
+    const prevClicks = prevWeek.reduce((sum, r) => sum + r.clicks, 0);
+
+    let trend = "";
+    if (prevWeek.length > 0) {
+      const delta = prevClicks > 0 ? Math.round(((thisClicks - prevClicks) / prevClicks) * 100) : null;
+      if (delta !== null && delta !== 0) trend = ` (${delta > 0 ? "+" : ""}${delta}% до тижня раніше)`;
+    }
+
+    lines.push(`<b>${site.display_name}</b>`);
+    lines.push(`Кліки: ${thisClicks}${trend}`);
+    lines.push(`Показів: ${thisImpr}`);
+    lines.push("");
+  }
+
+  await sendTelegramMessage(chatId, lines.join("\n").trim(), env.TELEGRAM_BOT_TOKEN);
+}
+
+// ── /report — документ Артема, пункт 2: "Последний отчет". Повний
+// PDF-звіт (generateReportHtml, pdfReport.ts) вимагає Supabase JWT
+// (handleReportRequest — вебова авторизація), якого з Telegram-боку
+// немає, і сам HTML не рендериться в PDF-файл на цьому середовищі
+// (Cloudflare Workers без headless browser — генерація PDF з нуля
+// для Telegram-бота вимагала б окремої зовнішньої інфраструктури,
+// це НЕ той самий фічер, що просто відкрити готовий HTML). Чесний
+// компроміс — не вигадувати спрощений звіт у чаті (він уже
+// покривається /audit + /score + /issues + /rank + /traffic разом),
+// а направити в дашборд, де звіт реально відкривається.
+async function handleReportCommand(chatId: string, organizationId: string, env: Env): Promise<void> {
+  const sites = await getOrgSites(organizationId, env);
+  if (sites.length === 0) {
+    await sendTelegramMessage(chatId, "У вас ще немає жодного сайту на моніторингу.", env.TELEGRAM_BOT_TOKEN);
+    return;
+  }
+
+  const dashboardUrl = `${env.APP_URL}/dashboard`;
+  await sendTelegramMessage(
+    chatId,
+    `📄 Повний звіт (PDF) доступний у дашборді для кожного сайту окремо.\n\n<a href="${dashboardUrl}">→ Відкрити дашборд</a>\n\nАбо скористайтесь тут: /audit — короткий підсумок, /score — швидкість, /issues — проблеми, /rank — позиції, /traffic — трафік з пошуку.`,
+    env.TELEGRAM_BOT_TOKEN
+  );
 }
 
 // ── /issues — усі активні ai_insights з priority-емодзі, найважливіші перші
@@ -428,8 +568,11 @@ const HELP_TEXT = `🤖 <b>Qorax Bot</b>
 Команди:
 /audit — короткий звіт по всіх сайтах
 /score — PageSpeed (Lighthouse) кожного сайту
+/speed — детальні Core Web Vitals (LCP/INP/CLS)
 /issues — активні проблеми з пріоритетом
 /rank — позиції по відстежуваних запитах
+/traffic — трафік з пошуку (GSC)
+/report — де знайти повний PDF-звіт
 
 Або просто напишіть питання природною мовою, наприклад:
 <i>«Чому впали позиції?»</i>
@@ -473,6 +616,18 @@ export async function handleTelegramBotMessage(chatId: string, text: string, env
   }
   if (trimmed === "/rank") {
     await handleRankCommand(chatId, organizationId, env);
+    return;
+  }
+  if (trimmed === "/speed") {
+    await handleSpeedCommand(chatId, organizationId, env);
+    return;
+  }
+  if (trimmed === "/traffic") {
+    await handleTrafficCommand(chatId, organizationId, env);
+    return;
+  }
+  if (trimmed === "/report") {
+    await handleReportCommand(chatId, organizationId, env);
     return;
   }
   if (trimmed.startsWith("/")) {
