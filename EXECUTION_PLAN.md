@@ -5654,3 +5654,82 @@ AI Chat → `/audit` `/score` `/speed` `/issues` `/rank` `/traffic`
 `/report` → Weekly Digest AI-текстом → Instant Actions → Business
 Coach → Фото-аналіз. Свідомо не реалізовано: голосові повідомлення
 (TTS-обмеження, узгоджено з Артемом пропустити).
+## Перехід на екосистемну модель тарифів — Крок 1: схема БД (0086)
+
+**Артем: "давай тоді займись роботою на перехід на цю систему"**
+(PRICING.md Частина A → факт). Узгоджено: повна заміна старої
+лінійки Business на нову (Free/Starter/Pro/Agency по кожному з 5
+продуктів), старі 6 значень enum `plan_code` лишаються в enum без
+використання (PostgreSQL enum не можна видаляти без перестворення
+типу), 16+ worker-хендлерів з жорстко закодованими старими кодами
+переписуються НАСТУПНИМ кроком (не можуть зламатись до того, як
+готові читати нові коди).
+
+**Migration `0086_ecosystem_pricing.sql`** (3 послідовні SQL-запити,
+той самий патерн, що 0018 — нове enum-значення не можна
+використати в тій самій транзакції):
+
+1. **Запит 1:** новий enum `product_key` (business/mail/creator/
+   office/browser), нова колонка `plans.product` (nullable —
+   старі 6 рядків лишаються product-agnostic), 20 нових значень
+   `plan_code` формату `{product}_{tier}`, `plans.site_limit`
+   послаблено до nullable (мало сенс лише для Business).
+2. **Запит 2:** 20 нових рядків у `plans` (5 продуктів × 4 рівні,
+   ціни точно з PRICING.md — $0/$12.99/$24.99/$59.99), заміна
+   constraint `subscriptions` — стара гарантія "одна активна
+   підписка на organization ЦІЛОМ" замінена на "одна на
+   organization+product" (нова денормалізована колонка
+   `subscriptions.product`, синхронізована тригером
+   `sync_subscription_product()` + backfill для існуючих рядків).
+   Нова таблиця `qorax_one_subscriptions` — свідомо ОКРЕМА від
+   `plans`/`subscriptions` (Qorax One не прив'язаний до одного
+   продукту, дає доступ до всіх п'яти одразу на рівні tier).
+3. **Запит 3:** `handle_new_user()` — нова організація одразу
+   отримує `business_free` замість 14-денного `trial`.
+
+**Критична знахідка під час написання (виправлено ДО коміту):**
+перша чернетка Запиту 3 переписала `handle_new_user()` з нуля за
+зразком застарілої версії з `0018_trial_and_free_plan.sql` —
+випадково відкинула pending team invites і referral code
+attribution логіку, додану пізніше в `0034_team_invites.sql` і
+`0035_referrals.sql`. Знайдено звіркою списку ВСІХ міграцій, що
+перевизначають `handle_new_user()` (`grep -rl` по всьому
+`supabase/migrations/`), не лише найближчої за номером. Виправлено:
+фінальна версія копіює всю логіку з `0035` (останньої реальної
+версії) дослівно, змінюючи ЛИШЕ блок призначення підписки
+(trial+trial_ends_at → business_free без trial_ends_at). Урок:
+при `create or replace function` завжди звіряти з НАЙОСТАННІШОЮ
+версією функції по всьому дереву міграцій, не з тією, де вона вперше
+з'явилась.
+
+**Відома невідповідність, свідомо НЕ виправлена цим проходом:**
+`ai_product_toggles.product` (0082) — це `text` з CHECK-обмеженням
+на ті самі 5 значень, не новий enum `product_key`. Два різні
+представлення того самого поняття "продукт" у схемі. Не уніфіковано
+зараз — `ai_product_toggles.product` вже використовується в
+`worker/src/lib/aiCredits.ts` через PostgREST text-порівняння, зміна
+типу вимагає окремої перевірки сумісності, не мета цієї міграції.
+
+**Не перевірено через реальний SQL Editor** (немає мережевого
+доступу до Supabase DDL з цього sandbox) — лише ретельна ручна
+звірка синтаксису й перехресна перевірка з усіма попередніми
+міграціями, що торкаються тих самих таблиць/функцій. **Артему
+потрібно застосувати цю міграцію вручну через Supabase SQL Editor,
+трьома окремими запитами по порядку**, перед тим як наступний крок
+(оновлення `lemonSqueezyWebhook.ts` і 16 worker-хендлерів) зможе
+розраховувати на нові коди в продакшн-БД.
+
+**Наступні кроки (не цей коміт):**
+- Оновити `lemonSqueezyWebhook.ts` — product-aware matchedPlan
+  lookup, новий `orgType`/`siteLimit` маппінг per-product (замість
+  жорсткого `planCode === "agency" ? 5 : 1`)
+- Переписати 16 worker-хендлерів (`crmHandler.ts`, `socialHandler.ts`,
+  `academyHandler.ts`, `benchmarkHandler.ts`, `brokenLinksChecker.ts`,
+  `chatHandler.ts`, `competitorChecker.ts`, `croHandler.ts`,
+  `fixRequestHandler.ts`, `gscHandler.ts`, `pdfReport.ts`,
+  `reportHandler.ts`, `seoChecker.ts`, `teamHandler.ts`,
+  `translatorHandler.ts`) під нові коди тарифів
+- LemonSqueezy: створити 20 нових продуктів/варіантів (5×4) +
+  3 варіанти Qorax One, заповнити `ls_variant_id` в `plans`
+- Оновити `PlansSection`/checkout-флоу на лендінгу під нову лінійку
+- UI для Qorax One (окрема сторінка/картка на лендінгу)
