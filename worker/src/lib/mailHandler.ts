@@ -339,12 +339,46 @@ export async function handleMailSend(
   const access = await requireOrgAccess(request, account.organization_id, "editor", env);
   if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
 
+  const result = await sendGmailMessage(mailAccountId, to, subject, bodyHtml, env);
+  if (!result.ok) return json({ error: result.error }, 502, corsHeaders);
+
+  // Fire-and-forget sync — щоб відправлений лист одразу зʼявився в
+  // треді (не чекати наступного cron-запуску run-mail-sync).
+  runMailSync(mailAccountId, env).catch(err => console.error("[mail] post-send sync failed", err));
+
+  return json({ ok: true }, 200, corsHeaders);
+}
+
+/**
+ * Переюзовується handleMailSend (ручний Compose) І кампаніями/
+ * автоматизаціями (mailCampaignHandler.ts) — одна функція побудови
+ * RFC 2822 + виклику Gmail API messages.send. ДРУГА спроба цього
+ * рефакторингу — перша (до 0080_mail_campaigns.sql, до перейменування
+ * на 0087) була втрачена разом з незакоммiченою робочою копією при
+ * скиданні sandbox-контейнера.
+ */
+export async function sendGmailMessage(
+  mailAccountId: string,
+  to: string,
+  subject: string,
+  bodyHtml: string,
+  env: Env
+): Promise<{ ok: boolean; error?: string }> {
+  const accountRes = await selectRows<{ encrypted_refresh_token: string; email_address: string }>(
+    "mail_accounts",
+    `select=encrypted_refresh_token,email_address&id=eq.${encodeURIComponent(mailAccountId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const account = accountRes.data?.[0];
+  if (!account) return { ok: false, error: "mail_account не знайдено" };
+
   let accessToken: string;
   try {
     const refreshToken = await decryptToken(account.encrypted_refresh_token, env.GOOGLE_TOKEN_ENCRYPTION_KEY);
     accessToken = await refreshAccessToken(refreshToken, env.GOOGLE_CLIENT_ID, env.GOOGLE_CLIENT_SECRET);
   } catch (err) {
-    return json({ error: err instanceof Error ? err.message : "Не вдалось оновити токен" }, 500, corsHeaders);
+    return { ok: false, error: err instanceof Error ? err.message : "Не вдалось оновити токен" };
   }
 
   const rawMessage = [
@@ -368,15 +402,9 @@ export async function handleMailSend(
   });
 
   if (!sendRes.ok) {
-    const errText = await sendRes.text();
-    return json({ error: `Не вдалось надіслати лист: ${errText}` }, 502, corsHeaders);
+    return { ok: false, error: `Gmail send failed: ${await sendRes.text()}` };
   }
-
-  // Fire-and-forget sync — щоб відправлений лист одразу зʼявився в
-  // треді (не чекати наступного cron-запуску run-mail-sync).
-  runMailSync(mailAccountId, env).catch(err => console.error("[mail] post-send sync failed", err));
-
-  return json({ ok: true }, 200, corsHeaders);
+  return { ok: true };
 }
 
 // ── Sync logic (Gmail API) ──
