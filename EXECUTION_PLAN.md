@@ -6103,3 +6103,60 @@ FAQPage, коректні помилки для відсутнього обов'
 інтерактивна документація а-ля Stripe, White Label API, білінг для
 самого Developer API (requests_limit досі фіксований, не прив'язаний
 до жодного з тарифів 0086).
+
+## Qorax SEO Platform (Developer API) — Reporting API додано (3/5)
+
+**Артем: AI SEO API свідомо пропущено** ("не будемо, і так сильне
+навантаження на AI") — Reporting API обрано третім замість нього,
+не потребує Gemini-виклику взагалі.
+
+**Новий `worker/src/lib/developerReportGenerator.ts`** —
+`generateDeveloperReportHtml()`. НАВМИСНО не перевикористовує наявний
+`pdfReport.ts::generateReportHtml()` — той вимагає ReportData з
+місячною історією моніторингу (uptimePercent/incidentsCount/AI-
+insights), якої фізично не існує для довільного зовнішнього URL через
+Developer API (та історія існує лише для сайтів, відстежуваних у
+власній таблиці `sites` Qorax). Натомість будує звіт прямо з
+результату ОДНОГО аудиту — той самий формат відповіді, що
+`/api/v1/audit`.
+
+**`developerApiHandler.ts` — рефакторинг + новий ендпоінт:**
+- Витягнуто спільну функцію `runAuditCoreForUrl()` — раніше логіка
+  запуску аудиту (`Promise.all(runBasicCheck, runPageSpeedChecks)` +
+  обробка unreachable) існувала лише всередині
+  `handleDeveloperAuditV1`, тепер переюзується і в новому
+  `handleDeveloperReportV1` — не дублювання виклику вдруге
+- `POST /api/v1/report` — приймає `{ url, format }`
+  (`format: "json"|"html"`, default `"json"`). `format: "html"`
+  повертає готовий HTML-звіт (Cyber Minimal стиль, кнопка "Зберегти
+  як PDF" через `window.print()` — Cloudflare Workers не має
+  headless-браузера для справжнього server-side PDF, той самий
+  підхід, що вже прийнятий у `pdfReport.ts` для внутрішніх звітів)
+
+**Роутинг:** `/api/v1/report` (POST + OPTIONS) поруч із
+`/api/v1/audit`/`/api/v1/schema` — той самий `developer_api_keys.
+requests_limit` пул на всі три ендпоінти.
+
+**UI:** `DeveloperApiSettingsForm.tsx` оновлено з описом усіх трьох
+ендпоінтів. Знайдено й виправлено ДО коміту: `eslint` спіймав
+`react/no-unescaped-entities` (сирі лапки в JSX-тексті прикладу
+параметра `format`) — переписано через `<code>`-теги замість
+буквальних лапок.
+
+**Перевірено:** `tsc --noEmit` чисто, `eslint` чисто (після фіксу
+unescaped entities), `wrangler deploy --dry-run` успішний
+(982.79 KiB, gzip 165.52 KiB), `next build` успішний. Реальний
+рантайм-тест через `wrangler dev --local`: `POST /api/v1/report` без
+ключа → `401`, `OPTIONS` → `204`, без runtime-помилок. Пряме юніт-
+тестування `generateDeveloperReportHtml()` через `npx tsx` (поза
+HTTP-шаром): валідний HTML (збалансовані теги `<html>`/`</html>`,
+присутній `<!DOCTYPE html>`, дані коректно вставлені, кнопка друку на
+місці).
+
+**Статус Qorax SEO Platform (Developer API) після цього проходу:**
+3 з 5 запланованих API готові (SEO Audit + Schema + Reporting).
+AI SEO API — свідомо пропущено назавжди за прямим рішенням Артема
+(навантаження на AI), не просто відкладено. Monitoring API —
+лишається останнім невиконаним із початкового списку 5. Свідомо НЕ
+зроблено: SDK, інтерактивна документація а-ля Stripe, White Label
+API, білінг для самого Developer API.

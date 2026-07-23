@@ -233,7 +233,7 @@ import { handleBusinessMetrics } from "./lib/businessMetrics";
 import { checkRateLimit, getClientIp } from "./lib/rateLimit";
 import { corsHeaders } from "./lib/cors";
 import { sendSlackMessage } from "./lib/slack";
-import { handleDeveloperAuditV1, handleDeveloperSchemaV1 } from "./lib/developerApiHandler";
+import { handleDeveloperAuditV1, handleDeveloperSchemaV1, handleDeveloperReportV1 } from "./lib/developerApiHandler";
 import { handleDeveloperApiKeys, handleDeveloperApiKeyRevoke } from "./lib/developerApiKeysHandler";
 
 function json(data: unknown, status: number, origin: string | null): Response {
@@ -312,6 +312,23 @@ const worker = {
       return handleDeveloperSchemaV1(request, env);
     }
     if (url.pathname === "/api/v1/schema" && request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        },
+      });
+    }
+    // Reporting API — третя частина Developer API (AI SEO API
+    // свідомо не робимо — достатнє AI-навантаження вже є на
+    // платформі). Той самий API-ключ і requests_limit пул, той
+    // самий аудит-рушій, що /api/v1/audit (без AI, без Gemini).
+    if (url.pathname === "/api/v1/report" && request.method === "POST") {
+      return handleDeveloperReportV1(request, env);
+    }
+    if (url.pathname === "/api/v1/report" && request.method === "OPTIONS") {
       return new Response(null, {
         status: 204,
         headers: {
