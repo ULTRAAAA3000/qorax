@@ -13,6 +13,7 @@
 // ga4Handler.ts/усі інші фіче-флаги проєкту.
 
 import type { Env } from "../types";
+import { hasProTierAccess } from "./planTiers";
 import { selectRows } from "./supabase";
 import { requireOrgAccess } from "./orgAuth";
 import { callGemini } from "./contentGeneration";
@@ -37,7 +38,7 @@ async function canUseFullBenchmarks(orgId: string, env: Env): Promise<boolean> {
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   const planCode = (res.data?.[0]?.plans as { code: string } | null)?.code;
-  return ["growth", "agency", "admin", "trial"].includes(planCode ?? "");
+  return hasProTierAccess(planCode ?? "");
 }
 
 interface OrgProfile {

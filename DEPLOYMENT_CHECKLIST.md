@@ -142,6 +142,23 @@ https://api.telegram.org/bot<TOKEN>/setWebhook?url=<APP_URL>/api/telegram/webhoo
 
 ---
 
+## 3.2. Telegram — реєстрація меню команд (одноразова дія)
+
+Після деплою один раз виклич (не потрібно повторювати на кожен
+деплой — Telegram кешує це per-bot):
+
+```
+POST https://qorax-api.mrcru96.workers.dev/api/admin/setup-telegram-bot
+```
+
+Це реєструє офіційне меню "☰" поруч з полем вводу в Telegram — без
+цього виклику меню лишається порожнім, хоча сама reply-клавіатура
+(постійні кнопки внизу екрана — "📋 Аудит", "🚀 Швидкість" тощо) вже
+працює одразу після деплою незалежно від цього кроку, бо надсилається
+кодом при кожному `/start`, не через `setMyCommands`.
+
+---
+
 ## 4. Google Cloud Console — окремо від Cloudflare
 
 **Це не Cloudflare Dashboard і легко пропустити.** Qorax Mail

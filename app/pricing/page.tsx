@@ -6,9 +6,9 @@ import { CHECKOUT_DISABLED } from "@/app/lib/checkoutFlag";
 
 const LS_SUBDOMAIN = process.env.LS_STORE_SUBDOMAIN ?? "qoraxus";
 const LS_VARIANTS: Record<string, string> = {
-  Starter: process.env.LS_VARIANT_STARTER ?? "",
-  Growth: process.env.LS_VARIANT_GROWTH ?? "",
-  Agency: process.env.LS_VARIANT_AGENCY ?? "",
+  Starter: process.env.LS_VARIANT_BUSINESS_STARTER ?? "",
+  Pro: process.env.LS_VARIANT_BUSINESS_PRO ?? "",
+  Agency: process.env.LS_VARIANT_BUSINESS_AGENCY ?? "",
 };
 function lsUrl(plan: string): string {
   const vid = LS_VARIANTS[plan];
@@ -16,11 +16,11 @@ function lsUrl(plan: string): string {
 }
 
 const FAQ = [
-  { q: "Чи є пробний період?", a: "Так, 14 днів безкоштовно на будь-якому тарифі. Карта не потрібна." },
-  { q: "Можна змінити тариф в будь-який момент?", a: "Так, апгрейд або даунгрейд одразу — різниця вартості перераховується пропорційно." },
+  { q: "Чи є безкоштовний тариф?", a: "Так, Free назавжди — 1 сайт, щоденний моніторинг, базовий SEO Audit, AI 20 запитів/міс. Без обмеження в часі, картка не потрібна." },
+  { q: "Можна змінити тариф в будь-який момент?", a: "Так, апгрейд або даунгрейд одразу через LemonSqueezy checkout." },
   { q: "Що означає «сайт» в контексті тарифів?", a: "Один домен або піддомен. Наприклад, site.com і blog.site.com — це два різних сайти." },
   { q: "Як відбувається оплата?", a: "Щомісячно карткою через LemonSqueezy. Скасувати можна будь-коли в особистому кабінеті." },
-  { q: "Є знижки для агентств?", a: "Тариф Agency вже розрахований на 5 сайтів з white-label звітами. Для більших об'ємів — напишіть нам." },
+  { q: "Є знижки для агентств?", a: "Тариф Agency розрахований на необмежену кількість сайтів з white-label звітами. Для більших об'ємів — напишіть нам." },
 ];
 
 export default async function PricingPage() {
@@ -47,39 +47,40 @@ export default async function PricingPage() {
     return params.toString() ? `${base}?${params.toString()}` : base;
   }
 
+  // Free не входить у PLANS нижче (окрема картка з іншим CTA, не
+  // checkout — див. розмітку нижче) — той самий підхід, що
+  // /dashboard/upgrade/page.tsx.
   const PLANS = [
     {
       name: "Starter",
-      price: "$49",
-      tagline: "Один сайт, спокійний сон",
+      price: "$12.99",
+      tagline: "Фрілансерам і малому бізнесу",
       highlighted: false,
       features: [
-        "1 сайт", "Uptime моніторинг (кожні 5 хв)", "Швидкість + графік у часі",
-        "SSL та домен — алерти", "Биті посилання (щотижня)", "AI-пояснення простою мовою",
-        "PDF-звіт щомісяця", "Email сповіщення",
+        "До 10 сайтів, до 50 проєктів", "Моніторинг кожні 30 хв", "500 ключових запитів",
+        "Історія 6 місяців", "AI — 500 запитів", "PDF-звіти, інтеграції, автоматизації",
       ],
       url: checkoutUrl("Starter"),
     },
     {
-      name: "Growth",
-      price: "$99",
-      tagline: "Коли вже росте трафік",
+      name: "Pro",
+      price: "$24.99",
+      tagline: "Для професіоналів",
       highlighted: true,
       features: [
-        "1 сайт — все з Starter", "Core Web Vitals (LCP, INP, CLS)", "SEO: meta, schema, sitemap",
-        "AI: вплив на дохід у $", "Моніторинг 1 конкурента", "Telegram-алерти",
-        "Живий дашборд", "Пріоритетна підтримка",
+        "До 100 сайтів, необмежені проєкти", "Моніторинг кожні 5 хв", "5 000 ключових запитів, історія 2 роки",
+        "AI — 5 000 запитів", "White Label, API, AI Copilot", "Команда до 5 осіб",
       ],
-      url: checkoutUrl("Growth"),
+      url: checkoutUrl("Pro"),
     },
     {
       name: "Agency",
-      price: "$199",
-      tagline: "До 5 сайтів під одним дахом",
+      price: "$59.99",
+      tagline: "Для агентств і команд",
       highlighted: false,
       features: [
-        "5 сайтів — все з Growth", "White-label PDF звіти", "AI генерація SEO текстів",
-        "Конкуренти на кожен сайт", "Командний доступ", "Виділений менеджер",
+        "Необмежені сайти й проєкти", "Моніторинг щохвилини", "Необмежені ключові запити, повна історія",
+        "AI — 25 000 запитів", "White Label, повний API", "Команда до 25 осіб, пріоритетна підтримка",
       ],
       url: checkoutUrl("Agency"),
     },
@@ -105,7 +106,7 @@ export default async function PricingPage() {
           </Reveal>
           <Reveal delay={0.12}>
             <p className="mt-6 text-lg text-[var(--text-secondary)] max-w-lg mx-auto leading-relaxed">
-              14 днів безкоштовно на будь-якому тарифі. Карта не потрібна.
+              Почніть безкоштовно назавжди. Картка не потрібна.
             </p>
           </Reveal>
         </div>
@@ -113,9 +114,43 @@ export default async function PricingPage() {
 
       {/* Plans */}
       <section className="mx-auto max-w-6xl px-6 sm:px-8 pb-24 w-full">
-        <div className="grid lg:grid-cols-[0.85fr_1.15fr_0.85fr] gap-5 items-stretch">
+        <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
+          {/* Free — окрема картка, не з PLANS-масиву: CTA завжди
+              веде на /register чи /dashboard, ніколи на LemonSqueezy
+              checkout (Free призначається автоматично при
+              реєстрації, handle_new_user 0086). */}
+          <Reveal delay={0}>
+            <div
+              className="rounded-2xl p-7 sm:p-8 h-full flex flex-col"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}
+            >
+              <div className="flex items-baseline justify-between mb-1">
+                <h3 className="font-display text-xl font-medium">Free</h3>
+              </div>
+              <p className="text-sm text-[var(--text-secondary)] mb-6">Знайомство без картки</p>
+              <div className="font-mono text-3xl tabular mb-7">
+                <span className="text-[var(--text-primary)] font-bold">$0</span>
+                <span className="text-sm text-[var(--text-tertiary)] font-sans font-normal">/міс</span>
+              </div>
+              <ul className="space-y-3 flex-1">
+                {["1 сайт, щоденний моніторинг", "Базовий SEO Audit", "Rank до 20 запитів", "Analytics — 30 днів історії", "AI — 20 запитів на місяць", "Telegram Bot"].map(f => (
+                  <li key={f} className="flex items-start gap-2.5 text-sm text-[var(--text-secondary)]">
+                    <span className="mt-1.5 h-1 w-1 rounded-full shrink-0" style={{ background: "var(--text-tertiary)" }} />
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <a
+                href={user ? "/dashboard" : "/register"}
+                className="mt-8 w-full py-3 rounded-xl text-sm font-medium transition-all text-center block ghost-button justify-center"
+              >
+                {user ? "До дашборду →" : "Зареєструватися →"}
+              </a>
+            </div>
+          </Reveal>
+
           {PLANS.map((plan, i) => (
-            <Reveal key={plan.name} delay={i * 0.08} className={plan.highlighted ? "" : "lg:pt-6"}>
+            <Reveal key={plan.name} delay={(i + 1) * 0.08}>
               <div
                 className={`rounded-2xl p-7 sm:p-8 h-full flex flex-col ${plan.highlighted ? "gradient-border" : ""}`}
                 style={{
@@ -160,7 +195,7 @@ export default async function PricingPage() {
                     rel={plan.url.startsWith("http") ? "noopener noreferrer" : undefined}
                     className={`mt-8 w-full py-3 rounded-xl text-sm font-medium transition-all text-center block ${plan.highlighted ? "glow-button justify-center" : "ghost-button justify-center"}`}
                   >
-                    Почати 14 днів безкоштовно →
+                    Обрати {plan.name} →
                   </a>
                 )}
               </div>

@@ -399,11 +399,17 @@ export async function handleCrmReminderCreate(
 // накопичуються. ──
 
 const CONTACT_LIMIT_BY_PLAN: Record<string, number> = {
+  // легасі (до 0086)
   starter: 100,
   growth: 500,
   agency: 5000,
   admin: 999999,
   trial: 100,
+  // нова лінійка Business (0086)
+  business_free: 50,
+  business_starter: 500,
+  business_pro: 5000,
+  business_agency: 999999,
 };
 
 async function checkContactLimit(organizationId: string, env: Env): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -413,8 +419,8 @@ async function checkContactLimit(organizationId: string, env: Env): Promise<{ ok
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
-  const planCode = (planRes.data?.[0]?.plans as { code: string } | null)?.code ?? "starter";
-  const limit = CONTACT_LIMIT_BY_PLAN[planCode] ?? CONTACT_LIMIT_BY_PLAN.starter;
+  const planCode = (planRes.data?.[0]?.plans as { code: string } | null)?.code ?? "business_free";
+  const limit = CONTACT_LIMIT_BY_PLAN[planCode] ?? CONTACT_LIMIT_BY_PLAN.business_free;
 
   const countRes = await selectRows<{ id: string }>(
     "crm_contacts",

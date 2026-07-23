@@ -10,6 +10,7 @@
 // ============================================================
 
 import type { Env } from "../types";
+import { hasProTierAccess } from "./planTiers";
 import { selectRows, insertRow } from "./supabase";
 import { corsHeaders } from "./cors";
 import { sendEmail } from "./email";
@@ -91,7 +92,7 @@ export async function createFixRequest(params: CreateFixRequestParams, env: Env)
   );
   const sub = subResult.data[0];
   const planCode = (sub?.plans as PlanRow | null)?.code ?? "free";
-  const hasAccess = ["growth", "agency", "admin", "trial"].includes(planCode);
+  const hasAccess = hasProTierAccess(planCode);
   if (!hasAccess) return { ok: false, reason: "upgrade_required" };
 
   const monthStart = new Date();

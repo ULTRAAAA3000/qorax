@@ -36,6 +36,16 @@
 // (contentGeneration.ts, та сама vision-функція, що вже
 // переюзовується для Visual Search у Qorax Browser).
 //
+// UX без запам'ятовування команд (Артем: "зараз взагалі не зрозуміло,
+// як користуватись") — TELEGRAM_REPLY_KEYBOARD, постійна reply-
+// клавіатура з людськими підписами кнопок ("📋 Аудит" замість
+// "/audit"), надсилається при кожному /start і лишається видимою
+// постійно (не зникає після натискання, на відміну від inline-кнопок
+// Instant Actions). REPLY_BUTTON_COMMANDS мапить підпис кнопки назад
+// на канонічну команду в диспетчері. Окремо setTelegramBotCommands()
+// (telegram.ts) реєструє офіційне меню "☰" Telegram — одноразовий
+// admin-виклик, не на кожен деплой (DEPLOYMENT_CHECKLIST.md, 3.2).
+//
 // Business Coach (документ Артема, пункт 16, ⭐⭐⭐⭐⭐) — РЕАЛІЗОВАНО,
 // runBusinessCoachCheck() нижче. Викликається щодня з того самого
 // cron-циклу, що вже робить speed/SEO/конкуренти (0 3 * * *,
@@ -65,7 +75,7 @@
 
 import type { Env } from "../types";
 import { selectRows, insertRow } from "./supabase";
-import { sendTelegramMessage, sendTelegramMessageWithButtons, answerTelegramCallbackQuery, clearTelegramMessageButtons, downloadTelegramFile } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageWithButtons, answerTelegramCallbackQuery, clearTelegramMessageButtons, downloadTelegramFile, sendTelegramMessageWithReplyKeyboard } from "./telegram";
 import { buildOrgScopedPrompt } from "./chatHandler";
 import { checkAiCredits, deductAiCredits } from "./aiCredits";
 import { createFixRequest } from "./fixRequestHandler";
@@ -605,6 +615,27 @@ const HELP_TEXT = `🤖 <b>Qorax Bot</b>
  * /start-флоу лишався окремим і простим). Викликається з
  * telegramWebhook.ts для будь-якого тексту, що не є /start.
  */
+// ─── Постійна reply-клавіатура (UX: людині не треба пам'ятати
+// команди напам'ять) — кнопки з людськими підписами, натискання
+// надсилає текст кнопки як звичайне повідомлення, яке диспетчер
+// нижче розпізнає через REPLY_BUTTON_COMMANDS. ────────────────
+
+export const TELEGRAM_REPLY_KEYBOARD: string[][] = [
+  ["📋 Аудит", "🚀 Швидкість", "⚠️ Проблеми"],
+  ["🔍 Позиції", "📈 Трафік", "📄 Звіт"],
+  ["❓ Допомога"],
+];
+
+const REPLY_BUTTON_COMMANDS: Record<string, string> = {
+  "📋 Аудит": "/audit",
+  "🚀 Швидкість": "/score",
+  "⚠️ Проблеми": "/issues",
+  "🔍 Позиції": "/rank",
+  "📈 Трафік": "/traffic",
+  "📄 Звіт": "/report",
+  "❓ Допомога": "/help",
+};
+
 export async function handleTelegramBotMessage(chatId: string, text: string, env: Env): Promise<void> {
   const organizationId = await getOrgIdByChatId(chatId, env);
   if (!organizationId) {
@@ -616,10 +647,13 @@ export async function handleTelegramBotMessage(chatId: string, text: string, env
     return;
   }
 
-  const trimmed = text.trim();
+  // Reply-кнопка надсилає свій підпис як звичайний текст — розпізнаємо
+  // його як синонім відповідної команди до решти диспетчеризації.
+  const rawTrimmed = text.trim();
+  const trimmed = REPLY_BUTTON_COMMANDS[rawTrimmed] ?? rawTrimmed;
 
   if (trimmed === "/help" || trimmed === "/start") {
-    await sendTelegramMessage(chatId, HELP_TEXT, env.TELEGRAM_BOT_TOKEN);
+    await sendTelegramMessageWithReplyKeyboard(chatId, HELP_TEXT, TELEGRAM_REPLY_KEYBOARD, env.TELEGRAM_BOT_TOKEN);
     return;
   }
   if (trimmed === "/audit") {

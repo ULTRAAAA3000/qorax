@@ -13,6 +13,7 @@
 // ============================================================
 
 import { selectRows, insertRow, upsertRow } from "./supabase";
+import { hasProTierAccess } from "./planTiers";
 import { fetchWithTimeout as sharedFetchWithTimeout, normalizeToOrigin } from "./httpUtils";
 
 const FETCH_TIMEOUT_MS = 10_000;
@@ -73,7 +74,7 @@ export async function runSeoCheckForSite(
     serviceRoleKey
   );
   const planCode = (subResult.data[0]?.plans as PlanRow | null)?.code ?? "free";
-  const isGrowthPlus = ["growth", "agency", "admin", "trial"].includes(planCode);
+  const isGrowthPlus = hasProTierAccess(planCode);
 
   try {
     const summary = await checkSite(site, supabaseUrl, serviceRoleKey, isGrowthPlus);
@@ -113,7 +114,7 @@ export async function runSeoChecks(
     );
 
     const planCode = (subResult.data[0]?.plans as PlanRow | null)?.code ?? "free";
-    const isGrowthPlus = ["growth", "agency", "admin", "trial"].includes(planCode);
+    const isGrowthPlus = hasProTierAccess(planCode);
     // Sitemap/robots перевіряємо для ВСІХ планів,
     // повний SEO мета-аудит — тільки для Growth+
     try {

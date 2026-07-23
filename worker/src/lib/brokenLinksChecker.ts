@@ -15,6 +15,7 @@
 // ============================================================
 
 import { selectRows, insertRow, updateRows } from "./supabase";
+import { hasStarterTierAccess } from "./planTiers";
 import { sendEmail } from "./email";
 import { fetchTextWithTimeout, normalizeToOrigin } from "./httpUtils";
 
@@ -79,7 +80,7 @@ export async function runBrokenLinksChecks(
       serviceRoleKey
     );
     const planCode = (subResult.data[0]?.plans as PlanRow | null)?.code ?? "free";
-    const hasAccess = ["starter", "growth", "agency", "admin", "trial"].includes(planCode);
+    const hasAccess = hasStarterTierAccess(planCode);
     if (!hasAccess) continue;
 
     try {

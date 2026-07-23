@@ -1,4 +1,5 @@
 import type { Env } from "../types";
+import { hasProTierAccess } from "./planTiers";
 import { selectRows, upsertRow, updateRows } from "./supabase";
 import { addInboxItem } from "./aiInbox";
 
@@ -83,7 +84,7 @@ async function canUseGsc(orgId: string, supabaseUrl: string, serviceKey: string)
     supabaseUrl, serviceKey
   );
   const code = (res.data?.[0]?.plans as { code: string } | null)?.code ?? "";
-  return ["growth", "agency", "admin", "trial"].includes(code);
+  return hasProTierAccess(code);
 }
 
 // ── Route: GET /api/gsc/auth ─────────────────────────────────────────────────

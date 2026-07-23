@@ -37,6 +37,7 @@ import { selectRows, insertRow } from "./supabase";
 import { buildMemoryContext } from "./memoryHandler";
 import { buildGraphContext } from "./knowledgeGraph";
 import type { Env } from "../types";
+import { hasProTierAccess } from "./planTiers";
 import { corsHeaders as sharedCorsHeaders } from "./cors";
 
 const GEMINI_ENDPOINT =
@@ -260,7 +261,7 @@ async function handleChatInternal(
   );
   const sub = subResult.data[0];
   const planCode = (sub?.plans as PlanRow | null)?.code ?? "free";
-  const hasAccess = ["growth", "agency", "admin", "trial"].includes(planCode);
+  const hasAccess = hasProTierAccess(planCode);
   if (!hasAccess) {
     return jsonResponse(
       {

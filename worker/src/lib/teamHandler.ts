@@ -7,6 +7,7 @@
 // ============================================================
 
 import type { Env } from "../types";
+import { hasProTierAccess } from "./planTiers";
 import { selectRows, insertRow, updateRows, serviceRoleHeaders } from "./supabase";
 import { corsHeaders } from "./cors";
 import { sendEmail, buildInviteEmail } from "./email";
@@ -61,7 +62,7 @@ async function hasGrowthPlusAccess(organizationId: string, env: Env): Promise<bo
   );
   const sub = subResult.data?.[0];
   const planCode = (sub?.plans as PlanRow | null)?.code ?? "free";
-  return ["growth", "agency", "admin", "trial"].includes(planCode);
+  return hasProTierAccess(planCode);
 }
 
 // ─── GET /api/team — список учасників + pending-запрошень ─────────
