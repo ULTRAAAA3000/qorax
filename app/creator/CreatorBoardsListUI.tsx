@@ -6,6 +6,7 @@ import { Plus, X, Loader2, LayoutTemplate } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
 import { TourButton } from "@/app/components/TourButton";
+import { UpgradeLinkButton } from "@/app/components/UpgradeLinkButton";
 
 interface Board {
   id: string;
@@ -113,6 +114,7 @@ export function CreatorBoardsListUI({ organizationId }: Props) {
             </button>
           </form>
         )}
+        <UpgradeLinkButton href="/creator/upgrade" />
         <TourButton onStart={startTour} />
       </div>
 

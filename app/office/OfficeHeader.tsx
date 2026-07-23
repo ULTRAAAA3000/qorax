@@ -5,6 +5,7 @@ import Link from "next/link";
 import { FileText, Table2, Presentation } from "lucide-react";
 import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
 import { TourButton } from "@/app/components/TourButton";
+import { UpgradeLinkButton } from "@/app/components/UpgradeLinkButton";
 
 const OFFICE_TOUR_STEPS: TourStep[] = [
   // office-new-doc існує лише на /office (Docs list) — на /office/sheets
@@ -63,6 +64,7 @@ export function OfficeHeader({ active }: { active: "docs" | "sheets" | "slides" 
               <Presentation size={13} /> Slides
             </Link>
           </nav>
+          <UpgradeLinkButton href="/office/upgrade" />
           <TourButton onStart={startTour} />
         </div>
       </div>
