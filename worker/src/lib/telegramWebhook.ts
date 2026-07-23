@@ -18,7 +18,8 @@
 
 import type { Env } from "../types";
 import { selectRows, upsertRow } from "./supabase";
-import { sendTelegramMessage } from "./telegram";
+import { sendTelegramMessage, sendTelegramMessageWithReplyKeyboard } from "./telegram";
+import { handleTelegramBotMessage, handleTelegramCallbackQuery, handleTelegramPhotoMessage, TELEGRAM_REPLY_KEYBOARD } from "./telegramBotHandler";
 
 // Telegram Bot API шле апдейти у вигляді JSON-об'єкта Update.
 // Визначаємо тільки поля, які нам потрібні.
@@ -29,6 +30,21 @@ interface TelegramUpdate {
     from?: { id: number; first_name?: string; username?: string };
     chat: { id: number; type: string };
     text?: string;
+    // Фото-аналіз (документ Артема, пункт 13: "Відправив скрін.
+    // Google Search Console. AI аналізує."). Telegram надсилає масив
+    // розмірів того самого фото — беремо найбільший.
+    photo?: Array<{ file_id: string; width: number; height: number }>;
+    caption?: string;
+  };
+  // Instant Actions (документ Артема, пункт 8) — натискання inline-
+  // кнопки під critical issue з /issues.
+  callback_query?: {
+    id: string;
+    data?: string;
+    message?: {
+      message_id: number;
+      chat: { id: number; type: string };
+    };
   };
 }
 
@@ -53,9 +69,34 @@ export async function handleTelegramWebhook(
     return new Response("Bad Request", { status: 400 });
   }
 
+  // Instant Actions — натискання inline-кнопки (документ Артема,
+  // пункт 8). Обробляється до перевірки message.text, бо callback_query
+  // update не містить message.text взагалі.
+  const callbackQuery = update.callback_query;
+  if (callbackQuery?.message && callbackQuery.data) {
+    await handleTelegramCallbackQuery(
+      callbackQuery.id,
+      String(callbackQuery.message.chat.id),
+      callbackQuery.message.message_id,
+      callbackQuery.data,
+      env
+    );
+    return new Response("ok", { status: 200 });
+  }
+
   const message = update.message;
+
+  // Фото-аналіз (документ Артема, пункт 13) — обробляється до
+  // перевірки message.text, бо photo-повідомлення часто взагалі не
+  // має text (лише опційний caption).
+  if (message?.photo && message.photo.length > 0) {
+    const chatIdForPhoto = String(message.chat.id);
+    await handleTelegramPhotoMessage(chatIdForPhoto, message.photo, message.caption ?? "", env);
+    return new Response("ok", { status: 200 });
+  }
+
   // Нас цікавлять тільки текстові повідомлення — ігноруємо решту апдейтів
-  // (фото, стікери, inline query і т.д.) без помилки.
+  // (стікери, inline query і т.д.) без помилки.
   if (!message?.text) {
     return new Response("ok", { status: 200 });
   }
@@ -77,9 +118,10 @@ export async function handleTelegramWebhook(
 
     if (!orgId) {
       // /start без параметру — бот запущений напряму, не через наш deep link
-      await sendTelegramMessage(
+      await sendTelegramMessageWithReplyKeyboard(
         chatId,
-        `👋 Вітаємо у Qorax Bot!\n\nЦей бот надсилає алерти про стан ваших сайтів.\n\nЩоб підключити сповіщення, перейдіть у <b>Налаштування → Telegram</b> у вашому дашборді Qorax і натисніть кнопку підключення.`,
+        `👋 Вітаємо у Qorax Bot!\n\nЦей бот — AI-помічник вашого бізнесу: сповіщення про стан сайтів, кнопки нижче для швидких звітів і AI-чат природною мовою.\n\nЩоб підключити, перейдіть у <b>Налаштування → Telegram</b> у вашому дашборді Qorax і натисніть кнопку підключення.`,
+        TELEGRAM_REPLY_KEYBOARD,
         env.TELEGRAM_BOT_TOKEN
       );
       return new Response("ok", { status: 200 });
@@ -129,21 +171,20 @@ export async function handleTelegramWebhook(
     }
 
     const firstName = message.from?.first_name ?? "";
-    await sendTelegramMessage(
+    await sendTelegramMessageWithReplyKeyboard(
       chatId,
-      `✅ <b>Telegram підключено до Qorax${firstName ? `, ${firstName}` : ""}!</b>\n\nВи отримуватимете сповіщення коли:\n• 🔴 Сайт стає недоступним\n• ✅ Сайт відновлює роботу\n• ⚠️ SSL-сертифікат закінчується\n\nНалаштувати типи сповіщень можна у <b>Налаштування → Сповіщення</b> у дашборді.`,
+      `✅ <b>Telegram підключено до Qorax${firstName ? `, ${firstName}` : ""}!</b>\n\nВи отримуватимете сповіщення коли:\n• 🔴 Сайт стає недоступним\n• ✅ Сайт відновлює роботу\n• ⚠️ SSL-сертифікат закінчується\n\nСкористайтесь кнопками нижче для швидких звітів, або просто напишіть питання природною мовою — наприклад «чому впали позиції?».`,
+      TELEGRAM_REPLY_KEYBOARD,
       env.TELEGRAM_BOT_TOKEN
     );
 
     return new Response("ok", { status: 200 });
   }
 
-  // Будь-яке інше повідомлення — підказка
-  await sendTelegramMessage(
-    chatId,
-    `Цей бот надсилає автоматичні алерти від Qorax. Для підключення скористайтесь посиланням у налаштуваннях дашборду.`,
-    env.TELEGRAM_BOT_TOKEN
-  );
+  // Будь-яке інше повідомлення — команди (/audit, /score, /issues) або
+  // AI Chat природною мовою (MODULE_ROADMAP.md / Артем: Telegram-бот
+  // "Qorax Business" другого покоління, не лише алерти).
+  await handleTelegramBotMessage(chatId, text, env);
 
   return new Response("ok", { status: 200 });
 }

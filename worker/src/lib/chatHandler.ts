@@ -37,6 +37,7 @@ import { selectRows, insertRow } from "./supabase";
 import { buildMemoryContext } from "./memoryHandler";
 import { buildGraphContext } from "./knowledgeGraph";
 import type { Env } from "../types";
+import { hasProTierAccess } from "./planTiers";
 import { corsHeaders as sharedCorsHeaders } from "./cors";
 
 const GEMINI_ENDPOINT =
@@ -260,7 +261,7 @@ async function handleChatInternal(
   );
   const sub = subResult.data[0];
   const planCode = (sub?.plans as PlanRow | null)?.code ?? "free";
-  const hasAccess = ["growth", "agency", "admin", "trial"].includes(planCode);
+  const hasAccess = hasProTierAccess(planCode);
   if (!hasAccess) {
     return jsonResponse(
       {
@@ -478,7 +479,7 @@ async function resolveThread(body: ChatRequest, userId: string, env: Env): Promi
 
 // ─── Контекст одного сайту (як в оригінальному Qoraxus) ───────
 
-type PromptResolution =
+export type PromptResolution =
   | { ok: true; prompt: string }
   | { ok: false; status: number; error: string };
 
@@ -566,7 +567,7 @@ ${STYLE_INSTRUCTIONS}
 // ближче до підсумкового бачення Qorax AI як хабу над усією
 // організацією, не одним сайтом.
 
-async function buildOrgScopedPrompt(organizationId: string, env: Env): Promise<PromptResolution> {
+export async function buildOrgScopedPrompt(organizationId: string, env: Env): Promise<PromptResolution> {
   const sitesResult = await selectRows<SiteRow>(
     "sites",
     `select=id,url,display_name,organization_id&organization_id=eq.${encodeURIComponent(organizationId)}&order=created_at.desc`,

@@ -429,11 +429,17 @@ export async function handleSocialGenerate(
 // пункт 0.3 для ai_credits). Тут — робочі значення-заглушки за
 // планом, легко змінити в одному місці, коли Артем визначиться.
 const MONTHLY_POST_LIMIT_BY_PLAN: Record<string, number> = {
+  // легасі (до 0086)
   starter: 8,
   growth: 30,
   agency: 100,
   admin: 9999,
   trial: 8,
+  // нова лінійка Business (0086)
+  business_free: 4,
+  business_starter: 30,
+  business_pro: 100,
+  business_agency: 9999,
 };
 
 async function checkMonthlyPostLimit(organizationId: string, env: Env): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -443,8 +449,8 @@ async function checkMonthlyPostLimit(organizationId: string, env: Env): Promise<
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
-  const planCode = (planRes.data?.[0]?.plans as { code: string } | null)?.code ?? "starter";
-  const limit = MONTHLY_POST_LIMIT_BY_PLAN[planCode] ?? MONTHLY_POST_LIMIT_BY_PLAN.starter;
+  const planCode = (planRes.data?.[0]?.plans as { code: string } | null)?.code ?? "business_free";
+  const limit = MONTHLY_POST_LIMIT_BY_PLAN[planCode] ?? MONTHLY_POST_LIMIT_BY_PLAN.business_free;
 
   const monthStart = new Date();
   monthStart.setUTCDate(1);

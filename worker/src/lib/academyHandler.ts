@@ -18,6 +18,7 @@
 import type { Env } from "../types";
 import { selectRows, insertRow } from "./supabase";
 import { json } from "./httpUtils";
+import { hasProTierAccess } from "./planTiers";
 
 // ── Аутентифікація: тільки перевірка валідного JWT, без org-контексту ──
 // (каталог курсів не organization-рівня — RLS сама відфільтрує
@@ -66,11 +67,13 @@ async function hasPremiumAcademyAccess(userId: string, env: Env): Promise<boolea
     env.SUPABASE_SERVICE_ROLE_KEY
   );
 
-  // Той самий набір тарифів, що canUseCro (Growth+) — преміум-курси
-  // логічно на тому самому рівні, що інші платні фічі-гачки платформи.
+  // Той самий набір тарифів, що canUseCro (Growth+, тепер Pro+ у
+  // новій лінійці) — преміум-курси логічно на тому самому рівні, що
+  // інші платні фічі-гачки платформи. Спільний хелпер (planTiers.ts,
+  // 0086) — не окремий масив у кожному файлі.
   return (subsRes.data ?? []).some(s => {
     const planCode = (s.plans as { code: string } | null)?.code;
-    return ["growth", "agency", "admin", "trial"].includes(planCode ?? "");
+    return hasProTierAccess(planCode);
   });
 }
 

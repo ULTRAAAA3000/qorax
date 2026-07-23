@@ -169,13 +169,26 @@ export async function handleLSWebhook(
 // ─── Subscription active / updated ───────────────────────────
 
 // EXECUTION_PLAN.md Фаза 0.3 — робочі заглушки, конкретні числа
-// лишаються комерційним рішенням Артема (PRICING.md розділ 5), той
+// лишаються комерційним рішенням Артема (PRICING.md Частина A), той
 // самий підхід, що MONTHLY_POST_LIMIT_BY_PLAN у socialHandler.ts.
+//
+// ai_credits (окрема таблиця, один пул на organization) лишається
+// ЛИШЕ для Business — Mail/Creator/Office/Browser мають власний
+// ai_requests_limit усередині plans.features (0086), не окремий
+// рядок ai_credits. Легасі-коди (starter/growth/agency/enterprise)
+// лишені в мапі — старі організації, що ще не мігровані на нову
+// лінійку, продовжують отримувати легасі-числа без зміни поведінки.
 const AI_CREDITS_BY_PLAN: Record<string, number> = {
+  // легасі (до 0086)
   starter: 300,
   growth: 1000,
   agency: 3000,
   enterprise: 10000,
+  // нова лінійка Business (0086, PRICING.md Частина A)
+  business_free: 20,
+  business_starter: 500,
+  business_pro: 5000,
+  business_agency: 25000,
 };
 
 async function handleSubscriptionActive(
@@ -201,9 +214,9 @@ async function handleSubscriptionActive(
 
   // Знаходимо план за variant_id
   // Спочатку дістаємо ВСІ плани щоб виключити проблему з RLS або типами
-  const allPlansResult = await selectRows<{ id: string; code: string; ls_variant_id: string | null }>(
+  const allPlansResult = await selectRows<{ id: string; code: string; product: string | null; site_limit: number | null; ls_variant_id: string | null }>(
     "plans",
-    "select=id,code,ls_variant_id",
+    "select=id,code,product,site_limit,ls_variant_id",
     supabaseUrl,
     serviceRoleKey
   );
@@ -242,11 +255,23 @@ async function handleSubscriptionActive(
 
   const status = mapStatus(attrs.status);
 
+  // Conflict-ключ organization_id,product (не лише organization_id) —
+  // 0086 дозволяє кільком активним підпискам на organization одночасно
+  // (одна на кожен продукт). matchedPlan.product===null для легасі-
+  // кодів (starter/growth/тощо) — для них upsertRow однаково впаде на
+  // organization_id-конфлікт де product IS NULL (партіальний unique
+  // index idx_subscriptions_one_active_per_org_product застосовується
+  // лише коли product IS NOT NULL, легасі-підписки й так обмежені
+  // одна-на-organization на рівні коду перед створенням нового
+  // checkout, той самий підхід що й раніше 0086).
+  const conflictColumns = matchedPlan?.product ? "organization_id,product" : "organization_id";
+
   const upsertResult = await upsertRow(
     "subscriptions",
     {
       organization_id: orgId,
       plan_id: planId,
+      product: matchedPlan?.product ?? null,
       status,
       ls_subscription_id: lsSubscriptionId,
       ls_customer_id: lsCustomerId,
@@ -256,7 +281,7 @@ async function handleSubscriptionActive(
       current_period_end: attrs.renews_at ?? attrs.ends_at ?? null,
       updated_at: new Date().toISOString(),
     },
-    "organization_id",
+    conflictColumns,
     supabaseUrl,
     serviceRoleKey
   );
@@ -266,58 +291,73 @@ async function handleSubscriptionActive(
     return false; // транзієнтна помилка БД — LS повторить webhook пізніше
   }
 
-  // Sync org_type + site_limit based on plan
+  // Sync org_type + site_limit — ЛИШЕ для Business-підписок
+  // (site_limit/org_type мають сенс тільки там; Mail/Creator/Office/
+  // Browser не мають "кількості сайтів"). Значення тепер з самого
+  // plans.site_limit (0086), не захардкожений planCode === "agency"
+  // ? 5 : 1 — той підхід був прив'язаний до старої 3-рівневої лінійки
+  // й не масштабується на 4 нових рівні.
   const planCode = matchedPlan?.code ?? "";
-  const orgType = planCode === "agency" ? "agency" : "client";
-  const siteLimit = planCode === "agency" ? 5 : 1;
+  const isBusinessPlan = matchedPlan?.product === "business" || matchedPlan?.product === null;
 
-  const orgUpdateResult = await updateRows(
-    "organizations",
-    `id=eq.${encodeURIComponent(orgId)}`,
-    { org_type: orgType, site_limit: siteLimit },
-    supabaseUrl,
-    serviceRoleKey
-  );
+  if (isBusinessPlan) {
+    // -1 у plans.site_limit означає "безліміт" (той самий підхід, що
+    // rank_keywords_limit/analytics_history_days у 0086) — для
+    // organizations.site_limit (integer, перевіряється прямим
+    // порівнянням деінде в коді) підставляємо великий практичний
+    // максимум замість справжнього -1, щоб не зламати наявні
+    // порівняння "sites.length < organizations.site_limit".
+    const rawSiteLimit = matchedPlan?.site_limit ?? 1;
+    const siteLimit = rawSiteLimit === -1 ? 999999 : rawSiteLimit;
+    const orgType = planCode === "business_agency" || planCode === "agency" ? "agency" : "client";
 
-  if (!orgUpdateResult.ok) {
-    // Підписка вже активована — це другорядне поле (site_limit/org_type),
-    // тому не блокуємо весь webhook через це, але гучно логуємо для
-    // ручної перевірки.
-    console.error("[ls-webhook] Subscription activated but failed to sync org_type/site_limit:", orgUpdateResult.error, "org:", orgId);
+    const orgUpdateResult = await updateRows(
+      "organizations",
+      `id=eq.${encodeURIComponent(orgId)}`,
+      { org_type: orgType, site_limit: siteLimit },
+      supabaseUrl,
+      serviceRoleKey
+    );
+
+    if (!orgUpdateResult.ok) {
+      // Підписка вже активована — це другорядне поле (site_limit/org_type),
+      // тому не блокуємо весь webhook через це, але гучно логуємо.
+      console.error("[ls-webhook] Subscription activated but failed to sync org_type/site_limit:", orgUpdateResult.error, "org:", orgId);
+    }
   }
 
-  // Автоматична видача ai_credits (EXECUTION_PLAN.md Фаза 0.3;
-  // ai_credits — відоме обмеження задокументоване в коментарі до
-  // таблиці 0042_ai_content_module.sql: рядок створювався ВИКЛЮЧНО
-  // вручну). Числа нижче — робочі заглушки, той самий підхід, що
-  // MONTHLY_POST_LIMIT_BY_PLAN у socialHandler.ts — конкретні
-  // комерційні цифри лишаються рішенням Артема (PRICING.md розділ 5),
-  // не змінюють архітектуру: місячне скидання (credits_reset_at)
-  // працює однаково незалежно від того, яке число тут стоїть.
-  const creditsForPlan = AI_CREDITS_BY_PLAN[planCode] ?? AI_CREDITS_BY_PLAN.starter;
-  const nextResetAt = new Date();
-  nextResetAt.setUTCMonth(nextResetAt.getUTCMonth() + 1);
-  nextResetAt.setUTCDate(1);
-  nextResetAt.setUTCHours(0, 0, 0, 0);
+  // Автоматична видача ai_credits — ЛИШЕ для Business (ai_credits
+  // лишається per-organization пулом для Business-специфічних
+  // AI-викликів; Mail/Creator/Office/Browser використовують власний
+  // ai_requests_limit із plans.features, окрему таблицю кредитів для
+  // них не заведено цим проходом — див. PRICING.md Частина C,
+  // "Спільний AI Pool" ще не реалізовано поза Business).
+  if (isBusinessPlan) {
+    const creditsForPlan = AI_CREDITS_BY_PLAN[planCode] ?? AI_CREDITS_BY_PLAN.business_free;
+    const nextResetAt = new Date();
+    nextResetAt.setUTCMonth(nextResetAt.getUTCMonth() + 1);
+    nextResetAt.setUTCDate(1);
+    nextResetAt.setUTCHours(0, 0, 0, 0);
 
-  const creditsUpsertResult = await upsertRow(
-    "ai_credits",
-    {
-      organization_id: orgId,
-      credits_remaining: creditsForPlan,
-      credits_reset_at: nextResetAt.toISOString(),
-    },
-    "organization_id",
-    supabaseUrl,
-    serviceRoleKey
-  );
-  if (!creditsUpsertResult.ok) {
-    // Той самий принцип, що org_type/site_limit вище — не блокуємо
-    // весь webhook через другорядну операцію, гучно логуємо.
-    console.error("[ls-webhook] Subscription activated but failed to upsert ai_credits:", creditsUpsertResult.error, "org:", orgId);
+    const creditsUpsertResult = await upsertRow(
+      "ai_credits",
+      {
+        organization_id: orgId,
+        credits_remaining: creditsForPlan,
+        credits_reset_at: nextResetAt.toISOString(),
+      },
+      "organization_id",
+      supabaseUrl,
+      serviceRoleKey
+    );
+    if (!creditsUpsertResult.ok) {
+      // Той самий принцип, що org_type/site_limit вище — не блокуємо
+      // весь webhook через другорядну операцію, гучно логуємо.
+      console.error("[ls-webhook] Subscription activated but failed to upsert ai_credits:", creditsUpsertResult.error, "org:", orgId);
+    }
   }
 
-  console.log("[ls-webhook] subscription upserted:", { orgId, status, lsSubscriptionId, orgType, siteLimit, creditsForPlan });
+  console.log("[ls-webhook] subscription upserted:", { orgId, status, lsSubscriptionId, planCode, product: matchedPlan?.product ?? null });
   return true;
 }
 
@@ -334,10 +374,40 @@ async function handleSubscriptionCancelled(
 
   if (!orgId) return true; // не транзієнтна помилка, ретрай не допоможе
 
-  // Знаходимо free план
+  // ВАЖЛИВО (0086): фільтруємо за ls_subscription_id, НЕ лише
+  // organization_id. Раніше organization_id=eq.${orgId} було
+  // достатньо (одна підписка на organization), але тепер організація
+  // може мати кілька активних підписок одночасно (одна на кожен
+  // продукт) — фільтр лише по organization_id відмінив би ВСІ
+  // продукти разом, навіть якщо скасовується підписка на один-єдиний
+  // продукт (напр. Mail), а Business лишається активним.
+  const subLookup = await selectRows<{ id: string; plan_id: string; product: string | null }>(
+    "subscriptions",
+    `select=id,plan_id,product&ls_subscription_id=eq.${encodeURIComponent(data.id)}&limit=1`,
+    supabaseUrl,
+    serviceRoleKey
+  );
+  if (!subLookup.ok) {
+    console.error("[ls-webhook] Failed to look up subscription by ls_subscription_id:", subLookup.error, "org:", orgId);
+    return false;
+  }
+  const existingSub = subLookup.data[0];
+  if (!existingSub) {
+    // Підписка з таким ls_subscription_id ще не існує в нашій БД
+    // (можливий порядок доставки webhook) — не транзієнтна помилка в
+    // класичному сенсі, але ретрай МОЖЕ допомогти, якщо
+    // subscription_created прийде трохи пізніше.
+    console.error("[ls-webhook] No local subscription found for ls_subscription_id yet (cancel):", data.id);
+    return false;
+  }
+
+  // Знаходимо product-specific free план — для легасі-підписок
+  // (product IS NULL) лишається старий код 'free' (0018), для нових
+  // {product}_{tier} підписок (0086) шукаємо {product}_free.
+  const freePlanCode = existingSub.product ? `${existingSub.product}_free` : "free";
   const freePlanResult = await selectRows<{ id: string }>(
     "plans",
-    "select=id&code=eq.free",
+    `select=id&code=eq.${encodeURIComponent(freePlanCode)}`,
     supabaseUrl,
     serviceRoleKey
   );
@@ -355,7 +425,7 @@ async function handleSubscriptionCancelled(
   const updateResult = isFullyExpired && freePlanId
     ? await updateRows(
         "subscriptions",
-        `organization_id=eq.${encodeURIComponent(orgId)}`,
+        `id=eq.${encodeURIComponent(existingSub.id)}`,
         {
           plan_id: freePlanId,
           status: "canceled",
@@ -367,7 +437,7 @@ async function handleSubscriptionCancelled(
       )
     : await updateRows(
         "subscriptions",
-        `organization_id=eq.${encodeURIComponent(orgId)}`,
+        `id=eq.${encodeURIComponent(existingSub.id)}`,
         {
           status: "canceled",
           current_period_end: attrs.ends_at ?? null,
@@ -382,7 +452,7 @@ async function handleSubscriptionCancelled(
     return false; // транзієнтна помилка БД — LS повторить webhook пізніше
   }
 
-  console.log("[ls-webhook] subscription cancelled:", { orgId, status: attrs.status });
+  console.log("[ls-webhook] subscription cancelled:", { orgId, status: attrs.status, product: existingSub.product });
   return true;
 }
 

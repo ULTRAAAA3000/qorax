@@ -1,5 +1,3 @@
-"use client";
-
 import { ArrowUpRight } from "lucide-react";
 import { Reveal } from "./Reveal";
 
@@ -14,6 +12,17 @@ import { Reveal } from "./Reveal";
  *
  * Той самий Cyber Minimal — glow-card-подібний бейдж, gradient-text,
  * accent-колір продукту (lime/cyan/purple), не нова візуальна мова.
+ *
+ * НАВМИСНО server component (без "use client") — компонент не
+ * використовує жодних client-only API (hooks/event handlers), а
+ * app/page.tsx (теж server component) передає сюди `icon` як React-
+ * компонент (Briefcase/Mail/Palette/тощо з lucide-react). Функції
+ * не можна серіалізувати через server→client межу ("Functions
+ * cannot be passed directly to Client Components") — саме ця
+ * помилка й падала на проді (500) після додавання цього компонента
+ * з зайвим "use client". <Reveal> усередині лишається власною
+ * client-межею (motion/react), і це працює нормально: server-
+ * компонент може рендерити client-компонент як дочірній.
  */
 
 const ACCENT_COLORS = { lime: "var(--lime)", cyan: "var(--cyan)", purple: "var(--purple)" } as const;

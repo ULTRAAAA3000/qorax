@@ -22,6 +22,8 @@ import {
   handleUpdateMemberRole, handleRemoveMember, handleGetInvitePreview,
 } from "./lib/teamHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
+import { sendTelegramWeeklyDigests, runBusinessCoachCheck } from "./lib/telegramBotHandler";
+import { setTelegramBotCommands } from "./lib/telegram";
 import { handleChatRequest, handleGetOrCreateThreadRequest } from "./lib/chatHandler";
 import {
   handleWorkspaceUploadRequest,
@@ -231,6 +233,8 @@ import { handleBusinessMetrics } from "./lib/businessMetrics";
 import { checkRateLimit, getClientIp } from "./lib/rateLimit";
 import { corsHeaders } from "./lib/cors";
 import { sendSlackMessage } from "./lib/slack";
+import { handleDeveloperAuditV1 } from "./lib/developerApiHandler";
+import { handleDeveloperApiKeys, handleDeveloperApiKeyRevoke } from "./lib/developerApiKeysHandler";
 
 function json(data: unknown, status: number, origin: string | null): Response {
   return new Response(JSON.stringify(data), {
@@ -281,6 +285,32 @@ const worker = {
 
     if (url.pathname === "/api/audit" && request.method === "POST") {
       return handleAuditRequest(request, env, origin, ctx);
+    }
+
+    // ─── Qorax SEO Platform (Developer API), MVP — фундамент ───
+    // Публічний ендпоінт для зовнішніх розробників/агентств, окрема
+    // авторизація через API-ключ (Authorization: Bearer qrx_xxx),
+    // не через Supabase-сесію. /api/developer/keys — управління
+    // ключами з Dashboard (звичайна Supabase-сесія користувача).
+    if (url.pathname === "/api/v1/audit" && request.method === "POST") {
+      return handleDeveloperAuditV1(request, env);
+    }
+    if (url.pathname === "/api/v1/audit" && request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        },
+      });
+    }
+    if (url.pathname === "/api/developer/keys" && (request.method === "GET" || request.method === "POST")) {
+      return handleDeveloperApiKeys(request, env, origin);
+    }
+    if (url.pathname.startsWith("/api/developer/keys/") && request.method === "DELETE") {
+      const keyId = url.pathname.split("/api/developer/keys/")[1];
+      return handleDeveloperApiKeyRevoke(keyId, request, env, origin);
     }
 
     // /api/cro/track — публічний, без авторизації, довільний Origin
@@ -580,6 +610,20 @@ const worker = {
       if (url.pathname === "/api/admin/run-weekly-digest") {
         const r = await sendWeeklyDigests(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, env.RESEND_API_KEY, env.APP_URL);
         return json({ ok: true, sent: r.sent, skipped: r.skipped, errors: r.errors }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/run-telegram-digest") {
+        const r = await sendTelegramWeeklyDigests(env);
+        return json({ ok: true, sent: r.sent, skipped: r.skipped }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/setup-telegram-bot") {
+        // Одноразовий (не на кожен деплой) виклик setMyCommands —
+        // реєструє офіційне меню "☰" в Telegram. Telegram кешує це
+        // per-bot на своїй стороні, тому не потрібно викликати
+        // автоматично з cron чи при кожному деплої.
+        const r = await setTelegramBotCommands(env.TELEGRAM_BOT_TOKEN);
+        return json(r, r.ok ? 200 : 500, origin);
       }
 
       if (url.pathname === "/api/admin/run-url-speeds") {
@@ -2053,6 +2097,18 @@ const worker = {
       console.log("Automations:", JSON.stringify(automationsSummary));
       console.log("Predictive:", JSON.stringify(predictiveSummary));
       console.log("Benchmark aggregation:", JSON.stringify(benchmarkSummary));
+
+      // Business Coach (документ Артема, пункт 16) — навмисно ПІСЛЯ
+      // Promise.all вище, не всередині нього: читає speed_checks/
+      // social_posts, і має сенс лише коли runSpeedChecks уже дописав
+      // сьогоднішні заміри, інакше сигнал "покращення швидкості"
+      // будувався б на застарілих даних попереднього дня.
+      const coachResult = await runBusinessCoachCheck(env).catch(err => {
+        console.error("Business Coach error:", err instanceof Error ? err.message : err);
+        return { checked: 0 };
+      });
+      console.log("Business Coach:", JSON.stringify(coachResult));
+
       return;
     }
 
@@ -2088,6 +2144,12 @@ const worker = {
         );
         console.log(`Weekly digests: sent=${digestResult.sent}, skipped=${digestResult.skipped}, errors=${digestResult.errors.length}`);
         if (digestResult.errors.length) console.warn("Digest errors:", digestResult.errors);
+
+        const telegramDigestResult = await sendTelegramWeeklyDigests(env).catch(e => {
+          console.error("Telegram weekly digest cron error:", e);
+          return { sent: 0, skipped: 0 };
+        });
+        console.log(`Telegram weekly digests: sent=${telegramDigestResult.sent}, skipped=${telegramDigestResult.skipped}`);
       }
       return;
     }

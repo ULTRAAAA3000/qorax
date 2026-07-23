@@ -13,6 +13,7 @@
 // ============================================================
 
 import { selectRows, insertRow, updateRows } from "./supabase";
+import { hasProTierAccess } from "./planTiers";
 import { dispatchAlert, getOrgNotifSettings } from "./monitoring";
 import { buildCompetitorChangeTelegram } from "./telegram";
 import { buildCompetitorChangeSlack } from "./slack";
@@ -91,7 +92,7 @@ export async function runCompetitorChecks(
       serviceRoleKey
     );
     const planCode = (subResult.data[0]?.plans as PlanRow | null)?.code ?? "free";
-    const isGrowthPlus = ["growth", "agency", "admin", "trial"].includes(planCode);
+    const isGrowthPlus = hasProTierAccess(planCode);
     if (!isGrowthPlus) continue;
 
     try {

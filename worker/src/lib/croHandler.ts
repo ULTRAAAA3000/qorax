@@ -17,6 +17,7 @@
 // ============================================================
 
 import type { Env } from "../types";
+import { hasProTierAccess } from "./planTiers";
 import { selectRows, insertRow, updateRows } from "./supabase";
 import { json } from "./httpUtils";
 import { checkRateLimit, getClientIp } from "./rateLimit";
@@ -147,7 +148,7 @@ async function canUseCro(orgId: string, env: Env): Promise<boolean> {
     env.SUPABASE_SERVICE_ROLE_KEY
   );
   const planCode = (res.data?.[0]?.plans as { code: string } | null)?.code;
-  return ["growth", "agency", "admin", "trial"].includes(planCode ?? "");
+  return hasProTierAccess(planCode ?? "");
 }
 
 // ── GET /api/sites/:id/cro/snippet ── отримати/створити snippet_key
