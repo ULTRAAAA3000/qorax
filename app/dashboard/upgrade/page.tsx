@@ -9,39 +9,44 @@ import { CHECKOUT_DISABLED } from "@/app/lib/checkoutFlag";
 export const metadata = { title: "Обрати план — Qorax" };
 
 const LS_VARIANTS: Record<string, string> = {
-  starter: process.env.LS_VARIANT_STARTER ?? "",
-  growth:  process.env.LS_VARIANT_GROWTH  ?? "",
-  agency:  process.env.LS_VARIANT_AGENCY  ?? "",
+  business_starter: process.env.LS_VARIANT_BUSINESS_STARTER ?? "",
+  business_pro:     process.env.LS_VARIANT_BUSINESS_PRO      ?? "",
+  business_agency:  process.env.LS_VARIANT_BUSINESS_AGENCY   ?? "",
 };
 const LS_STORE_SUBDOMAIN = process.env.LS_STORE_SUBDOMAIN ?? "qorax";
 
+// Нова лінійка Business (0086, PRICING.md Частина A) — Free не має
+// LemonSqueezy-варіанту (призначається автоматично при реєстрації),
+// тому не входить у PLANS нижче — Free-стан організації показує
+// сама сторінка ("Активний ✓" на карті нижчого рівня, якщо
+// currentPlan === "business_free").
 const PLANS = [
   {
-    code: "starter",
+    code: "business_starter",
     name: "Starter",
-    price: 49,
+    price: 12.99,
     highlight: false,
     accent: "lime" as const,
-    description: "Для малого бізнесу — впевненість що сайт працює",
-    features: ["1 сайт", "Uptime кожні 5 хвилин", "Швидкість + графік", "SSL / домен алерти", "Биті посилання", "AI пояснення простою", "Місячний PDF звіт", "Email алерти"],
+    description: "Для фрілансерів і малого бізнесу",
+    features: ["До 10 сайтів", "Моніторинг кожні 30 хв", "500 ключових запитів", "Історія 6 місяців", "AI — 500 запитів", "PDF-звіти, інтеграції, автоматизації"],
   },
   {
-    code: "growth",
-    name: "Growth",
-    price: 99,
+    code: "business_pro",
+    name: "Pro",
+    price: 24.99,
     highlight: true,
     accent: "lime" as const,
-    description: "Для серйозного бізнесу — повний контроль та AI-аналіз",
-    features: ["1 сайт", "Всі функції Starter", "Core Web Vitals (LCP, INP, CLS)", "SEO аудит (meta, schema, sitemap)", "AI Revenue Impact ($)", "Конкурент моніторинг", "Qoraxus AI-асистент", "Telegram алерти"],
+    description: "Для професіоналів",
+    features: ["До 100 сайтів, необмежені проєкти", "Моніторинг кожні 5 хв", "5 000 ключових запитів, історія 2 роки", "AI — 5 000 запитів", "White Label, API, AI Copilot", "Команда до 5 осіб"],
   },
   {
-    code: "agency",
+    code: "business_agency",
     name: "Agency",
-    price: 199,
+    price: 59.99,
     highlight: false,
     accent: "cyan" as const,
-    description: "Для агентств — до 5 сайтів клієнтів",
-    features: ["До 5 сайтів", "Всі функції Growth", "White-label PDF звіти", "AI контент та SEO структура", "Конкурент моніторинг на кожен сайт", "+$29/міс за додатковий сайт", "Пріоритетна підтримка"],
+    description: "Для агентств і команд",
+    features: ["Необмежені сайти й проєкти", "Моніторинг щохвилини", "Необмежені ключові запити, повна історія", "AI — 25 000 запитів", "White Label, повний API", "Команда до 25 осіб, пріоритетна підтримка"],
   },
 ];
 
@@ -125,7 +130,7 @@ export default async function UpgradePage({ searchParams }: { searchParams: Prom
           </div>
           <h1 className="font-display text-3xl sm:text-4xl font-bold mb-3">Оберіть план</h1>
           <p className="text-sm text-[var(--text-secondary)] max-w-sm mx-auto">
-            14 днів тріалу вже включено при реєстрації. Оплата через LemonSqueezy.
+            Free-тариф назавжди при реєстрації, без картки. Оплата через LemonSqueezy.
           </p>
         </div>
 
@@ -231,7 +236,7 @@ export default async function UpgradePage({ searchParams }: { searchParams: Prom
             ["Як скасувати?", "В будь-який момент через портал керування. Доступ зберігається до кінця місяця."],
             ["Які картки приймаються?", "Visa, Mastercard будь-якого банку, включно з українськими. Через LemonSqueezy."],
             ["Є знижки?", "Річна підписка зі знижкою — скоро. Напишіть нам і домовимось індивідуально."],
-            ["Що після тріалу?", "Автоматично переходить на безкоштовний план. Нагадування за 7 і 3 дні до завершення."],
+            ["Що з Free-планом?", "Назавжди безкоштовний рівень — 1 сайт, щоденний моніторинг, базовий SEO Audit, AI 20 запитів/міс. Без обмеження в часі."],
           ].map(([q, a]) => (
             <div key={q} className="rounded-xl p-4"
               style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
