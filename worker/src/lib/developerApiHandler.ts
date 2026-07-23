@@ -1,19 +1,30 @@
 // ============================================================
-// developerApiHandler.ts — POST /api/v1/audit, публічний Qorax
-// SEO Audit API (MVP фундаменту "Qorax SEO Platform").
+// developerApiHandler.ts — публічна Qorax SEO Platform (Developer
+// API): POST /api/v1/audit (SEO Audit API) і POST /api/v1/schema
+// (Schema API).
 //
-// Узгоджено з Артемом: лише SEO Audit API з п'яти запланованих
-// (AI SEO/Schema/Monitoring/Reporting — не цей прохід). Переюзує
-// те саме ядро, що вже живить безкоштовний lead-magnet аудит на
-// лендінгу (/api/audit, index.ts::handleAuditRequest) —
-// runBasicCheck + runPageSpeedChecks, БЕЗ AI-аналізу (runAiAnalysis
-// коштує Gemini-виклик, для платного/лімітованого Developer API
-// це окреме рішення на майбутнє — можна додати як платний "AI SEO
-// API" пізніше, MVP повертає лише структуровані дані аудиту).
+// Узгоджено з Артемом: перший API — SEO Audit (MVP фундаменту).
+// Другий — Schema API, СВІДОМО без AI (чиста шаблонізація за
+// структурованими полями, не за довільним описом бізнесу мовою) —
+// на відміну від майбутнього AI SEO API, де Gemini аналізує HTML і
+// сам пропонує зміни. AI SEO/Monitoring/Reporting — не цей прохід.
+//
+// SEO Audit API переюзує те саме ядро, що вже живить безкоштовний
+// lead-magnet аудит на лендінгу (/api/audit,
+// index.ts::handleAuditRequest) — runBasicCheck + runPageSpeedChecks,
+// БЕЗ AI-аналізу (runAiAnalysis коштує Gemini-виклик).
+//
+// Schema API переюзує schemaGenerator.ts — чисті функції генерації
+// JSON-LD, без залежності від Gemini чи будь-якого зовнішнього
+// сервісу (миттєва відповідь, немає ризику rate-limit стороннього
+// API чи непередбачуваної вартості на відміну від AI-based
+// ендпоінтів).
 //
 // На відміну від /api/audit (rate-limit по IP, для анонімного
 // лендінг-трафіку), тут авторизація через API-ключ
-// (developerApiAuth.ts) і місячний ліміт запитів на organization.
+// (developerApiAuth.ts) і місячний ліміт запитів на organization —
+// ОБИДВА ендпоінти витрачають з того самого developer_api_keys.
+// requests_limit пулу (не окремі ліміти на кожен API).
 // ============================================================
 
 import { json } from "./httpUtils";
@@ -21,7 +32,17 @@ import { normalizeAndValidateUrl } from "./url";
 import { runBasicCheck } from "./basicCheck";
 import { runPageSpeedChecks } from "./pageSpeed";
 import { validateAndConsumeApiKey, logApiRequest } from "./developerApiAuth";
+import { generateSchema } from "./schemaGenerator";
 import type { Env } from "../types";
+
+// Спільний для обох ендпоінтів — серверний виклик стороннього
+// backend'у, не браузерний fetch з довільного сайту, тому
+// origin-allowlist (corsHeaders() з cors.ts) тут не застосовний.
+const DEVELOPER_API_CORS_HEADERS = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+  "Access-Control-Allow-Headers": "Authorization, Content-Type",
+};
 
 interface AuditV1RequestBody {
   url?: unknown;
@@ -31,15 +52,7 @@ export async function handleDeveloperAuditV1(
   request: Request,
   env: Env
 ): Promise<Response> {
-  // CORS для Developer API навмисно відкритий (Access-Control-Allow-Origin: *) —
-  // це серверний виклик з backend'у стороннього розробника, не
-  // браузерний fetch з довільного сайту, тому origin-allowlist
-  // (corsHeaders() з cors.ts) тут не застосовний і не потрібен.
-  const corsHeaders = {
-    "Access-Control-Allow-Origin": "*",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-    "Access-Control-Allow-Headers": "Authorization, Content-Type",
-  };
+  const corsHeaders = DEVELOPER_API_CORS_HEADERS;
 
   const auth = await validateAndConsumeApiKey(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
   if (!auth.ok) {
@@ -104,4 +117,52 @@ export async function handleDeveloperAuditV1(
     200,
     corsHeaders
   );
+}
+
+interface SchemaV1RequestBody {
+  type?: unknown;
+  fields?: unknown;
+}
+
+/**
+ * POST /api/v1/schema — Qorax Schema API. Приймає { type, fields },
+ * повертає готовий JSON-LD (як об'єкт `jsonLd` і як рядок
+ * `scriptTag`, готовий для вставки прямо в <head> сторінки).
+ * Чиста шаблонізація (schemaGenerator.ts) — жодного Gemini-виклику,
+ * тому відповідь миттєва й не залежить від зовнішнього AI-провайдера.
+ */
+export async function handleDeveloperSchemaV1(
+  request: Request,
+  env: Env
+): Promise<Response> {
+  const corsHeaders = DEVELOPER_API_CORS_HEADERS;
+
+  const auth = await validateAndConsumeApiKey(request, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+  if (!auth.ok) {
+    return json({ error: auth.error }, auth.status ?? 401, corsHeaders);
+  }
+
+  let body: SchemaV1RequestBody;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Невірний формат запиту, очікується JSON" }, 400, corsHeaders);
+  }
+
+  if (typeof body.type !== "string" || !body.type) {
+    return json({ error: "Поле type обов'язкове (Organization/Product/FAQPage/LocalBusiness/BreadcrumbList/Article/Event/Person)" }, 400, corsHeaders);
+  }
+  if (typeof body.fields !== "object" || body.fields === null || Array.isArray(body.fields)) {
+    return json({ error: "Поле fields обов'язкове й має бути об'єктом" }, 400, corsHeaders);
+  }
+
+  const result = generateSchema(body.type, body.fields as Record<string, unknown>);
+
+  await logApiRequest(auth.apiKeyId!, "/api/v1/schema", null, result.ok ? 200 : 400, env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY);
+
+  if (!result.ok) {
+    return json({ error: result.error }, 400, corsHeaders);
+  }
+
+  return json({ type: body.type, jsonLd: result.jsonLd, scriptTag: result.scriptTag }, 200, corsHeaders);
 }
