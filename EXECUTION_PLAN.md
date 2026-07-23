@@ -5868,3 +5868,73 @@ sandbox LemonSqueezy з цього sandbox) — покладаємось на р
 `croHandler.ts`, `fixRequestHandler.ts`, `gscHandler.ts`,
 `pdfReport.ts`, `reportHandler.ts`, `seoChecker.ts`, `teamHandler.ts`,
 `translatorHandler.ts`).
+
+## Перехід на екосистемну модель тарифів — Крок 3: 16 worker-хендлерів
+
+**Завершення переходу (0086).** Замість переписування 13 файлів з
+ідентичним захардкодженим масивом `["growth", "agency", "admin",
+"trial"].includes(planCode)` окремо — створено ОДИН спільний модуль
+`worker/src/lib/planTiers.ts`:
+
+- `hasProTierAccess()` — "Growth+" (легасі) = "Pro+" (нова лінійка):
+  Core Web Vitals, meta/schema checker, GSC, AI revenue impact,
+  Academy преміум-курси, CRO, чат-підтримка, конкуренти, команди тощо
+- `hasStarterTierAccess()` — "будь-який платний тариф" (Business Free
+  свідомо НЕ входить)
+- `hasAgencyTierAccess()` — найвищий рівень (White Label/повний API)
+- `resolvePlanTier()` — зводить будь-який planCode (легасі чи новий)
+  до одного з 4 логічних рівнів, для numeric-лімітів
+
+**14 файлів оновлено** (з 16 у первісному списку — 2 не потребували
+змін, знайдено при аналізі):
+- **11 файлів з boolean-предикатом** → `hasProTierAccess()`:
+  `academyHandler.ts`, `benchmarkHandler.ts`, `chatHandler.ts`,
+  `competitorChecker.ts`, `croHandler.ts`, `fixRequestHandler.ts`,
+  `gscHandler.ts`, `seoChecker.ts` (2 входження), `teamHandler.ts`
+- **`brokenLinksChecker.ts`** → `hasStarterTierAccess()` (єдиний файл
+  із "Starter+", не "Growth+" порогом)
+- **`crmHandler.ts`/`socialHandler.ts`** (вже мали numeric-карти
+  `CONTACT_LIMIT_BY_PLAN`/`MONTHLY_POST_LIMIT_BY_PLAN`) — додано нові
+  `business_free/starter/pro/agency` ключі поруч із легасі, виправлено
+  fallback-дефолти `?? "starter"` → `?? "business_free"`
+- **`translatorHandler.ts`** (numeric-карта `MAX_LANGUAGES_BY_PLAN`) —
+  той самий підхід, fallback `getPlanCode()` теж виправлено на
+  `business_free`
+
+**Не потребували змін (виявлено аналізом, не в первісному списку
+16):**
+- `pdfReport.ts` — не містить тарифної логіки взагалі, чиста функція
+  генерації PDF
+- `reportHandler.ts` — використовує `org.org_type === "agency"`, не
+  `plan_code` напряму; вже коректно працює після Кроку 2 (webhook
+  мапить `business_agency` → `org_type: "agency"`)
+
+**Легасі-коди (`?? "free"` fallback у 7 файлах) свідомо НЕ змінено**
+— `hasProTierAccess("free")`/`hasStarterTierAccess("free")` коректно
+повертають `false` без додаткової мапи, зайва зміна не потрібна.
+
+**Перевірено:** `tsc --noEmit` чисто з першого разу попри великий
+обсяг правок (14 файлів), `eslint` чисто, `wrangler deploy --dry-run`
+успішний (957.99 KiB, gzip 160.95 KiB — розмір практично не змінився,
+рефакторинг не роздув бандл). Реальний рантайм-тест через `wrangler
+dev --local`: `/api/audit` і `/api/v1/audit` (Developer API з
+попереднього проходу) обидва відповідають коректно, жодної runtime-
+помилки в логах, пов'язаної з `planTiers.ts`.
+
+**Підсумок усього переходу (Кроки 1-3, той самий великий запит
+Артема "давай тоді займись роботою на перехід на цю систему"):**
+1. Схема БД — 20 нових тарифів, `qorax_one_subscriptions`,
+   composite constraint (0086)
+2. `lemonSqueezyWebhook.ts` + checkout на лендінгу — product-aware
+   логіка, виправлено ризик "одне скасування відміняє всі продукти"
+3. 14 worker-хендлерів — спільний `planTiers.ts` замість 13 копій
+   одного масиву
+
+**Свідомо НЕ зроблено (наступні кроки, окремо від цього переходу):**
+- Створення 20 нових LemonSqueezy-варіантів + 3 Qorax One (Артем
+  вручну, потім заповнити `ls_variant_id` в `plans`)
+- UI для Qorax One (окрема сторінка/картка на лендінгу)
+- Cross Product Automations/Shared Asset Library/Actions (PRICING.md
+  Частина C — архітектурно великий шматок, не тарифна робота)
+- Реальний білінг/тарифи для самого Developer API (0084) — досі
+  фіксований ліміт, не прив'язаний до жодного з нових тарифів

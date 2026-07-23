@@ -53,17 +53,24 @@ function accessErrorResponse(status: number | undefined, corsHeaders: Record<str
   return json({ error: "Unauthorized" }, 401, corsHeaders);
 }
 
-// PRICING.md розділ 4: "кількість мов на сайт" — явно "ще не
-// реалізовано", roadmap Крок 4 дає лише приклад-кандидат ("Growth = 2
-// мови"). Робочі числа-заглушки за тим самим принципом, що
-// MONTHLY_POST_LIMIT_BY_PLAN у socialHandler.ts — конкретні комерційні
-// цифри лишаються рішенням Артема, змінити легко в одному місці.
+// PRICING.md Частина A/B: "кількість мов на сайт" — числа-заглушки,
+// той самий принцип, що MONTHLY_POST_LIMIT_BY_PLAN у socialHandler.ts.
+// Легасі-ключі лишені без змін (старі організації), нові {product}_
+// {tier} ключі (0086) додано поруч — Translator концептуально
+// частина Business (Sites-конструктор), тому мапиться на business_*
+// коди, не на власну product-лінійку.
 const MAX_LANGUAGES_BY_PLAN: Record<string, number> = {
+  // легасі (до 0086)
   starter: 1, // тільки дефолтна мова, без реального перекладу
   growth: 2,
   agency: 5,
   admin: 99,
   trial: 1,
+  // нова лінійка Business (0086)
+  business_free: 1,
+  business_starter: 2,
+  business_pro: 5,
+  business_agency: 10,
 };
 
 async function getPlanCode(organizationId: string, env: Env): Promise<string> {
@@ -73,7 +80,12 @@ async function getPlanCode(organizationId: string, env: Env): Promise<string> {
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
-  return (res.data?.[0]?.plans as { code: string } | null)?.code ?? "starter";
+  // Фолбек business_free (не легасі "starter") — 0086: кожна
+  // організація тепер завжди має якийсь business_* рядок в
+  // subscriptions (навіть щойно зареєстрована, одразу Free), тому
+  // "немає підписки взагалі" реалістичніше мапити на найнижчий
+  // рівень, не на платний Starter за замовчуванням.
+  return (res.data?.[0]?.plans as { code: string } | null)?.code ?? "business_free";
 }
 
 // ── GET /api/projects/:id/languages ── список підключених мов
@@ -120,7 +132,7 @@ export async function handleProjectLanguageCreate(request: Request, env: Env, co
   );
   const currentCount = existingRes.data?.length ?? 0;
   const planCode = await getPlanCode(access.organizationId!, env);
-  const limit = MAX_LANGUAGES_BY_PLAN[planCode] ?? MAX_LANGUAGES_BY_PLAN.starter;
+  const limit = MAX_LANGUAGES_BY_PLAN[planCode] ?? MAX_LANGUAGES_BY_PLAN.business_free;
   if (currentCount >= limit) {
     return json({ error: `Ліміт мов вичерпано (${limit} на тарифі ${planCode}). Оновіть тариф для більшої кількості.` }, 402, corsHeaders);
   }
