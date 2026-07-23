@@ -206,6 +206,7 @@ import {
   handleAcademyProgress,
   handleAcademyMentor,
 } from "./lib/academyHandler";
+import { handleTourSeenList, handleTourMarkSeen } from "./lib/tourHandler";
 import {
   handleCroTrack,
   handleCroTrackOptions,
@@ -1169,6 +1170,14 @@ const worker = {
     }
     if (url.pathname === "/api/academy/mentor" && request.method === "POST") {
       return handleAcademyMentor(request, env, corsHeaders(origin));
+    }
+
+    // ── Product Tours routes (інтерактивний тур по продуктах) ────────
+    if (url.pathname === "/api/tours/seen" && request.method === "GET") {
+      return handleTourSeenList(request, env, origin);
+    }
+    if (url.pathname === "/api/tours/seen" && request.method === "POST") {
+      return handleTourMarkSeen(request, env, origin);
     }
 
     // ── AI/Content routes (MODULE_ROADMAP.md, розділ 2) ───────────────

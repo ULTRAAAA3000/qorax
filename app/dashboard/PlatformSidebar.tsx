@@ -87,7 +87,7 @@ export function PlatformSidebar({ modules, organizationId }: { modules: Platform
         borderRight: "1px solid rgba(255,255,255,0.06)",
       }}
     >
-      <nav className="px-2 py-4 flex-1 overflow-y-auto">
+      <nav data-tour="dashboard-sidebar" className="px-2 py-4 flex-1 overflow-y-auto">
         <p
           className="text-[10px] font-medium uppercase px-2 mb-2"
           style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}
@@ -99,6 +99,7 @@ export function PlatformSidebar({ modules, organizationId }: { modules: Platform
 
         <button
           type="button"
+          data-tour="dashboard-apps"
           onClick={() => setAppsOpen(o => !o)}
           className="w-full flex items-center gap-2.5 px-2.5 py-2 mt-4 rounded-lg text-[10px] font-medium uppercase transition-colors"
           style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}

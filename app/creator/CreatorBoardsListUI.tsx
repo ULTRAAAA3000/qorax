@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Plus, X, Loader2, LayoutTemplate } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
+import { TourButton } from "@/app/components/TourButton";
 
 interface Board {
   id: string;
@@ -14,6 +16,21 @@ interface Board {
 interface Props {
   organizationId: string;
 }
+
+const CREATOR_TOUR_STEPS: TourStep[] = [
+  {
+    element: '[data-tour="creator-modes"]',
+    title: "Режими полотна",
+    description: "Website — конструктор сторінок, Diagram — Knowledge Graph, Компоненти — бібліотека блоків і Brand Kit.",
+    side: "bottom",
+  },
+  {
+    element: '[data-tour="creator-new-board"]',
+    title: "Створіть першу дошку",
+    description: "Дошка — це візуальне полотно для сторінки чи проєкту. Можна редагувати блоки прямо на канвасі.",
+    side: "bottom",
+  },
+];
 
 // Той самий фікс, що TeamWorkspaceUI.tsx і ProjectEditorUI.tsx —
 // не кешувати JWT на весь час життя компонента (Supabase-сесія живе
@@ -36,6 +53,8 @@ export function CreatorBoardsListUI({ organizationId }: Props) {
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
   const [creating, setCreating] = useState(false);
+
+  const { startTour } = useProductTour("creator", CREATOR_TOUR_STEPS);
 
   const load = useCallback(async () => {
     const token = await getFreshToken();
@@ -72,27 +91,30 @@ export function CreatorBoardsListUI({ organizationId }: Props) {
 
   return (
     <div className="space-y-4">
-      {!showCreate ? (
-        <button onClick={() => setShowCreate(true)} className="glow-button text-sm !py-2 !px-4 flex items-center gap-1.5">
-          <Plus size={14} /> Нова дошка
-        </button>
-      ) : (
-        <form onSubmit={createBoard} className="glow-card p-4 flex items-center gap-2">
-          <input
-            autoFocus
-            type="text" value={title} onChange={e => setTitle(e.target.value)}
-            placeholder="Назва дошки (необов'язково)"
-            className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
-            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
-          />
-          <button type="submit" disabled={creating} className="glow-button text-sm !py-2 !px-4 disabled:opacity-50">
-            {creating ? <Loader2 size={14} className="animate-spin" /> : "Створити"}
+      <div className="flex items-center justify-between">
+        {!showCreate ? (
+          <button onClick={() => setShowCreate(true)} data-tour="creator-new-board" className="glow-button text-sm !py-2 !px-4 flex items-center gap-1.5">
+            <Plus size={14} /> Нова дошка
           </button>
-          <button type="button" onClick={() => setShowCreate(false)} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
-            <X size={14} className="text-[var(--text-tertiary)]" />
-          </button>
-        </form>
-      )}
+        ) : (
+          <form onSubmit={createBoard} className="glow-card p-4 flex items-center gap-2 flex-1">
+            <input
+              autoFocus
+              type="text" value={title} onChange={e => setTitle(e.target.value)}
+              placeholder="Назва дошки (необов'язково)"
+              className="flex-1 rounded-xl px-3 py-2 text-sm outline-none"
+              style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)" }}
+            />
+            <button type="submit" disabled={creating} className="glow-button text-sm !py-2 !px-4 disabled:opacity-50">
+              {creating ? <Loader2 size={14} className="animate-spin" /> : "Створити"}
+            </button>
+            <button type="button" onClick={() => setShowCreate(false)} className="p-2 rounded-lg hover:bg-white/5 transition-colors">
+              <X size={14} className="text-[var(--text-tertiary)]" />
+            </button>
+          </form>
+        )}
+        <TourButton onStart={startTour} />
+      </div>
 
       {!boards && (
         <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)] py-8 justify-center">

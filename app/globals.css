@@ -413,3 +413,87 @@ body {
 .legal-content a:hover {
   opacity: 0.85;
 }
+
+/* ============================================================
+   Product Tour (driver.js) — стилі узгоджені з DESIGN_SYSTEM.md.
+   driver.js не знає про наші CSS-змінні, тому перевизначаємо його
+   класи напряму через .qorax-tour-popover (передається в кожен крок
+   через useProductTour.ts).
+   ============================================================ */
+
+.driver-popover.qorax-tour-popover {
+  background: #141416;
+  border: 1px solid rgba(214, 255, 63, 0.2);
+  border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.04);
+  padding: 18px;
+  max-width: 320px;
+}
+
+.qorax-tour-popover .driver-popover-title {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.qorax-tour-popover .driver-popover-description {
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.qorax-tour-popover .driver-popover-progress-text {
+  color: var(--text-tertiary);
+  font-size: 11px;
+}
+
+.qorax-tour-popover .driver-popover-footer {
+  margin-top: 14px;
+}
+
+.qorax-tour-popover .driver-popover-footer button {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 6px 12px;
+  text-shadow: none;
+}
+
+.qorax-tour-popover .driver-popover-footer button:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.qorax-tour-popover .driver-popover-next-btn {
+  background: var(--lime) !important;
+  color: #0a0a0a !important;
+  border: none !important;
+  font-weight: 600;
+}
+
+.qorax-tour-popover .driver-popover-next-btn:hover {
+  opacity: 0.9;
+}
+
+.qorax-tour-popover .driver-popover-close-btn {
+  color: var(--text-tertiary);
+}
+
+.driver-popover-arrow-side-bottom.driver-popover-arrow {
+  border-bottom-color: #141416;
+}
+.driver-popover-arrow-side-top.driver-popover-arrow {
+  border-top-color: #141416;
+}
+.driver-popover-arrow-side-left.driver-popover-arrow {
+  border-left-color: #141416;
+}
+.driver-popover-arrow-side-right.driver-popover-arrow {
+  border-right-color: #141416;
+}
+
+.driver-active-element {
+  border-radius: 8px !important;
+}

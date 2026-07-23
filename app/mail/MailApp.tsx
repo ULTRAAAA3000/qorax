@@ -3,6 +3,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { Inbox, Loader2, Plus, Send, RefreshCw, Mail as MailIcon } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
+import { TourButton } from "@/app/components/TourButton";
 
 interface MailAccount {
   id: string;
@@ -50,6 +52,33 @@ async function getFreshToken(): Promise<string> {
   }
 }
 
+const MAIL_TOUR_STEPS: TourStep[] = [
+  {
+    element: '[data-tour="mail-compose"]',
+    title: "Новий лист",
+    description: "Напишіть і надішліть листа напряму з Qorax — без перемикання на Gmail.",
+    side: "bottom",
+  },
+  {
+    element: '[data-tour="mail-tabs"]',
+    title: "Вхідні та Контакти",
+    description: "Перемикайтесь між листуванням і контактами, які збираються автоматично з переписки.",
+    side: "bottom",
+  },
+  {
+    element: '[data-tour="mail-threads-list"]',
+    title: "Список листів",
+    description: "Тут усі ваші треди. Клікніть на будь-який, щоб прочитати повідомлення.",
+    side: "right",
+  },
+  {
+    element: '[data-tour="mail-sync"]',
+    title: "Синхронізація",
+    description: "Нові листи підтягуються автоматично, але можна оновити вручну в будь-який момент.",
+    side: "left",
+  },
+];
+
 // Qorax Mail — Шар 1. Три-панельний Inbox (треди зліва, лист по
 // центру, форма нового листа) — той самий загальний layout, що
 // звичайні поштові клієнти, MVP без пошуку/папок/лейблів (наступні
@@ -71,6 +100,13 @@ export function MailApp({ organizationId }: { organizationId: string }) {
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
   const [sending, setSending] = useState(false);
+
+  // Тур має сенс лише коли реальний UI (треди/новий лист/синк) вже в
+  // DOM — поки акаунт не підключено, рендериться зовсім інший екран
+  // ("Підключіть Gmail") без жодного data-tour елемента. Порожній
+  // масив кроків, доки accounts не завантажені й непорожні — хук сам
+  // no-op'ає на steps.length === 0 (useProductTour.ts).
+  const { startTour } = useProductTour("mail", accounts && accounts.length > 0 ? MAIL_TOUR_STEPS : []);
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -228,16 +264,19 @@ export function MailApp({ organizationId }: { organizationId: string }) {
             <Inbox size={16} style={{ color: "var(--cyan)" }} />
             <span className="text-sm font-semibold">{accounts.find(a => a.id === activeAccountId)?.email_address}</span>
           </div>
-          <button onClick={syncNow} disabled={syncing} className="text-[var(--text-tertiary)]">
-            {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-          </button>
+          <div className="flex items-center gap-1">
+            <TourButton onStart={startTour} />
+            <button onClick={syncNow} disabled={syncing} data-tour="mail-sync" className="text-[var(--text-tertiary)]">
+              {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+            </button>
+          </div>
         </div>
 
-        <button onClick={() => setShowCompose(true)} className="glow-button text-sm !py-2 !mx-4 !mt-3 flex items-center justify-center gap-1.5">
+        <button onClick={() => setShowCompose(true)} data-tour="mail-compose" className="glow-button text-sm !py-2 !mx-4 !mt-3 flex items-center justify-center gap-1.5">
           <Plus size={14} /> Новий лист
         </button>
 
-        <div className="flex items-center gap-1 px-4 mt-3">
+        <div className="flex items-center gap-1 px-4 mt-3" data-tour="mail-tabs">
           <button
             onClick={() => setView("inbox")}
             className="text-xs px-2.5 py-1 rounded-lg"
@@ -270,7 +309,7 @@ export function MailApp({ organizationId }: { organizationId: string }) {
             )}
           </div>
         ) : (
-        <div className="flex-1 overflow-y-auto mt-3">
+        <div className="flex-1 overflow-y-auto mt-3" data-tour="mail-threads-list">
           {threads === null ? (
             <div className="p-6 text-center"><Loader2 size={16} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} /></div>
           ) : threads.length === 0 ? (

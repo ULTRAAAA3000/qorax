@@ -119,7 +119,7 @@ export function OfficeDocsListUI({ organizationId }: Props) {
 
   return (
     <div className="space-y-4">
-      <button onClick={openCreateModal} className="glow-button text-sm !py-2 !px-4 flex items-center gap-1.5">
+      <button onClick={openCreateModal} data-tour="office-new-doc" className="glow-button text-sm !py-2 !px-4 flex items-center gap-1.5">
         <Plus size={14} /> Новий документ
       </button>
 
