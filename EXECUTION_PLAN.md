@@ -5655,6 +5655,7 @@ AI Chat → `/audit` `/score` `/speed` `/issues` `/rank` `/traffic`
 Coach → Фото-аналіз. Свідомо не реалізовано: голосові повідомлення
 (TTS-обмеження, узгоджено з Артемом пропустити).
 
+
 ## Qorax Telegram Bot — UX без запам'ятовування команд
 
 **Обсяг:** запит Артема — "зараз взагалі не зрозуміло, як їм
@@ -5705,3 +5706,165 @@ ESLint (worker поза покриттям, як завжди), `wrangler deploy
 Telegram-бота** (усі пункти документа Артема окрім голосових
 повідомлень, свідомо пропущених через TTS-обмеження, узгоджено
 раніше).
+## Перехід на екосистемну модель тарифів — Крок 1: схема БД (0086)
+
+**Артем: "давай тоді займись роботою на перехід на цю систему"**
+(PRICING.md Частина A → факт). Узгоджено: повна заміна старої
+лінійки Business на нову (Free/Starter/Pro/Agency по кожному з 5
+продуктів), старі 6 значень enum `plan_code` лишаються в enum без
+використання (PostgreSQL enum не можна видаляти без перестворення
+типу), 16+ worker-хендлерів з жорстко закодованими старими кодами
+переписуються НАСТУПНИМ кроком (не можуть зламатись до того, як
+готові читати нові коди).
+
+**Migration `0086_ecosystem_pricing.sql`** (3 послідовні SQL-запити,
+той самий патерн, що 0018 — нове enum-значення не можна
+використати в тій самій транзакції):
+
+1. **Запит 1:** новий enum `product_key` (business/mail/creator/
+   office/browser), нова колонка `plans.product` (nullable —
+   старі 6 рядків лишаються product-agnostic), 20 нових значень
+   `plan_code` формату `{product}_{tier}`, `plans.site_limit`
+   послаблено до nullable (мало сенс лише для Business).
+2. **Запит 2:** 20 нових рядків у `plans` (5 продуктів × 4 рівні,
+   ціни точно з PRICING.md — $0/$12.99/$24.99/$59.99), заміна
+   constraint `subscriptions` — стара гарантія "одна активна
+   підписка на organization ЦІЛОМ" замінена на "одна на
+   organization+product" (нова денормалізована колонка
+   `subscriptions.product`, синхронізована тригером
+   `sync_subscription_product()` + backfill для існуючих рядків).
+   Нова таблиця `qorax_one_subscriptions` — свідомо ОКРЕМА від
+   `plans`/`subscriptions` (Qorax One не прив'язаний до одного
+   продукту, дає доступ до всіх п'яти одразу на рівні tier).
+3. **Запит 3:** `handle_new_user()` — нова організація одразу
+   отримує `business_free` замість 14-денного `trial`.
+
+**Критична знахідка під час написання (виправлено ДО коміту):**
+перша чернетка Запиту 3 переписала `handle_new_user()` з нуля за
+зразком застарілої версії з `0018_trial_and_free_plan.sql` —
+випадково відкинула pending team invites і referral code
+attribution логіку, додану пізніше в `0034_team_invites.sql` і
+`0035_referrals.sql`. Знайдено звіркою списку ВСІХ міграцій, що
+перевизначають `handle_new_user()` (`grep -rl` по всьому
+`supabase/migrations/`), не лише найближчої за номером. Виправлено:
+фінальна версія копіює всю логіку з `0035` (останньої реальної
+версії) дослівно, змінюючи ЛИШЕ блок призначення підписки
+(trial+trial_ends_at → business_free без trial_ends_at). Урок:
+при `create or replace function` завжди звіряти з НАЙОСТАННІШОЮ
+версією функції по всьому дереву міграцій, не з тією, де вона вперше
+з'явилась.
+
+**Відома невідповідність, свідомо НЕ виправлена цим проходом:**
+`ai_product_toggles.product` (0082) — це `text` з CHECK-обмеженням
+на ті самі 5 значень, не новий enum `product_key`. Два різні
+представлення того самого поняття "продукт" у схемі. Не уніфіковано
+зараз — `ai_product_toggles.product` вже використовується в
+`worker/src/lib/aiCredits.ts` через PostgREST text-порівняння, зміна
+типу вимагає окремої перевірки сумісності, не мета цієї міграції.
+
+**Не перевірено через реальний SQL Editor** (немає мережевого
+доступу до Supabase DDL з цього sandbox) — лише ретельна ручна
+звірка синтаксису й перехресна перевірка з усіма попередніми
+міграціями, що торкаються тих самих таблиць/функцій. **Артему
+потрібно застосувати цю міграцію вручну через Supabase SQL Editor,
+трьома окремими запитами по порядку**, перед тим як наступний крок
+(оновлення `lemonSqueezyWebhook.ts` і 16 worker-хендлерів) зможе
+розраховувати на нові коди в продакшн-БД.
+
+**Наступні кроки (не цей коміт):**
+- Оновити `lemonSqueezyWebhook.ts` — product-aware matchedPlan
+  lookup, новий `orgType`/`siteLimit` маппінг per-product (замість
+  жорсткого `planCode === "agency" ? 5 : 1`)
+- Переписати 16 worker-хендлерів (`crmHandler.ts`, `socialHandler.ts`,
+  `academyHandler.ts`, `benchmarkHandler.ts`, `brokenLinksChecker.ts`,
+  `chatHandler.ts`, `competitorChecker.ts`, `croHandler.ts`,
+  `fixRequestHandler.ts`, `gscHandler.ts`, `pdfReport.ts`,
+  `reportHandler.ts`, `seoChecker.ts`, `teamHandler.ts`,
+  `translatorHandler.ts`) під нові коди тарифів
+- LemonSqueezy: створити 20 нових продуктів/варіантів (5×4) +
+  3 варіанти Qorax One, заповнити `ls_variant_id` в `plans`
+- Оновити `PlansSection`/checkout-флоу на лендінгу під нову лінійку
+- UI для Qorax One (окрема сторінка/картка на лендінгу)
+
+## Перехід на екосистемну модель тарифів — Крок 2: webhook + checkout лендінгу
+
+**Продовження Кроку 1 (0086, схема БД)** — тепер сам код, що
+використовує нові тарифи: `lemonSqueezyWebhook.ts` і checkout-URL на
+лендінгу. LemonSqueezy-варіанти (20 нових + 3 Qorax One) Артем
+створює вручну — цей крок готує КОД, що очікуватиме на них.
+
+**`worker/src/lib/lemonSqueezyWebhook.ts`:**
+
+1. **`AI_CREDITS_BY_PLAN`** — додано 4 нові ключі (business_free/
+   starter/pro/agency: 20/500/5000/25000), легасі-ключі (starter/
+   growth/agency/enterprise) лишені без змін — старі організації, що
+   ще не мігровані, продовжують працювати як раніше.
+
+2. **`handleSubscriptionActive` — найбільша зміна:**
+   - `selectRows` тепер тягне `product`+`site_limit` з `plans`
+     (раніше лише `code`)
+   - **Conflict-ключ upsert `subscriptions` тепер
+     `organization_id,product`** (не просто `organization_id`) —
+     0086 дозволяє кільком активним підпискам на organization
+     одночасно (окремо Business/Mail/Creator/...). Для легасі-планів
+     (`product IS NULL`) лишається старий conflict-ключ
+     `organization_id`, поведінка не змінюється
+   - **`orgType`/`siteLimit` більше НЕ хардкодяться** (`planCode ===
+     "agency" ? 5 : 1`) — беруться напряму з `plans.site_limit`
+     (`-1` → практичний максимум 999999, той самий підхід, що
+     `rank_keywords_limit`/`analytics_history_days` в 0086)
+   - **Sync org_type/site_limit і видача ai_credits тепер лише для
+     `isBusinessPlan`** (`product === "business" || product === null`)
+     — Mail/Creator/Office/Browser не мають "кількості сайтів" чи
+     спільного `ai_credits`-пулу (той пул лишається Business-
+     специфічним, PRICING.md Частина C)
+
+3. **`handleSubscriptionCancelled` — виправлено серйозний
+   архітектурний ризик:** стара версія фільтрувала
+   `organization_id=eq.${orgId}` при UPDATE — коли одна organization
+   могла мати лише одну підписку, це було безпечно. Тепер, коли
+   organization може мати кілька активних підписок (Business + Mail
+   одночасно), той самий фільтр **відмінив би ВСІ продукти разом**,
+   навіть якщо LemonSqueezy повідомляє про скасування лише ОДНОГО з
+   них. Виправлено: спочатку `selectRows` знаходить конкретну
+   підписку за `ls_subscription_id` (унікальний на кожну LS-
+   підписку), UPDATE фільтрується по `id=eq.<знайдений id>` —
+   зачіпає рівно ту підписку, що реально скасовується. Free-план для
+   fallback тепер теж product-specific (`{product}_free`, не
+   застарілий `code=eq.free`).
+
+**`app/page.tsx` — checkout на лендінгу:**
+- `LS_VARIANTS`: `Starter/Growth/Agency` → `Starter/Pro/Agency` (нові
+  env-змінні `LS_VARIANT_BUSINESS_STARTER/PRO/AGENCY`, старі
+  `LS_VARIANT_STARTER/GROWTH/AGENCY` більше не читаються)
+- `PlansSection`/`PlanCard`: 3 картки → 4 картки (Free/Starter/Pro/
+  Agency), grid `lg:grid-cols-[0.85fr_1.15fr_0.85fr]` (3 колонки
+  нерівної ширини) → `sm:grid-cols-2 lg:grid-cols-4` (адаптивний
+  4-колонковий грід), Pro тепер "ПОПУЛЯРНИЙ" (`highlighted`) замість
+  колишнього Growth
+- Ціни й фічі в картках — дослівно з PRICING.md Частина A (Business
+  рядок кожного тарифу)
+- Free-картка веде на `/dashboard` (залогінені) чи `/register`
+  (незалогінені) — ніколи на LemonSqueezy checkout, Free призначається
+  автоматично при реєстрації (handle_new_user, 0086)
+
+**Важливо — `CHECKOUT_DISABLED = true`** (`app/lib/checkoutFlag.ts`)
+досі активний: реальні checkout-кнопки на проді зараз показують
+"Скоро відкриємо реєстрацію" незалежно від цих змін — контрольований
+ризик, жодних живих грошей через цю кнопку зараз не проходить, поки
+прапорець не знято окремим рішенням Артема.
+
+**Перевірено:** `tsc --noEmit` чисто (worker + frontend), `eslint`
+чисто, `next build` успішний, `wrangler deploy --dry-run` для
+`qorax-api` успішний (956.41 KiB, gzip 160.60 KiB). Реальний webhook-
+виклик від LemonSqueezy НЕ протестовано (немає тестового акаунту/
+sandbox LemonSqueezy з цього sandbox) — покладаємось на ретельний
+ручний рев'ю логіки й наявні `tsc`-перевірки типів.
+
+**Наступний крок (не цей коміт):** 16 worker-хендлерів з жорстко
+закодованими старими кодами тарифів (`crmHandler.ts`,
+`socialHandler.ts`, `academyHandler.ts`, `benchmarkHandler.ts`,
+`brokenLinksChecker.ts`, `chatHandler.ts`, `competitorChecker.ts`,
+`croHandler.ts`, `fixRequestHandler.ts`, `gscHandler.ts`,
+`pdfReport.ts`, `reportHandler.ts`, `seoChecker.ts`, `teamHandler.ts`,
+`translatorHandler.ts`).

@@ -26,12 +26,17 @@ import { createClient } from "./lib/supabase/server";
 import { CHECKOUT_DISABLED } from "./lib/checkoutFlag";
 import { Briefcase, Mail, Palette, FileText, Globe } from "lucide-react";
 
-// LemonSqueezy checkout URLs
+// LemonSqueezy checkout URLs — нова лінійка Business (0086,
+// PRICING.md Частина A): Free/Starter/Pro/Agency замість старих
+// Starter/Growth/Agency. Free не має LemonSqueezy-варіанту взагалі
+// (безкоштовний план призначається автоматично при реєстрації,
+// handle_new_user() 0086) — checkoutUrl для Free завжди веде на
+// /register, ніколи на LS checkout.
 const LS_SUBDOMAIN = process.env.LS_STORE_SUBDOMAIN ?? "qoraxus";
 const LS_VARIANTS: Record<string, string> = {
-  Starter: process.env.LS_VARIANT_STARTER ?? "",
-  Growth:  process.env.LS_VARIANT_GROWTH  ?? "",
-  Agency:  process.env.LS_VARIANT_AGENCY  ?? "",
+  Starter: process.env.LS_VARIANT_BUSINESS_STARTER ?? "",
+  Pro:     process.env.LS_VARIANT_BUSINESS_PRO      ?? "",
+  Agency:  process.env.LS_VARIANT_BUSINESS_AGENCY   ?? "",
 };
 function lsCheckoutUrl(plan: string): string {
   const vid = LS_VARIANTS[plan];
@@ -71,8 +76,9 @@ export default async function Home() {
     return params.toString() ? `${base}?${params.toString()}` : base;
   }
 
+  const freeUrl = user ? "/dashboard" : "/register";
   const starterUrl = checkoutUrl("Starter");
-  const growthUrl = checkoutUrl("Growth");
+  const proUrl = checkoutUrl("Pro");
   const agencyUrl = checkoutUrl("Agency");
 
   return (
@@ -132,7 +138,7 @@ export default async function Home() {
 
       <FeatureBento />
       <HowItWorksSection />
-      <PlansSection starterUrl={starterUrl} growthUrl={growthUrl} agencyUrl={agencyUrl} />
+      <PlansSection freeUrl={freeUrl} starterUrl={starterUrl} proUrl={proUrl} agencyUrl={agencyUrl} />
       <FaqSection />
 
       {/* ============================================================
@@ -424,7 +430,7 @@ function ProductSection({
 // Plans — glassmorphism cards with gradient accents
 // ============================================================
 
-function PlansSection({ starterUrl, growthUrl, agencyUrl }: { starterUrl: string; growthUrl: string; agencyUrl: string }) {
+function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: string; starterUrl: string; proUrl: string; agencyUrl: string }) {
   return (
     <section id="plans" className="relative">
       <div className="gradient-divider" />
@@ -435,32 +441,31 @@ function PlansSection({ starterUrl, growthUrl, agencyUrl }: { starterUrl: string
               className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono text-[var(--text-tertiary)]"
               style={{ background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)" }}
             >
-              ✦ ТАРИФИ
+              ✦ ТАРИФИ QORAX BUSINESS
             </span>
           </div>
         </Reveal>
         <Reveal delay={0.04}>
           <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-semibold text-center max-w-2xl mx-auto leading-tight">
-            У 3-10 разів{" "}
-            <span className="gradient-text">дешевше</span>{" "}
-            за найм підрядника
+            Почніть безкоштовно.{" "}
+            <span className="gradient-text">Ростіть, коли готові</span>
           </h2>
         </Reveal>
 
-        <div className="mt-14 grid lg:grid-cols-[0.85fr_1.15fr_0.85fr] gap-5 items-stretch">
-          <Reveal delay={0.06} className="lg:pt-6">
+        <div className="mt-14 grid sm:grid-cols-2 lg:grid-cols-4 gap-5 items-stretch">
+          <Reveal delay={0.06}>
             <PlanCard
-              name="Starter"
-              checkoutUrl={starterUrl}
-              price="$49"
-              tagline="Один сайт, спокійний сон"
+              name="Free"
+              checkoutUrl={freeUrl}
+              price="$0"
+              tagline="Знайомство без картки"
               features={[
-                "Uptime моніторинг",
-                "Швидкість + графік у часі",
-                "SSL та домен — алерти",
-                "Биті посилання",
-                "AI-пояснення простою мовою",
-                "PDF-звіт щомісяця",
+                "1 сайт, щоденний моніторинг",
+                "Базовий SEO Audit",
+                "Rank до 20 запитів",
+                "Analytics — 30 днів історії",
+                "AI — 20 запитів на місяць",
+                "Telegram Bot",
               ]}
               variant="default"
             />
@@ -468,36 +473,53 @@ function PlansSection({ starterUrl, growthUrl, agencyUrl }: { starterUrl: string
 
           <Reveal delay={0.1}>
             <PlanCard
-              name="Growth"
-              checkoutUrl={growthUrl}
-              price="$99"
-              tagline="Коли вже росте трафік"
+              name="Starter"
+              checkoutUrl={starterUrl}
+              price="$12.99"
+              tagline="Фрілансерам і малому бізнесу"
               features={[
-                "Все з Starter",
-                "Core Web Vitals",
-                "SEO: meta, schema, sitemap",
-                "Google Search Console",
-                "AI: вплив на дохід у $",
-                "Моніторинг 1 конкурента",
-                "Telegram-алерти",
-                "Живий дашборд",
+                "До 10 сайтів, до 50 проєктів",
+                "Моніторинг кожні 30 хв",
+                "500 ключових запитів",
+                "Історія 6 місяців",
+                "AI — 500 запитів",
+                "PDF-звіти, інтеграції, автоматизації",
+              ]}
+              variant="default"
+            />
+          </Reveal>
+
+          <Reveal delay={0.14}>
+            <PlanCard
+              name="Pro"
+              checkoutUrl={proUrl}
+              price="$24.99"
+              tagline="Для професіоналів"
+              features={[
+                "До 100 сайтів, необмежені проєкти",
+                "Моніторинг кожні 5 хв",
+                "5 000 ключових запитів, історія 2 роки",
+                "AI — 5 000 запитів",
+                "White Label звіти, API, AI Copilot",
+                "Команда до 5 осіб",
               ]}
               variant="highlighted"
             />
           </Reveal>
 
-          <Reveal delay={0.14} className="lg:pt-6">
+          <Reveal delay={0.18}>
             <PlanCard
               name="Agency"
               checkoutUrl={agencyUrl}
-              price="$199"
-              tagline="До 5 сайтів під одним дахом"
+              price="$59.99"
+              tagline="Для агентств і команд"
               features={[
-                "Все з Growth, на 5 сайтів",
-                "White-label звіти",
-                "AI генерація текстів і SEO",
-                "Конкуренти на кожен сайт",
-                "Пріоритетна підтримка",
+                "Необмежені сайти й проєкти",
+                "Моніторинг щохвилини",
+                "Необмежені ключові запити, повна історія",
+                "AI — 25 000 запитів",
+                "White Label, повний API",
+                "Команда до 25 осіб, пріоритетна підтримка",
               ]}
               variant="default"
             />
