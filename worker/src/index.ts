@@ -180,6 +180,7 @@ import {
 import {
   handleCrmContactsList,
   handleCrmContactCreate,
+  handleCrmContactDetail,
   handleCrmDealsList,
   handleCrmDealCreate,
   handleCrmDealStageUpdate,
@@ -1066,6 +1067,10 @@ const worker = {
     }
     if (url.pathname === "/api/crm/contacts" && request.method === "POST") {
       return handleCrmContactCreate(request, env, corsHeaders(origin));
+    }
+    const crmContactDetailMatch = url.pathname.match(/^\/api\/crm\/contacts\/([^/]+)$/);
+    if (crmContactDetailMatch && request.method === "GET") {
+      return handleCrmContactDetail(request, env, corsHeaders(origin), crmContactDetailMatch[1]);
     }
     if (url.pathname === "/api/crm/deals" && request.method === "GET") {
       return handleCrmDealsList(request, env, corsHeaders(origin));

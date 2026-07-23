@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Loader2, Sparkles, Heading2, List, CheckSquare, Type, Download, LayoutTemplate, Check, Image as ImageIcon } from "lucide-react";
+import { Loader2, Sparkles, Heading2, List, CheckSquare, Type, Download, LayoutTemplate, Check, Image as ImageIcon, User } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow } from "../BlockEditor";
 import { exportDocToPdf } from "../exportPdf";
@@ -10,11 +10,13 @@ import { usePresence } from "../usePresence";
 import { PresenceAvatars } from "../PresenceAvatars";
 import { useLiveSync } from "../useLiveSync";
 import { VersionHistoryButton } from "../VersionHistoryButton";
+import { CrmContactPicker } from "../CrmContactPicker";
 
 interface Props {
   docId: string;
   initialTitle: string;
   initialContent: { blocks: Block[] } | null;
+  organizationId: string;
 }
 
 // Той самий фікс, що OfficeDocsListUI.tsx/CreatorBoardsListUI.tsx.
@@ -37,7 +39,7 @@ async function getFreshToken(): Promise<string> {
 // — ті лишаються майбутніми ітераціями. Автозбереження з дебаунсом,
 // не окрема кнопка "Зберегти" — той самий принцип UX, що project_pages
 // редактор Sites-конструктора.
-export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
+export function DocEditorUI({ docId, initialTitle, initialContent, organizationId }: Props) {
   const presentUsers = usePresence("office_documents", docId);
   const [title, setTitle] = useState(initialTitle);
   const [blocks, setBlocks] = useState<Block[]>(initialContent?.blocks ?? []);
@@ -47,6 +49,7 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
   const [savingTemplate, setSavingTemplate] = useState(false);
   const [templateSaved, setTemplateSaved] = useState(false);
   const [showAiWriter, setShowAiWriter] = useState(false);
+  const [showCrmPicker, setShowCrmPicker] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -123,7 +126,9 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
     });
   }
 
-  function addBlock(type: Block["type"]) {
+  // smart_crm_contact виключено — потребує contactId, якого немає до
+  // вибору в CrmContactPicker (addSmartCrmBlock нижче обробляє це окремо).
+  function addBlock(type: Exclude<Block["type"], "smart_crm_contact">) {
     const id = newBlockId();
     const block: Block =
       type === "paragraph" ? { id, type, text: "" } :
@@ -136,6 +141,16 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
       scheduleSave(next);
       return next;
     });
+  }
+
+  function addSmartCrmBlock(contactId: string) {
+    const block: Block = { id: newBlockId(), type: "smart_crm_contact", contactId };
+    setBlocks(prev => {
+      const next = [...prev, block];
+      scheduleSave(next);
+      return next;
+    });
+    setShowCrmPicker(false);
   }
 
   function deleteBlock(id: string) {
@@ -312,7 +327,12 @@ export function DocEditorUI({ docId, initialTitle, initialContent }: Props) {
         <BlockAddButton icon={List} label="Список" onClick={() => addBlock("bullet_list")} />
         <BlockAddButton icon={CheckSquare} label="Чек-лист" onClick={() => addBlock("checklist")} />
         <BlockAddButton icon={ImageIcon} label="Зображення" onClick={() => addBlock("image")} />
+        <BlockAddButton icon={User} label="CRM-контакт" onClick={() => setShowCrmPicker(true)} />
       </div>
+
+      {showCrmPicker && (
+        <CrmContactPicker organizationId={organizationId} onSelect={addSmartCrmBlock} onClose={() => setShowCrmPicker(false)} />
+      )}
     </div>
   );
 }

@@ -67,6 +67,37 @@ export async function handleCrmContactsList(
   return json({ contacts: res.data ?? [] }, 200, corsHeaders);
 }
 
+// ── GET /api/crm/contacts/:id ── один контакт ──
+//
+// Додано для Qorax Office Smart Block (CRM-картка контакту, "жива"
+// прив'язка — MODULE_ROADMAP.md "Qorax Office", концепція Smart
+// Components з Creator, застосована до блочної моделі Office).
+// organization_id береться З САМОГО РЯДКА, не з query/body клієнта —
+// той самий безпечний патерн, що вже скрізь у проєкті (перевірка
+// власності ДО requireOrgAccess, не навпаки), щоб не можна було
+// підставити чужий contactId і отримати дані іншої організації.
+
+export async function handleCrmContactDetail(
+  request: Request,
+  env: Env,
+  corsHeaders: Record<string, string>,
+  contactId: string
+): Promise<Response> {
+  const res = await selectRows<CrmContact>(
+    "crm_contacts",
+    `select=id,organization_id,name,email,phone,source,created_at&id=eq.${encodeURIComponent(contactId)}`,
+    env.SUPABASE_URL,
+    env.SUPABASE_SERVICE_ROLE_KEY
+  );
+  const contact = res.data?.[0];
+  if (!contact) return json({ error: "Контакт не знайдено" }, 404, corsHeaders);
+
+  const access = await requireOrgAccess(request, contact.organization_id, "viewer", env);
+  if (!access.ok) return json({ error: access.status === 401 ? "Unauthorized" : "Forbidden" }, access.status ?? 403, corsHeaders);
+
+  return json({ contact }, 200, corsHeaders);
+}
+
 // ── POST /api/crm/contacts ── body: { organization_id, name?, email?, phone?, site_id? }
 
 export async function handleCrmContactCreate(
