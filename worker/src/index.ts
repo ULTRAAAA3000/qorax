@@ -23,6 +23,7 @@ import {
 } from "./lib/teamHandler";
 import { handleTelegramWebhook } from "./lib/telegramWebhook";
 import { sendTelegramWeeklyDigests, runBusinessCoachCheck } from "./lib/telegramBotHandler";
+import { setTelegramBotCommands } from "./lib/telegram";
 import { handleChatRequest, handleGetOrCreateThreadRequest } from "./lib/chatHandler";
 import {
   handleWorkspaceUploadRequest,
@@ -613,6 +614,15 @@ const worker = {
       if (url.pathname === "/api/admin/run-telegram-digest") {
         const r = await sendTelegramWeeklyDigests(env);
         return json({ ok: true, sent: r.sent, skipped: r.skipped }, 200, origin);
+      }
+
+      if (url.pathname === "/api/admin/setup-telegram-bot") {
+        // Одноразовий (не на кожен деплой) виклик setMyCommands —
+        // реєструє офіційне меню "☰" в Telegram. Telegram кешує це
+        // per-bot на своїй стороні, тому не потрібно викликати
+        // автоматично з cron чи при кожному деплої.
+        const r = await setTelegramBotCommands(env.TELEGRAM_BOT_TOKEN);
+        return json(r, r.ok ? 200 : 500, origin);
       }
 
       if (url.pathname === "/api/admin/run-url-speeds") {

@@ -18,8 +18,8 @@
 
 import type { Env } from "../types";
 import { selectRows, upsertRow } from "./supabase";
-import { sendTelegramMessage } from "./telegram";
-import { handleTelegramBotMessage, handleTelegramCallbackQuery, handleTelegramPhotoMessage } from "./telegramBotHandler";
+import { sendTelegramMessage, sendTelegramMessageWithReplyKeyboard } from "./telegram";
+import { handleTelegramBotMessage, handleTelegramCallbackQuery, handleTelegramPhotoMessage, TELEGRAM_REPLY_KEYBOARD } from "./telegramBotHandler";
 
 // Telegram Bot API шле апдейти у вигляді JSON-об'єкта Update.
 // Визначаємо тільки поля, які нам потрібні.
@@ -118,9 +118,10 @@ export async function handleTelegramWebhook(
 
     if (!orgId) {
       // /start без параметру — бот запущений напряму, не через наш deep link
-      await sendTelegramMessage(
+      await sendTelegramMessageWithReplyKeyboard(
         chatId,
-        `👋 Вітаємо у Qorax Bot!\n\nЦей бот — AI-помічник вашого бізнесу: сповіщення про стан сайтів, команди <code>/audit /score /issues</code> і AI-чат природною мовою.\n\nЩоб підключити, перейдіть у <b>Налаштування → Telegram</b> у вашому дашборді Qorax і натисніть кнопку підключення.`,
+        `👋 Вітаємо у Qorax Bot!\n\nЦей бот — AI-помічник вашого бізнесу: сповіщення про стан сайтів, кнопки нижче для швидких звітів і AI-чат природною мовою.\n\nЩоб підключити, перейдіть у <b>Налаштування → Telegram</b> у вашому дашборді Qorax і натисніть кнопку підключення.`,
+        TELEGRAM_REPLY_KEYBOARD,
         env.TELEGRAM_BOT_TOKEN
       );
       return new Response("ok", { status: 200 });
@@ -170,9 +171,10 @@ export async function handleTelegramWebhook(
     }
 
     const firstName = message.from?.first_name ?? "";
-    await sendTelegramMessage(
+    await sendTelegramMessageWithReplyKeyboard(
       chatId,
-      `✅ <b>Telegram підключено до Qorax${firstName ? `, ${firstName}` : ""}!</b>\n\nВи отримуватимете сповіщення коли:\n• 🔴 Сайт стає недоступним\n• ✅ Сайт відновлює роботу\n• ⚠️ SSL-сертифікат закінчується\n\nТакож можна писати боту напряму:\n/audit — звіт по сайтах\n/score — PageSpeed\n/issues — активні проблеми\nАбо просто питання природною мовою — наприклад «чому впали позиції?».`,
+      `✅ <b>Telegram підключено до Qorax${firstName ? `, ${firstName}` : ""}!</b>\n\nВи отримуватимете сповіщення коли:\n• 🔴 Сайт стає недоступним\n• ✅ Сайт відновлює роботу\n• ⚠️ SSL-сертифікат закінчується\n\nСкористайтесь кнопками нижче для швидких звітів, або просто напишіть питання природною мовою — наприклад «чому впали позиції?».`,
+      TELEGRAM_REPLY_KEYBOARD,
       env.TELEGRAM_BOT_TOKEN
     );
 

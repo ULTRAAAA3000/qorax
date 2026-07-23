@@ -48,6 +48,83 @@ export async function sendTelegramMessage(
 // Qorax на ручне виправлення, handleFixRequest) — тут просто
 // подається в один клік з Telegram замість форми на сайті.
 
+// ─── Постійна reply-клавіатура + меню команд (UX: людині не треба
+// пам'ятати команди напам'ять — кнопки внизу екрана + офіційне меню
+// Telegram при натисканні "☰"). ────────────────────────────────
+
+/**
+ * Постійна клавіатура з кнопками замість inline (та зникає одразу
+ * після натискання) — reply-кнопки лишаються видимими під полем
+ * вводу, доки їх явно не приберуть. Натискання кнопки надсилає її
+ * текст як звичайне повідомлення — тому текст кнопки має точно
+ * збігатися з тим, що диспетчер команд (handleTelegramBotMessage)
+ * очікує розпізнати.
+ */
+export async function sendTelegramMessageWithReplyKeyboard(
+  chatId: string,
+  text: string,
+  keyboard: string[][],
+  botToken: string
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    const response = await fetch(`${TELEGRAM_ENDPOINT}/bot${botToken}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text,
+        parse_mode: "HTML",
+        disable_web_page_preview: true,
+        reply_markup: {
+          keyboard: keyboard.map(row => row.map(t => ({ text: t }))),
+          resize_keyboard: true,
+          is_persistent: true,
+        },
+      }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      return { ok: false, error: `Telegram API error ${response.status}: ${body.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
+/**
+ * setMyCommands — реєструє офіційне меню команд Telegram (кнопка
+ * "☰" поруч з полем вводу повідомлення). Викликається один раз при
+ * старті воркера/деплої, не на кожне повідомлення — Telegram кешує
+ * це на своїй стороні per-bot, не per-chat.
+ */
+export async function setTelegramBotCommands(botToken: string): Promise<{ ok: boolean; error?: string }> {
+  const commands = [
+    { command: "audit", description: "Короткий звіт по всіх сайтах" },
+    { command: "score", description: "PageSpeed (Lighthouse)" },
+    { command: "speed", description: "Core Web Vitals (LCP/INP/CLS)" },
+    { command: "issues", description: "Активні проблеми" },
+    { command: "rank", description: "Позиції у пошуку" },
+    { command: "traffic", description: "Трафік з пошуку (GSC)" },
+    { command: "report", description: "Де знайти повний звіт" },
+    { command: "help", description: "Список команд і можливостей" },
+  ];
+  try {
+    const response = await fetch(`${TELEGRAM_ENDPOINT}/bot${botToken}/setMyCommands`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ commands }),
+    });
+    if (!response.ok) {
+      const body = await response.text();
+      return { ok: false, error: `Telegram API error ${response.status}: ${body.slice(0, 200)}` };
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Unknown error" };
+  }
+}
+
 export interface TelegramInlineButton {
   text: string;
   callback_data: string; // максимум 64 байти за обмеженням Telegram Bot API
