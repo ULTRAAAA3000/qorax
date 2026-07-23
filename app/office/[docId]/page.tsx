@@ -37,7 +37,7 @@ export default async function DocPage({ params }: { params: Promise<{ docId: str
       </header>
 
       <div className="flex-1 min-h-0">
-        <DocEditorUI docId={doc.id} initialTitle={doc.title} initialContent={doc.content} />
+        <DocEditorUI docId={doc.id} initialTitle={doc.title} initialContent={doc.content} organizationId={doc.organization_id} />
       </div>
     </div>
   );
