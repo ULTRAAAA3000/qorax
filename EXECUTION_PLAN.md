@@ -6402,3 +6402,82 @@ id (5 продуктів × Starter/Pro/Agency) + `LS_API_KEY`/`LS_STORE_ID`/
 (SQL UPDATE по кожному з 15 рядків) → підтвердити, що всі 15+3
 (Business вже мав) env-змінних `LS_VARIANT_*` виставлені в Cloudflare
 Workers Build → Variables and secrets → зняти `CHECKOUT_DISABLED`.
+## Qorax SEO Platform (Developer API) — Monitoring API додано (4/5, ОСТАННІЙ)
+
+**Артем: "закривай і його"** — Monitoring API, останній
+невиконаний із початкового списку 5 (AI SEO API свідомо пропущено
+назавжди). Завершує весь Developer API з початкового стратегічного
+документа Артема.
+
+**Migration `0088_developer_monitoring_api.sql`:** дві нові таблиці:
+- `developer_monitored_urls` — один рядок = один URL під моніторингом
+  для конкретного API-ключа, з "baseline" (title/canonical/
+  hasSchema/robotsAllowed/pagespeedMobile) — останнім відомим станом
+- `developer_monitor_changes` — лог виявлених змін (одна зміна ОДНОГО
+  поля на рядок), не окрема таблиця для кожного типу поля
+
+RLS той самий паттерн, що `developer_api_requests` (0084) — доступ
+через JOIN на `developer_api_keys.organization_id`.
+
+**Новий `worker/src/lib/developerMonitorChecker.ts`** — ядро
+перевірки, НАВМИСНО окреме від `seoChecker.ts::fetchMeta()/
+fetchRobots()` (ті приватні функції завʼязані на внутрішню модель
+`site_id`, не на довільний зовнішній URL — той самий принцип
+незалежності, що вже застосований у `basicCheck.ts`/
+`developerReportGenerator.ts`). `takeMonitorSnapshot()` — власний
+легкий парсинг title/canonical/hasSchema через regex + власна
+спрощена robots.txt перевірка (той самий рівень деталізації, що вже
+прийнятий у `seoChecker.ts` — "чи є `Disallow: /` без специфічного
+User-agent", не повний парсинг усіх правил). `detectChanges()` —
+порівнює новий знімок з baseline, **шумозаглушення для pagespeed**
+(зміна рахується лише при різниці ≥10 пунктів, щоб природні
+коливання PageSpeed між прогонами не генерували "зміну" щогодини).
+
+**Новий `worker/src/lib/developerMonitorHandler.ts`:**
+- `POST /api/v1/monitor` — додає URL, одразу знімає перший baseline
+  (не чекає на наступний cron-прогін — інакше перша перевірка "з
+  нуля" завжди дала б хибну "зміну" проти порожнього стану)
+- `GET /api/v1/monitor` — список усіх URL ключа + останні 100 змін,
+  згруповані по URL
+- `DELETE /api/v1/monitor/:id` — м'яке видалення (`active=false`,
+  фільтр по `api_key_id` у WHERE — гарантія, що ключ не видалить
+  чужий монітор)
+- `runDeveloperMonitorChecks()` — щогодинний cron sweep, ДОДАНО в
+  ІСНУЮЧИЙ `"0 * * * *"` тригер (`runCrmReminders`), не окремий
+  Cloudflare Cron Trigger. Service-role напряму (не через API-ключ/
+  requests_limit — це фонова платформна робота, не виклик від
+  зовнішнього розробника). **Baseline завжди оновлюється на поточний
+  стан** незалежно від того, чи виявлена зміна — інакше одна зміна
+  title генерувала б "зміну" щогодини нескінченно (`detectChanges()`
+  порівнює лише з ПОПЕРЕДНІМ станом, не з першим знімком назавжди).
+
+**Роутинг** у `worker/src/index.ts`: `/api/v1/monitor` (POST/GET/
+OPTIONS) + `/api/v1/monitor/:id` (DELETE) — той самий
+`developer_api_keys.requests_limit` пул, що решта трьох ендпоінтів.
+
+**Перевірено:** `tsc --noEmit` чисто з першого разу попри великий
+обсяг нового коду (2 нові файли + миграція + роутинг + cron),
+`eslint` чисто, `wrangler deploy --dry-run` успішний (995.91 KiB,
+gzip 168.06 KiB). Реальний рантайм-тест через `wrangler dev --local`:
+усі чотири HTTP-методи (POST/GET/DELETE/OPTIONS) на `/api/v1/monitor`
+відповідають коректно (401 без ключа, 204 OPTIONS), без runtime-
+помилок. **Пряме юніт-тестування `detectChanges()`** через `npx tsx`
+(5 сценаріїв: без змін, title змінився, schema зникла, невелике
+коливання PageSpeed <10 — правильно ІГНОРУЄТЬСЯ, велике падіння
+PageSpeed ≥10 — правильно ФІКСУЄТЬСЯ) — усі 5 пройшли коректно.
+
+**ПІДСУМОК: Qorax SEO Platform (Developer API) завершено — 4 з 5
+початково запланованих API готові:**
+1. ✅ SEO Audit API (`POST /api/v1/audit`)
+2. ✅ Schema API (`POST /api/v1/schema`)
+3. ✅ Reporting API (`POST /api/v1/report`)
+4. ✅ Monitoring API (`POST/GET/DELETE /api/v1/monitor`)
+5. ⛔ AI SEO API — свідомо пропущено НАЗАВЖДИ за прямим рішенням
+   Артема (достатнє AI-навантаження вже є на платформі)
+
+**Свідомо НЕ зроблено (за межами початкового плану 5 API):** SDK
+(JS/Python/PHP/Go), інтерактивна документація а-ля Stripe, White
+Label API, Plugin SDK, білінг для самого Developer API
+(`requests_limit` досі фіксований `1000`/міс, незалежний від жодного
+з тарифів 0086), webhook-доставка змін Monitoring API назовні
+(зараз лише через `GET /api/v1/monitor`).
