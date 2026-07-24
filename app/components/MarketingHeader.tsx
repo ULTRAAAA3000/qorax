@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { QoraxLogo } from "./QoraxLogo";
+import { LanguageSwitcher } from "./LanguageSwitcher";
+import { localizedHref, type Locale } from "@/app/lib/i18n";
 
 // isLoggedIn прийнято залишити в пропсах (сторінки, що використовують
 // MarketingHeader, все ще передають user-стан для інших цілей), але
@@ -7,18 +9,33 @@ import { QoraxLogo } from "./QoraxLogo";
 // дашборду") — вхід тепер відбувається виключно через сторінку
 // конкретного продукту екосистеми (/login веде туди ж, але лінк на
 // нього прибрано з глобальної навігації лендингу).
+//
+// lang визначає мову підписів навігації і мову, куди ведуть
+// href (localizedHref переписує "/pricing" на "/en/pricing" для
+// lang="en" — лише для сторінок, які вже мають en-версію,
+// LOCALE_PAGE_PAIRS у app/lib/i18n.ts; решта посилань (/features,
+// /docs тощо, ще не перекладені) лишаються на uk-версії навмисно,
+// щоб не вести на неіснуючу сторінку).
+
+const NAV_LABELS: Record<Locale, { features: string; plans: string; docs: string; about: string; audit: string }> = {
+  uk: { features: "Можливості", plans: "Тарифи", docs: "Документація", about: "Про нас", audit: "Безкоштовний аудит" },
+  en: { features: "Features", plans: "Pricing", docs: "Docs", about: "About", audit: "Free Audit" },
+};
 
 export function MarketingHeader({
   activePath = "",
+  lang = "uk",
 }: {
   isLoggedIn?: boolean;
   activePath?: string;
+  lang?: Locale;
 }) {
+  const t = NAV_LABELS[lang];
   const navLinks = [
-    { href: "/features", label: "Можливості" },
-    { href: "/#plans", label: "Тарифи" },
-    { href: "/docs", label: "Документація" },
-    { href: "/about", label: "Про нас" },
+    { href: "/features", label: t.features },
+    { href: "/#plans", label: t.plans },
+    { href: "/docs", label: t.docs },
+    { href: "/about", label: t.about },
   ];
 
   return (
@@ -32,7 +49,7 @@ export function MarketingHeader({
       }}
     >
       <div className="mx-auto max-w-6xl px-6 sm:px-8 h-16 flex items-center justify-between">
-        <Link href="/">
+        <Link href={lang === "en" ? "/en" : "/"}>
           <QoraxLogo size="sm" />
         </Link>
         <nav className="hidden md:flex items-center gap-7 text-sm text-[var(--text-secondary)]">
@@ -41,7 +58,7 @@ export function MarketingHeader({
             return (
               <a
                 key={label}
-                href={href}
+                href={localizedHref(href, lang)}
                 className="transition-colors hover:text-[var(--text-primary)]"
                 style={{
                   color: isActive ? "var(--text-primary)" : undefined,
@@ -54,9 +71,12 @@ export function MarketingHeader({
             );
           })}
         </nav>
-        <Link href="/#audit" className="glow-button text-sm !py-2 !px-4">
-          Безкоштовний аудит
-        </Link>
+        <div className="flex items-center gap-4">
+          <LanguageSwitcher lang={lang} />
+          <Link href={localizedHref("/#audit", lang)} className="glow-button text-sm !py-2 !px-4">
+            {t.audit}
+          </Link>
+        </div>
       </div>
     </header>
   );

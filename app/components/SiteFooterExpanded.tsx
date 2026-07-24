@@ -1,47 +1,101 @@
 import { QoraxLogo } from "./QoraxLogo";
+import { localizedHref, type Locale } from "@/app/lib/i18n";
 
 /**
  * SiteFooterExpanded — rich footer with gradient top border,
  * multi-column links, and social presence.
  */
 
-const COLUMNS = [
-  {
-    title: "Продукт",
-    links: [
-      { label: "Можливості", href: "/features" },
-      { label: "Тарифи", href: "/#plans" },
-      { label: "Документація", href: "/docs" },
-      { label: "Безкоштовний аудит", href: "/#audit" },
-    ],
-  },
-  {
-    title: "Для кого",
-    links: [
-      { label: "Малий бізнес", href: "/features" },
-      { label: "Агентства", href: "/features" },
-      { label: "E-commerce", href: "/features" },
-      { label: "Фрілансери", href: "/features" },
-    ],
-  },
-  {
-    title: "Компанія",
-    links: [
-      { label: "Про нас", href: "/about" },
-      { label: "Партнерська програма", href: "/partners" },
-      { label: "Контакти", href: "/about#contact" },
-    ],
-  },
-  {
-    title: "Правове",
-    links: [
-      { label: "Умови використання", href: "/terms" },
-      { label: "Політика конфіденційності", href: "/privacy" },
-    ],
-  },
-];
+const COLUMNS: Record<Locale, Array<{ title: string; links: Array<{ label: string; href: string }> }>> = {
+  uk: [
+    {
+      title: "Продукт",
+      links: [
+        { label: "Можливості", href: "/features" },
+        { label: "Тарифи", href: "/#plans" },
+        { label: "Документація", href: "/docs" },
+        { label: "Безкоштовний аудит", href: "/#audit" },
+      ],
+    },
+    {
+      title: "Для кого",
+      links: [
+        { label: "Малий бізнес", href: "/features" },
+        { label: "Агентства", href: "/features" },
+        { label: "E-commerce", href: "/features" },
+        { label: "Фрілансери", href: "/features" },
+      ],
+    },
+    {
+      title: "Компанія",
+      links: [
+        { label: "Про нас", href: "/about" },
+        { label: "Партнерська програма", href: "/partners" },
+        { label: "Контакти", href: "/about#contact" },
+      ],
+    },
+    {
+      title: "Правове",
+      links: [
+        { label: "Умови використання", href: "/terms" },
+        { label: "Політика конфіденційності", href: "/privacy" },
+      ],
+    },
+  ],
+  en: [
+    {
+      title: "Product",
+      links: [
+        { label: "Features", href: "/features" },
+        { label: "Pricing", href: "/#plans" },
+        { label: "Docs", href: "/docs" },
+        { label: "Free Audit", href: "/#audit" },
+      ],
+    },
+    {
+      title: "Who it's for",
+      links: [
+        { label: "Small business", href: "/features" },
+        { label: "Agencies", href: "/features" },
+        { label: "E-commerce", href: "/features" },
+        { label: "Freelancers", href: "/features" },
+      ],
+    },
+    {
+      title: "Company",
+      links: [
+        { label: "About", href: "/about" },
+        { label: "Partner program", href: "/partners" },
+        { label: "Contact", href: "/about#contact" },
+      ],
+    },
+    {
+      title: "Legal",
+      links: [
+        { label: "Terms of Service", href: "/terms" },
+        { label: "Privacy Policy", href: "/privacy" },
+      ],
+    },
+  ],
+};
 
-export function SiteFooterExpanded() {
+const COPY: Record<Locale, { tagline: string; rights: string; madeIn: string }> = {
+  uk: {
+    tagline: "Технічний моніторинг сайтів для малого бізнесу та агентств.",
+    rights: "Усі сайти заслуговують на турботу.",
+    madeIn: "Зроблено в Україні 🇺🇦",
+  },
+  en: {
+    tagline: "Technical website monitoring for small businesses and agencies.",
+    rights: "Every website deserves to be taken care of.",
+    madeIn: "Made in Ukraine 🇺🇦",
+  },
+};
+
+export function SiteFooterExpanded({ lang = "uk" }: { lang?: Locale }) {
+  const columns = COLUMNS[lang];
+  const t = COPY[lang];
+
   return (
     <footer className="relative">
       <div className="gradient-divider" />
@@ -50,7 +104,7 @@ export function SiteFooterExpanded() {
           <div>
             <QoraxLogo size="sm" />
             <p className="mt-4 text-sm text-[var(--text-tertiary)] max-w-[220px] leading-relaxed">
-              Технічний моніторинг сайтів для малого бізнесу та агентств.
+              {t.tagline}
             </p>
             {/* Social links */}
             <div className="mt-6 flex items-center gap-3">
@@ -75,7 +129,7 @@ export function SiteFooterExpanded() {
             </div>
           </div>
 
-          {COLUMNS.map((col) => (
+          {columns.map((col) => (
             <div key={col.title}>
               <h4 className="font-mono text-xs tracking-wide text-[var(--text-tertiary)] mb-4">
                 {col.title.toUpperCase()}
@@ -84,7 +138,7 @@ export function SiteFooterExpanded() {
                 {col.links.map((link) => (
                   <li key={link.label}>
                     <a
-                      href={link.href}
+                      href={localizedHref(link.href, lang)}
                       className="text-sm text-[var(--text-secondary)] hover:text-[var(--text-primary)] transition-colors"
                     >
                       {link.label}
@@ -101,9 +155,9 @@ export function SiteFooterExpanded() {
           style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)" }}
         >
           <p className="text-xs text-[var(--text-tertiary)]">
-            © {new Date().getFullYear()} Qorax. Усі сайти заслуговують на турботу.
+            © {new Date().getFullYear()} Qorax. {t.rights}
           </p>
-          <p className="text-xs text-[var(--text-tertiary)] font-mono">Зроблено в Україні 🇺🇦</p>
+          <p className="text-xs text-[var(--text-tertiary)] font-mono">{t.madeIn}</p>
         </div>
       </div>
     </footer>
