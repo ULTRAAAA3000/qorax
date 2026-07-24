@@ -6536,3 +6536,45 @@ Monitoring API (0088) і мікроанімації — `git merge origin/main`
 **Свідомо НЕ зроблено цим проходом:** `/en` (головна) — найбільший
 шматок роботи, лишається наступним кроком; Features/About/Partners/
 Terms/Privacy — після Головної, за пріоритетом Артема.
+
+## Англомовна версія сайту (EN market) — етап 2: /en (головна)
+
+**Продовження попереднього кроку.** Усі 23 компоненти головної
+сторінки отримали опційний `lang` prop (default `"uk"`, зворотна
+сумісність — жоден з існуючих uk-викликів не потребував змін):
+12 product-preview карток (LiveMonitorPanel, AiInsightPreview,
+SpeedTrendPreview, TelegramPreview, MailInboxPreview,
+MailAiAgentPreview, CreatorCanvasPreview, CreatorBrandKitPreview,
+OfficeDocsPreview, OfficeSheetsSlidesPreview, BrowserInspectorPreview,
+BrowserCollectionsPreview) + StatsStrip/FeatureBento/EcosystemSection/
+HowItWorksSection/FaqSection/ProductDivider + AuditForm/
+AuditResultPanel (лайв-віджет аудиту).
+
+**Важливий нюанс AuditForm/AuditResultPanel:** перекладені лише
+СТАТИЧНІ підписи (плейсхолдер, кнопка, лейбли метрик, severity-мітки,
+текст "ще N проблем"). Сам контент результату аудиту
+(`overallSummary`, `problemSummary`, `plainExplanation`) генерується
+AI на боці audit worker і завжди повертається українською незалежно
+від мови сторінки — локалізація цього контенту (промпт воркера) НЕ
+входить у цей i18n-прохід, окрема backend-задача, якщо колись
+знадобиться.
+
+**`app/en/page.tsx`** — нова англійська головна, дзеркало
+`app/page.tsx`. Локальні під-компоненти сторінки (Hero/ProductSection/
+PlansSection/PlanCard/FinalCta) не експортуються з uk-файлу — не
+спільні, тому продубльовані тут з англійським текстом; решта —
+перевикористання вже lang-aware спільних компонентів.
+
+**`app/page.tsx`** — вперше отримав `metadata` (title/description) +
+hreflang `alternates` в обидва боки (`/` <-> `/en`).
+
+**Перевірено:** `tsc --noEmit` чисто, `next build` успішний (`/en` у
+списку роутів), ESLint чистий (знайдено й виправлено 3
+`react/no-unescaped-entities` в `app/en/page.tsx`).
+
+**Стан i18n-покриття зараз:** `/` і `/pricing` мають повні en-версії
+з hreflang в обидва боки. `LOCALE_PAGE_PAIRS` в `app/lib/i18n.ts`
+містить обидві пари.
+
+**Наступний крок:** Features → About → Partners → Terms → Privacy
+(за пріоритетом Артема, `/docs` свідомо поза межами задачі).
