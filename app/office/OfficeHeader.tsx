@@ -43,21 +43,21 @@ export function OfficeHeader({ active }: { active: "docs" | "sheets" | "slides" 
           <nav className="flex items-center gap-1" data-tour="office-modes">
             <Link
               href="/office"
-              className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+              className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors hover:bg-white/[0.04]"
               style={active === "docs" ? { background: "rgba(198,255,84,0.1)", color: "var(--lime)" } : { color: "var(--text-tertiary)" }}
             >
               <FileText size={13} /> Docs
             </Link>
             <Link
               href="/office/sheets"
-              className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+              className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors hover:bg-white/[0.04]"
               style={active === "sheets" ? { background: "rgba(198,255,84,0.1)", color: "var(--lime)" } : { color: "var(--text-tertiary)" }}
             >
               <Table2 size={13} /> Sheets
             </Link>
             <Link
               href="/office/slides"
-              className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors"
+              className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5 transition-colors hover:bg-white/[0.04]"
               style={active === "slides" ? { background: "rgba(198,255,84,0.1)", color: "var(--lime)" } : { color: "var(--text-tertiary)" }}
             >
               <Presentation size={13} /> Slides

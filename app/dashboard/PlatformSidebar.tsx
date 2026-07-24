@@ -49,7 +49,7 @@ export function PlatformSidebar({ modules, organizationId }: { modules: Platform
           key={m.key}
           type="button"
           onClick={() => setComingSoonHint(prev => (prev === m.key ? null : m.key))}
-          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors text-left cursor-default"
+          className="w-full flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors text-left cursor-default hover:bg-white/[0.03]"
           style={{ color: "var(--text-tertiary)" }}
         >
           <span className="shrink-0 opacity-40"><Icon size={15} /></span>
@@ -63,7 +63,7 @@ export function PlatformSidebar({ modules, organizationId }: { modules: Platform
       <Link
         key={m.key}
         href={m.href}
-        className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors"
+        className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg text-sm transition-colors hover:bg-white/[0.04]"
         style={{
           color: isActive ? "var(--text-primary)" : "var(--text-secondary)",
           background: isActive ? "rgba(255,255,255,0.05)" : "transparent",
@@ -101,7 +101,7 @@ export function PlatformSidebar({ modules, organizationId }: { modules: Platform
           type="button"
           data-tour="dashboard-apps"
           onClick={() => setAppsOpen(o => !o)}
-          className="w-full flex items-center gap-2.5 px-2.5 py-2 mt-4 rounded-lg text-[10px] font-medium uppercase transition-colors"
+          className="w-full flex items-center gap-2.5 px-2.5 py-2 mt-4 rounded-lg text-[10px] font-medium uppercase transition-colors hover:bg-white/[0.03]"
           style={{ color: "rgba(255,255,255,0.2)", letterSpacing: "0.1em" }}
         >
           <Grid2x2 size={12} className="shrink-0" />
@@ -147,7 +147,7 @@ export function PlatformSidebar({ modules, organizationId }: { modules: Platform
         )}
         <Link
           href="/dashboard/apps"
-          className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors"
+          className="flex items-center gap-2 px-2.5 py-2 rounded-lg text-xs transition-colors hover:bg-white/[0.04] hover:text-[var(--text-secondary)]"
           style={{ color: "var(--text-tertiary)" }}
         >
           <span className="flex-1 truncate">Усі додатки</span>
