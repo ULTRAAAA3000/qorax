@@ -85,7 +85,7 @@ export function OnboardingChecklist({ organizationId, steps }: Props) {
       <div className="flex items-center justify-between gap-3">
         <button
           onClick={() => setCollapsed(c => !c)}
-          className="flex items-center gap-3 min-w-0 flex-1 text-left"
+          className="flex items-center gap-3 min-w-0 flex-1 text-left rounded-lg -m-1 p-1 transition-colors hover:bg-white/[0.03]"
         >
           <div className="shrink-0 h-8 w-8 rounded-lg flex items-center justify-center"
             style={{ background: "rgba(214,255,63,0.1)", border: "1px solid rgba(214,255,63,0.2)" }}>
@@ -117,7 +117,7 @@ export function OnboardingChecklist({ organizationId, steps }: Props) {
           {checklistSteps.map(step => {
             const content = (
               <div
-                className="flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors"
+                className={`flex items-center gap-3 rounded-xl px-3.5 py-3 transition-colors ${!step.done ? "hover:bg-white/[0.04]" : ""}`}
                 style={{
                   background: step.done ? "rgba(214,255,63,0.04)" : "rgba(255,255,255,0.02)",
                   border: `1px solid ${step.done ? "rgba(214,255,63,0.15)" : "rgba(255,255,255,0.06)"}`,

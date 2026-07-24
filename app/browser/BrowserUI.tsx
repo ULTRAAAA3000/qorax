@@ -403,35 +403,35 @@ export function BrowserUI({ organizationId }: Props) {
             <div className="flex items-center gap-0.5 rounded-lg p-0.5" data-tour="browser-sidebar-tabs" style={{ background: "rgba(255,255,255,0.04)" }}>
               <button
                 onClick={() => setSidebarTab("ai")}
-                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/[0.04]"
                 style={{ background: sidebarTab === "ai" ? "rgba(140,246,255,0.1)" : "transparent", color: sidebarTab === "ai" ? "var(--cyan)" : "var(--text-tertiary)" }}
               >
                 <Sparkles size={12} /> AI
               </button>
               <button
                 onClick={() => setSidebarTab("inspect")}
-                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/[0.04]"
                 style={{ background: sidebarTab === "inspect" ? "rgba(198,255,84,0.1)" : "transparent", color: sidebarTab === "inspect" ? "var(--lime)" : "var(--text-tertiary)" }}
               >
                 <ScanSearch size={12} /> Inspector
               </button>
               <button
                 onClick={() => setSidebarTab("collections")}
-                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/[0.04]"
                 style={{ background: sidebarTab === "collections" ? "rgba(185,140,247,0.12)" : "transparent", color: sidebarTab === "collections" ? "#B98CF7" : "var(--text-tertiary)" }}
               >
                 <Layers size={12} /> Колекції
               </button>
               <button
                 onClick={() => setSidebarTab("deep-search")}
-                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/[0.04]"
                 style={{ background: sidebarTab === "deep-search" ? "rgba(245,103,90,0.1)" : "transparent", color: sidebarTab === "deep-search" ? "#F5675A" : "var(--text-tertiary)" }}
               >
                 <Search size={12} /> Пошук
               </button>
               <button
                 onClick={() => setSidebarTab("ai-memory")}
-                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/[0.04]"
                 style={{ background: sidebarTab === "ai-memory" ? "rgba(198,255,84,0.1)" : "transparent", color: sidebarTab === "ai-memory" ? "var(--lime)" : "var(--text-tertiary)" }}
               >
                 <Brain size={12} /> Пам&apos;ять

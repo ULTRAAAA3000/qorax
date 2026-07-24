@@ -321,7 +321,7 @@ export function MailApp({ organizationId }: { organizationId: string }) {
               <button
                 key={thread.id}
                 onClick={() => setActiveThreadId(thread.id)}
-                className="w-full text-left px-4 py-3 border-b transition-colors"
+                className="w-full text-left px-4 py-3 border-b transition-colors hover:bg-white/[0.03]"
                 style={{
                   borderColor: "rgba(255,255,255,0.04)",
                   background: activeThreadId === thread.id ? "rgba(255,255,255,0.03)" : "transparent",

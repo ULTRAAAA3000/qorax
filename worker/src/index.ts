@@ -235,6 +235,7 @@ import { checkRateLimit, getClientIp } from "./lib/rateLimit";
 import { corsHeaders } from "./lib/cors";
 import { sendSlackMessage } from "./lib/slack";
 import { handleDeveloperAuditV1, handleDeveloperSchemaV1, handleDeveloperReportV1 } from "./lib/developerApiHandler";
+import { handleDeveloperMonitorCreate, handleDeveloperMonitorList, handleDeveloperMonitorDelete, runDeveloperMonitorChecks } from "./lib/developerMonitorHandler";
 import { handleDeveloperApiKeys, handleDeveloperApiKeyRevoke } from "./lib/developerApiKeysHandler";
 
 function json(data: unknown, status: number, origin: string | null): Response {
@@ -335,6 +336,31 @@ const worker = {
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        },
+      });
+    }
+    // Monitoring API — четверта й остання частина Developer API з
+    // початкового списку 5 (AI SEO API свідомо пропущено назавжди).
+    // POST додає URL, GET повертає список+зміни, DELETE знімає з
+    // моніторингу (м'яко, active=false). Той самий API-ключ і
+    // requests_limit пул, що решта трьох ендпоінтів.
+    if (url.pathname === "/api/v1/monitor" && request.method === "POST") {
+      return handleDeveloperMonitorCreate(request, env);
+    }
+    if (url.pathname === "/api/v1/monitor" && request.method === "GET") {
+      return handleDeveloperMonitorList(request, env);
+    }
+    if (url.pathname.startsWith("/api/v1/monitor/") && request.method === "DELETE") {
+      const monitorId = url.pathname.split("/api/v1/monitor/")[1];
+      return handleDeveloperMonitorDelete(monitorId, request, env);
+    }
+    if (url.pathname === "/api/v1/monitor" && request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
           "Access-Control-Allow-Headers": "Authorization, Content-Type",
         },
       });
@@ -2258,6 +2284,15 @@ const worker = {
     if (event.cron === "0 * * * *") {
       const s = await runCrmReminders(env);
       console.log("CRM reminders run:", JSON.stringify(s));
+
+      // Developer Monitoring API (0088) — той самий погодинний
+      // тригер, щоб не заводити окремий Cloudflare Cron Trigger.
+      // Незалежно від runCrmReminders — окрема помилка тут не
+      // повинна блокувати вже виконану CRM-задачу вище (тому await
+      // окремо, не Promise.all з можливим спільним падінням логіки
+      // логування).
+      const monitorSummary = await runDeveloperMonitorChecks(env);
+      console.log("Developer Monitoring API run:", JSON.stringify(monitorSummary));
       return;
     }
 
