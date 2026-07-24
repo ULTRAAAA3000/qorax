@@ -5,16 +5,42 @@ import { motion } from "motion/react";
 import { API_BASE_URL } from "../lib/config";
 import { isAuditError, type AuditResult } from "../lib/audit";
 import { AuditResultPanel } from "./AuditResultPanel";
+import type { Locale } from "@/app/lib/i18n";
 
 /**
  * AuditForm — glassmorphism input + gradient glow CTA button.
  * Raycast-style: clean input with subtle glass bg, prominent gradient
  * submit button with glow shadow.
+ *
+ * lang перекладає лише статичний UI цієї форми (placeholder, кнопка,
+ * тексти помилок). Сам результат аудиту (overallSummary,
+ * problemSummary, plainExplanation в AuditResultPanel) генерується
+ * AI на боці worker'а і зараз ЗАВЖДИ повертається українською —
+ * локалізація самого audit-воркера це окрема задача бекенду, не
+ * зроблено цим проходом.
  */
 
 type RequestState = "idle" | "loading" | "error";
 
-export function AuditForm() {
+const COPY: Record<Locale, { placeholder: string; checking: string; submit: string; genericError: string; networkError: string }> = {
+  uk: {
+    placeholder: "вашсайт.com.ua",
+    checking: "Перевіряємо…",
+    submit: "Перевірити безкоштовно",
+    genericError: "Щось пішло не так. Спробуйте ще раз.",
+    networkError: "Не вдалося з'єднатись із сервером. Перевірте підключення.",
+  },
+  en: {
+    placeholder: "yoursite.com",
+    checking: "Checking…",
+    submit: "Check for free",
+    genericError: "Something went wrong. Please try again.",
+    networkError: "Couldn't connect to the server. Check your connection.",
+  },
+};
+
+export function AuditForm({ lang = "uk" }: { lang?: Locale }) {
+  const t = COPY[lang];
   const [url, setUrl] = useState("");
   const [state, setState] = useState<RequestState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -52,7 +78,7 @@ export function AuditForm() {
       }
 
       if (!response.ok || isAuditError(data)) {
-        setErrorMessage(isAuditError(data) ? data.error : "Щось пішло не так. Спробуйте ще раз.");
+        setErrorMessage(isAuditError(data) ? data.error : t.genericError);
         setState("error");
         return;
       }
@@ -60,7 +86,7 @@ export function AuditForm() {
       setResult(data);
       setState("idle");
     } catch {
-      setErrorMessage("Не вдалося з'єднатись із сервером. Перевірте підключення.");
+      setErrorMessage(t.networkError);
       setState("error");
     }
   }
@@ -73,7 +99,7 @@ export function AuditForm() {
           required
           value={url}
           onChange={(e) => setUrl(e.target.value)}
-          placeholder="вашсайт.com.ua"
+          placeholder={t.placeholder}
           disabled={state === "loading"}
           className="flex-1 rounded-xl px-5 py-3.5 text-[var(--text-primary)] placeholder:text-[var(--text-tertiary)] outline-none transition-all disabled:opacity-60"
           style={{
@@ -104,10 +130,10 @@ export function AuditForm() {
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
               </svg>
-              Перевіряємо…
+              {t.checking}
             </>
           ) : (
-            "Перевірити безкоштовно"
+            t.submit
           )}
         </motion.button>
       </form>
@@ -118,7 +144,7 @@ export function AuditForm() {
         </p>
       )}
 
-      {result && !isAuditError(result) && <AuditResultPanel result={result} />}
+      {result && !isAuditError(result) && <AuditResultPanel result={result} lang={lang} />}
     </div>
   );
 }

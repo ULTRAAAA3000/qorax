@@ -6,6 +6,7 @@
  */
 
 import { motion, useReducedMotion } from "motion/react";
+import type { Locale } from "@/app/lib/i18n";
 
 type CheckRow = {
   id: string;
@@ -15,13 +16,22 @@ type CheckRow = {
   value: string;
 };
 
-const ROWS: CheckRow[] = [
-  { id: "uptime", label: "Uptime", detail: "qorax-client.com.ua", status: "ok", value: "99.98%" },
-  { id: "speed", label: "Швидкість", detail: "Largest Contentful Paint", status: "ok", value: "1.2s" },
-  { id: "ssl", label: "SSL сертифікат", detail: "діє ще", status: "ok", value: "84 дні" },
-  { id: "links", label: "Биті посилання", detail: "сканування сторінок", status: "running", value: "—" },
-  { id: "mobile", label: "Мобільна версія", detail: "viewport, тап-таргети", status: "ok", value: "Готово" },
-];
+const ROWS: Record<Locale, CheckRow[]> = {
+  uk: [
+    { id: "uptime", label: "Uptime", detail: "qorax-client.com.ua", status: "ok", value: "99.98%" },
+    { id: "speed", label: "Швидкість", detail: "Largest Contentful Paint", status: "ok", value: "1.2s" },
+    { id: "ssl", label: "SSL сертифікат", detail: "діє ще", status: "ok", value: "84 дні" },
+    { id: "links", label: "Биті посилання", detail: "сканування сторінок", status: "running", value: "—" },
+    { id: "mobile", label: "Мобільна версія", detail: "viewport, тап-таргети", status: "ok", value: "Готово" },
+  ],
+  en: [
+    { id: "uptime", label: "Uptime", detail: "qorax-client.com", status: "ok", value: "99.98%" },
+    { id: "speed", label: "Speed", detail: "Largest Contentful Paint", status: "ok", value: "1.2s" },
+    { id: "ssl", label: "SSL certificate", detail: "valid for", status: "ok", value: "84 days" },
+    { id: "links", label: "Broken links", detail: "scanning pages", status: "running", value: "—" },
+    { id: "mobile", label: "Mobile version", detail: "viewport, tap targets", status: "ok", value: "Done" },
+  ],
+};
 
 const STATUS_COLOR: Record<CheckRow["status"], string> = {
   ok: "var(--lime)",
@@ -29,8 +39,15 @@ const STATUS_COLOR: Record<CheckRow["status"], string> = {
   running: "var(--cyan)",
 };
 
-export function LiveMonitorPanel() {
+const COPY: Record<Locale, { domain: string; live: string; footerLabel: string; footerStatus: string }> = {
+  uk: { domain: "qorax-client.com.ua", live: "live", footerLabel: "5 перевірок щохвилини", footerStatus: "усе в нормі" },
+  en: { domain: "qorax-client.com", live: "live", footerLabel: "5 checks every minute", footerStatus: "all good" },
+};
+
+export function LiveMonitorPanel({ lang = "uk" }: { lang?: Locale }) {
   const reduceMotion = useReducedMotion();
+  const rows = ROWS[lang];
+  const t = COPY[lang];
 
   return (
     <div
@@ -53,21 +70,21 @@ export function LiveMonitorPanel() {
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
           </div>
-          <span className="font-mono text-xs text-[var(--text-tertiary)]">qorax-client.com.ua</span>
+          <span className="font-mono text-xs text-[var(--text-tertiary)]">{t.domain}</span>
         </div>
         <span className="font-mono text-[10px] text-[var(--text-tertiary)] tabular flex items-center gap-1.5">
           <span className="h-1.5 w-1.5 rounded-full bg-[var(--lime)] animate-pulse-glow" />
-          live
+          {t.live}
         </span>
       </div>
 
       {/* Rows */}
       <div>
-        {ROWS.map((row, i) => (
+        {rows.map((row, i) => (
           <motion.div
             key={row.id}
             className="flex items-center gap-3 px-5 py-3.5"
-            style={{ borderBottom: i < ROWS.length - 1 ? "1px solid rgba(255, 255, 255, 0.04)" : "none" }}
+            style={{ borderBottom: i < rows.length - 1 ? "1px solid rgba(255, 255, 255, 0.04)" : "none" }}
             initial={reduceMotion ? undefined : { opacity: 0, x: -8 }}
             animate={reduceMotion ? undefined : { opacity: 1, x: 0 }}
             transition={{ duration: 0.4, delay: 0.08 + i * 0.07, ease: [0.16, 1, 0.3, 1] }}
@@ -111,10 +128,10 @@ export function LiveMonitorPanel() {
           background: "rgba(255, 255, 255, 0.02)",
         }}
       >
-        <span className="text-xs text-[var(--text-secondary)]">5 перевірок щохвилини</span>
+        <span className="text-xs text-[var(--text-secondary)]">{t.footerLabel}</span>
         <span className="font-mono text-xs flex items-center gap-1.5" style={{ color: "var(--lime)" }}>
           <span className="h-1.5 w-1.5 rounded-full bg-[var(--lime)]" />
-          усе в нормі
+          {t.footerStatus}
         </span>
       </div>
     </div>

@@ -5,7 +5,15 @@
  * and glow accents. Shows a believable AI analysis result.
  */
 
-export function AiInsightPreview() {
+import type { Locale } from "@/app/lib/i18n";
+
+const COPY: Record<Locale, { badge: string; time: string; lossLabel: string; recommendation: string }> = {
+  uk: { badge: "✦ AI-АНАЛІЗ", time: "щойно", lossLabel: "Орієнтовні втрати", recommendation: "Рекомендація: стиснути зображення на головній та підключити lazy-loading — це найбільший внесок у швидкість при найменших змінах коду." },
+  en: { badge: "✦ AI ANALYSIS", time: "just now", lossLabel: "Estimated loss", recommendation: "Recommendation: compress homepage images and enable lazy-loading — the biggest speed win for the smallest code change." },
+};
+
+export function AiInsightPreview({ lang = "uk" }: { lang?: Locale }) {
+  const t = COPY[lang];
   return (
     <div
       className="rounded-2xl p-5 sm:p-6"
@@ -26,16 +34,24 @@ export function AiInsightPreview() {
             color: "var(--purple)",
           }}
         >
-          ✦ AI-АНАЛІЗ
+          {t.badge}
         </span>
-        <span className="font-mono text-[10px] text-[var(--text-tertiary)]">щойно</span>
+        <span className="font-mono text-[10px] text-[var(--text-tertiary)]">{t.time}</span>
       </div>
 
-      <p className="text-sm leading-relaxed text-[var(--text-secondary)] mb-4">
-        Головна сторінка завантажується{" "}
-        <span className="text-[var(--text-primary)] font-medium">4.2 секунди</span> — це
-        вдвічі довше, ніж у середнього конкурента у вашій ніші.
-      </p>
+      {lang === "uk" ? (
+        <p className="text-sm leading-relaxed text-[var(--text-secondary)] mb-4">
+          Головна сторінка завантажується{" "}
+          <span className="text-[var(--text-primary)] font-medium">4.2 секунди</span> — це
+          вдвічі довше, ніж у середнього конкурента у вашій ніші.
+        </p>
+      ) : (
+        <p className="text-sm leading-relaxed text-[var(--text-secondary)] mb-4">
+          Your homepage loads in{" "}
+          <span className="text-[var(--text-primary)] font-medium">4.2 seconds</span> — twice
+          as slow as the average competitor in your niche.
+        </p>
+      )}
 
       <div
         className="rounded-xl px-4 py-3 mb-4"
@@ -45,16 +61,15 @@ export function AiInsightPreview() {
         }}
       >
         <div className="flex items-baseline justify-between">
-          <span className="text-xs text-[var(--text-tertiary)]">Орієнтовні втрати</span>
+          <span className="text-xs text-[var(--text-tertiary)]">{t.lossLabel}</span>
           <span className="font-mono text-lg tabular gradient-text font-semibold">
-            −$210<span className="text-xs text-[var(--text-tertiary)]" style={{ WebkitTextFillColor: "unset" }}> / міс</span>
+            −$210<span className="text-xs text-[var(--text-tertiary)]" style={{ WebkitTextFillColor: "unset" }}> / {lang === "uk" ? "міс" : "mo"}</span>
           </span>
         </div>
       </div>
 
       <p className="text-xs leading-relaxed text-[var(--text-tertiary)]">
-        Рекомендація: стиснути зображення на головній та підключити lazy-loading — це найбільший
-        внесок у швидкість при найменших змінах коду.
+        {t.recommendation}
       </p>
     </div>
   );

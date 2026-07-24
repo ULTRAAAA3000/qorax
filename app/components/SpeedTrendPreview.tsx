@@ -5,6 +5,8 @@
  * animated endpoint glow, and area fill.
  */
 
+import type { Locale } from "@/app/lib/i18n";
+
 const POINTS = [2.8, 2.6, 3.1, 2.4, 1.9, 1.6, 1.4, 1.3, 1.2];
 const WIDTH = 280;
 const HEIGHT = 88;
@@ -17,7 +19,13 @@ function toPath(points: number[]) {
     .join(" ");
 }
 
-export function SpeedTrendPreview() {
+const COPY: Record<Locale, { label: string; period: string }> = {
+  uk: { label: "Швидкість завантаження", period: "30 днів" },
+  en: { label: "Page load speed", period: "30 days" },
+};
+
+export function SpeedTrendPreview({ lang = "uk" }: { lang?: Locale }) {
+  const t = COPY[lang];
   const path = toPath(POINTS);
   const lastX = WIDTH;
   const lastY = HEIGHT - (POINTS[POINTS.length - 1] / MAX) * HEIGHT;
@@ -32,8 +40,8 @@ export function SpeedTrendPreview() {
       }}
     >
       <div className="flex items-baseline justify-between mb-1">
-        <span className="text-sm text-[var(--text-secondary)]">Швидкість завантаження</span>
-        <span className="font-mono text-xs text-[var(--text-tertiary)]">30 днів</span>
+        <span className="text-sm text-[var(--text-secondary)]">{t.label}</span>
+        <span className="font-mono text-xs text-[var(--text-tertiary)]">{t.period}</span>
       </div>
       <div className="flex items-baseline gap-2 mb-4">
         <span className="font-mono text-2xl tabular text-[var(--text-primary)]">1.2s</span>

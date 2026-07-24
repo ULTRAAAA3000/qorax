@@ -6,6 +6,8 @@
  * LiveMonitorPanel (Business) — window-dot header, rows, footer.
  */
 
+import type { Locale } from "@/app/lib/i18n";
+
 type MailRow = {
   id: string;
   from: string;
@@ -14,14 +16,29 @@ type MailRow = {
   unread: boolean;
 };
 
-const ROWS: MailRow[] = [
-  { id: "1", from: "Олена Ковальчук", subject: "Комерційна пропозиція — оновлення", time: "09:14", unread: true },
-  { id: "2", from: "Партнер · Nova Design", subject: "Рахунок за березень оплачено", time: "08:41", unread: true },
-  { id: "3", from: "AI-агент Qorax", subject: "3 листи чекають на пріоритетну відповідь", time: "вчора", unread: false },
-  { id: "4", from: "Клієнт · Т.О.В. Стимул", subject: "Дякую, все влаштовує!", time: "вчора", unread: false },
-];
+const ROWS: Record<Locale, MailRow[]> = {
+  uk: [
+    { id: "1", from: "Олена Ковальчук", subject: "Комерційна пропозиція — оновлення", time: "09:14", unread: true },
+    { id: "2", from: "Партнер · Nova Design", subject: "Рахунок за березень оплачено", time: "08:41", unread: true },
+    { id: "3", from: "AI-агент Qorax", subject: "3 листи чекають на пріоритетну відповідь", time: "вчора", unread: false },
+    { id: "4", from: "Клієнт · Т.О.В. Стимул", subject: "Дякую, все влаштовує!", time: "вчора", unread: false },
+  ],
+  en: [
+    { id: "1", from: "Sarah Mitchell", subject: "Proposal — updated pricing", time: "9:14 AM", unread: true },
+    { id: "2", from: "Partner · Nova Design", subject: "March invoice paid", time: "8:41 AM", unread: true },
+    { id: "3", from: "Qorax AI agent", subject: "3 emails waiting for priority reply", time: "yesterday", unread: false },
+    { id: "4", from: "Client · Stimul LLC", subject: "Thanks, all good!", time: "yesterday", unread: false },
+  ],
+};
 
-export function MailInboxPreview() {
+const COPY: Record<Locale, { inbox: string; new: string; footer: string; online: string }> = {
+  uk: { inbox: "Вхідні · Qorax Mail", new: "2 нові", footer: "Пошта + AI-агенти в одному вікні", online: "онлайн" },
+  en: { inbox: "Inbox · Qorax Mail", new: "2 new", footer: "Mail + AI agents in one window", online: "online" },
+};
+
+export function MailInboxPreview({ lang = "uk" }: { lang?: Locale }) {
+  const rows = ROWS[lang];
+  const t = COPY[lang];
   return (
     <div
       className="rounded-2xl overflow-hidden"
@@ -42,19 +59,19 @@ export function MailInboxPreview() {
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
           </div>
-          <span className="font-mono text-xs text-[var(--text-tertiary)]">Вхідні · Qorax Mail</span>
+          <span className="font-mono text-xs text-[var(--text-tertiary)]">{t.inbox}</span>
         </div>
         <span className="font-mono text-[10px] px-2 py-0.5 rounded-full" style={{ background: "rgba(140,246,255,0.1)", color: "var(--cyan)" }}>
-          2 нові
+          {t.new}
         </span>
       </div>
 
       <div>
-        {ROWS.map((row, i) => (
+        {rows.map((row, i) => (
           <div
             key={row.id}
             className="flex items-center gap-3 px-5 py-3.5"
-            style={{ borderBottom: i < ROWS.length - 1 ? "1px solid rgba(255, 255, 255, 0.04)" : "none" }}
+            style={{ borderBottom: i < rows.length - 1 ? "1px solid rgba(255, 255, 255, 0.04)" : "none" }}
           >
             <span
               className="h-2 w-2 rounded-full shrink-0"
@@ -77,8 +94,8 @@ export function MailInboxPreview() {
         className="px-5 py-3 flex items-center justify-between"
         style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)", background: "rgba(255, 255, 255, 0.02)" }}
       >
-        <span className="text-xs text-[var(--text-secondary)]">Пошта + AI-агенти в одному вікні</span>
-        <span className="font-mono text-xs" style={{ color: "var(--cyan)" }}>●&nbsp;онлайн</span>
+        <span className="text-xs text-[var(--text-secondary)]">{t.footer}</span>
+        <span className="font-mono text-xs" style={{ color: "var(--cyan)" }}>●&nbsp;{t.online}</span>
       </div>
     </div>
   );

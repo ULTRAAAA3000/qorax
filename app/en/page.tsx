@@ -1,38 +1,58 @@
 import type { Metadata } from "next";
-import { Reveal } from "./components/Reveal";
-import { AuditForm } from "./components/AuditForm";
-import { LiveMonitorPanel } from "./components/LiveMonitorPanel";
-import { AiInsightPreview } from "./components/AiInsightPreview";
-import { SpeedTrendPreview } from "./components/SpeedTrendPreview";
-import { TelegramPreview } from "./components/TelegramPreview";
-import { HeroAtmosphere } from "./components/HeroAtmosphere";
-import { HeroGlassCubeLazy as HeroGlassCube } from "./components/HeroGlassCubeLazy";
-import { StatsStrip } from "./components/StatsStrip";
-import { FeatureBento } from "./components/FeatureBento";
-import { EcosystemSection } from "./components/EcosystemSection";
-import { HowItWorksSection } from "./components/HowItWorksSection";
-import { FaqSection } from "./components/FaqSection";
-import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
-import { MarketingHeader } from "./components/MarketingHeader";
-import { ProductDivider } from "./components/ProductDivider";
-import { MailInboxPreview } from "./components/MailInboxPreview";
-import { MailAiAgentPreview } from "./components/MailAiAgentPreview";
-import { CreatorCanvasPreview } from "./components/CreatorCanvasPreview";
-import { CreatorBrandKitPreview } from "./components/CreatorBrandKitPreview";
-import { OfficeDocsPreview } from "./components/OfficeDocsPreview";
-import { OfficeSheetsSlidesPreview } from "./components/OfficeSheetsSlidesPreview";
-import { BrowserInspectorPreview } from "./components/BrowserInspectorPreview";
-import { BrowserCollectionsPreview } from "./components/BrowserCollectionsPreview";
-import { createClient } from "./lib/supabase/server";
-import { CHECKOUT_DISABLED } from "./lib/checkoutFlag";
+import { Reveal } from "@/app/components/Reveal";
+import { AuditForm } from "@/app/components/AuditForm";
+import { LiveMonitorPanel } from "@/app/components/LiveMonitorPanel";
+import { AiInsightPreview } from "@/app/components/AiInsightPreview";
+import { SpeedTrendPreview } from "@/app/components/SpeedTrendPreview";
+import { TelegramPreview } from "@/app/components/TelegramPreview";
+import { HeroAtmosphere } from "@/app/components/HeroAtmosphere";
+import { HeroGlassCubeLazy as HeroGlassCube } from "@/app/components/HeroGlassCubeLazy";
+import { StatsStrip } from "@/app/components/StatsStrip";
+import { FeatureBento } from "@/app/components/FeatureBento";
+import { EcosystemSection } from "@/app/components/EcosystemSection";
+import { HowItWorksSection } from "@/app/components/HowItWorksSection";
+import { FaqSection } from "@/app/components/FaqSection";
+import { SiteFooterExpanded } from "@/app/components/SiteFooterExpanded";
+import { MarketingHeader } from "@/app/components/MarketingHeader";
+import { ProductDivider } from "@/app/components/ProductDivider";
+import { MailInboxPreview } from "@/app/components/MailInboxPreview";
+import { MailAiAgentPreview } from "@/app/components/MailAiAgentPreview";
+import { CreatorCanvasPreview } from "@/app/components/CreatorCanvasPreview";
+import { CreatorBrandKitPreview } from "@/app/components/CreatorBrandKitPreview";
+import { OfficeDocsPreview } from "@/app/components/OfficeDocsPreview";
+import { OfficeSheetsSlidesPreview } from "@/app/components/OfficeSheetsSlidesPreview";
+import { BrowserInspectorPreview } from "@/app/components/BrowserInspectorPreview";
+import { BrowserCollectionsPreview } from "@/app/components/BrowserCollectionsPreview";
+import { createClient } from "@/app/lib/supabase/server";
+import { CHECKOUT_DISABLED } from "@/app/lib/checkoutFlag";
 import { Briefcase, Mail, Palette, FileText, Globe } from "lucide-react";
 
-// LemonSqueezy checkout URLs — нова лінійка Business (0086,
-// PRICING.md Частина A): Free/Starter/Pro/Agency замість старих
-// Starter/Growth/Agency. Free не має LemonSqueezy-варіанту взагалі
-// (безкоштовний план призначається автоматично при реєстрації,
-// handle_new_user() 0086) — checkoutUrl для Free завжди веде на
-// /register, ніколи на LS checkout.
+// Англійська версія головної (0086/i18n етап 2) — дзеркало
+// app/page.tsx з перекладеним текстом. Локальні під-компоненти
+// (Hero/ProductSection/PlansSection/PlanCard/FinalCta) НЕ спільні
+// (визначені локально в uk-файлі, не експортуються) — тому
+// продубльовані тут з англійським текстом замість парametrизації
+// через ще один спільний модуль; уся текстова "начинка" (превью-
+// компоненти, StatsStrip, FeatureBento, EcosystemSection,
+// HowItWorksSection, FaqSection, ProductDivider, MarketingHeader,
+// SiteFooterExpanded) — СПІЛЬНІ файли з lang prop, як і скрізь у
+// цьому i18n-проході.
+
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev";
+
+export const metadata: Metadata = {
+  title: "Qorax — Ecosystem for running your business online",
+  description: "Five products under one roof: website monitoring, mail, a visual editor, docs, and your own browser — with AI in every one. 3–10× cheaper than hiring a contractor.",
+  alternates: {
+    canonical: `${SITE_URL}/en`,
+    languages: {
+      uk: `${SITE_URL}/`,
+      en: `${SITE_URL}/en`,
+      "x-default": `${SITE_URL}/`,
+    },
+  },
+};
+
 const LS_SUBDOMAIN = process.env.LS_STORE_SUBDOMAIN ?? "qoraxus";
 const LS_VARIANTS: Record<string, string> = {
   Starter: process.env.LS_VARIANT_BUSINESS_STARTER ?? "",
@@ -46,30 +66,10 @@ function lsCheckoutUrl(plan: string): string {
     : `/register?plan=${plan.toLowerCase()}`;
 }
 
-const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev";
-
-export const metadata: Metadata = {
-  title: "Qorax — Екосистема для ведення бізнесу онлайн",
-  description: "Моніторинг сайту, пошта, візуальний редактор, документи та браузер — п'ять продуктів під одним брендом, з AI у кожному. Почніть безкоштовно.",
-  alternates: {
-    canonical: `${SITE_URL}/`,
-    languages: {
-      uk: `${SITE_URL}/`,
-      en: `${SITE_URL}/en`,
-      "x-default": `${SITE_URL}/`,
-    },
-  },
-};
-
-export default async function Home() {
-  // Перевіряємо чи користувач залогінений, щоб показати в шапці
-  // "До дашборду" замість "Увійти" — інакше залогінений користувач
-  // не має прямого шляху в dashboard з лендингу (тільки middleware-редірект
-  // з /login, що виглядає як зайвий хоп).
+export default async function HomeEn() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
-  // Якщо залогінений — підтягуємо org_id щоб передати в checkout
   let orgId = "";
   if (user) {
     const { data: membership } = await supabase
@@ -80,9 +80,7 @@ export default async function Home() {
     orgId = membership?.organization_id ?? "";
   }
 
-  // Формуємо checkout URL з org_id (якщо є) або без (нова реєстрація)
   function checkoutUrl(plan: string): string {
-    // Якщо юзер не залогінений → завжди на реєстрацію
     if (!user) return `/register?plan=${plan.toLowerCase()}`;
     const base = lsCheckoutUrl(plan);
     if (!base.startsWith("http")) return base;
@@ -99,63 +97,64 @@ export default async function Home() {
 
   return (
     <main className="flex flex-col">
-      <MarketingHeader isLoggedIn={!!user} />
+      <MarketingHeader isLoggedIn={!!user} lang="en" />
       <Hero />
-      <StatsStrip />
-      <EcosystemSection />
+      <StatsStrip lang="en" />
+      <EcosystemSection lang="en" />
 
       <ProductDivider
         icon={Briefcase}
         productName="Qorax Business"
-        tagline="Керуйте бізнесом онлайн"
+        tagline="Run your business online"
         href="/login"
         accent="lime"
+        lang="en"
       />
 
       <ProductSection
-        eyebrow="МОНІТОРИНГ"
-        title="Бачите все, поки клієнт нічого не помічає"
-        description="П'ять перевірок щохвилини: доступність, швидкість, SSL, биті посилання, мобільна версія. Якщо щось ламається вночі — ви дізнаєтесь першими, не з відгуку в Google."
+        eyebrow="MONITORING"
+        title="See everything before your client notices anything"
+        description="Five checks every minute: uptime, speed, SSL, broken links, mobile version. If something breaks at night, you find out first — not from a Google review."
         align="right"
         accent="lime"
       >
-        <LiveMonitorPanel />
+        <LiveMonitorPanel lang="en" />
       </ProductSection>
 
       <ProductSection
-        eyebrow="AI-ПОЯСНЕННЯ"
-        title="Не «виправте title tag». А скільки це коштує"
-        description="Кожна знайдена проблема перекладається у просту мову та орієнтовний грошовий вплив — те, що дійсно зрозуміє власник бізнесу, а не лише розробник."
+        eyebrow="AI EXPLANATIONS"
+        title="Not \u201Cfix the title tag.\u201D How much it's costing you."
+        description="Every issue found gets translated into plain language and an estimated dollar impact — something a business owner actually understands, not just a developer."
         align="left"
         accent="cyan"
       >
-        <AiInsightPreview />
+        <AiInsightPreview lang="en" />
       </ProductSection>
 
       <ProductSection
-        eyebrow="ІСТОРІЯ У ЧАСІ"
-        title="Швидкість — це графік, а не випадкове число"
-        description="Кожен замір лягає в історію. Через місяць видно тренд: погіршується сайт чи навпаки — і чи дало ефект те, що ви виправили."
+        eyebrow="HISTORY OVER TIME"
+        title="Speed is a chart, not a random number"
+        description="Every measurement goes into history. After a month you see the trend: is the site getting worse, or better — and whether your fix actually worked."
         align="right"
         accent="purple"
       >
-        <SpeedTrendPreview />
+        <SpeedTrendPreview lang="en" />
       </ProductSection>
 
       <ProductSection
         eyebrow="TELEGRAM"
-        title="Керуйте бізнесом, не відкриваючи Dashboard"
-        description="Ранковий дайджест, AI-чат про стан сайту, миттєві сповіщення про критичні проблеми — прямо в Telegram. Задайте питання природною мовою: «чому впали позиції» — і отримайте відповідь на основі реальних даних моніторингу."
+        title="Run your business without opening the dashboard"
+        description="Morning digest, AI chat about your site's status, instant alerts on critical issues — right in Telegram. Ask in plain language: \u201Cwhy did rankings drop\u201D — and get an answer based on real monitoring data."
         align="left"
         accent="cyan"
       >
-        <TelegramPreview />
+        <TelegramPreview lang="en" />
       </ProductSection>
 
-      <FeatureBento />
-      <HowItWorksSection />
+      <FeatureBento lang="en" />
+      <HowItWorksSection lang="en" />
       <PlansSection freeUrl={freeUrl} starterUrl={starterUrl} proUrl={proUrl} agencyUrl={agencyUrl} />
-      <FaqSection />
+      <FaqSection lang="en" />
 
       {/* ============================================================
           Qorax Mail
@@ -163,29 +162,30 @@ export default async function Home() {
       <ProductDivider
         icon={Mail}
         productName="Qorax Mail"
-        tagline="Спілкуйтесь з клієнтами"
+        tagline="Talk to your clients"
         href="/mail"
         accent="cyan"
+        lang="en"
       />
 
       <ProductSection
-        eyebrow="СПІЛЬНА ПОШТА"
-        title="Вся команда в одних вхідних"
-        description="Корпоративна пошта і контакти клієнтів в одному робочому просторі — без перемикання між Gmail, нотатками і CRM."
+        eyebrow="SHARED INBOX"
+        title="Your whole team in one inbox"
+        description="Business email and client contacts in one workspace — no more switching between Gmail, notes, and a CRM."
         align="right"
         accent="cyan"
       >
-        <MailInboxPreview />
+        <MailInboxPreview lang="en" />
       </ProductSection>
 
       <ProductSection
-        eyebrow="AI-АГЕНТИ"
-        title="Відповідь клієнту — за один клік, не за 10 хвилин"
-        description="AI готує чернетку листа на основі попереднього листування й тону вашого бренду. Ви лише перевіряєте й надсилаєте."
+        eyebrow="AI AGENTS"
+        title="A reply to your client in one click, not 10 minutes"
+        description="AI drafts the email based on prior correspondence and your brand's tone. You just review and send."
         align="left"
         accent="cyan"
       >
-        <MailAiAgentPreview />
+        <MailAiAgentPreview lang="en" />
       </ProductSection>
 
       {/* ============================================================
@@ -194,29 +194,30 @@ export default async function Home() {
       <ProductDivider
         icon={Palette}
         productName="Qorax Creator"
-        tagline="Створюйте візуали"
+        tagline="Create visuals"
         href="/creator"
         accent="purple"
+        lang="en"
       />
 
       <ProductSection
-        eyebrow="НЕСКІНЧЕННЕ ПОЛОТНО"
-        title="Сайти, презентації й банери — на одній дошці"
-        description="Website Mode вбудовує Sites-редактор прямо в канвас. Перетягуйте блоки, компонуйте макет, бачите весь проєкт одразу."
+        eyebrow="INFINITE CANVAS"
+        title="Websites, decks, and banners — on one board"
+        description="Website Mode embeds the Sites editor right in the canvas. Drag blocks, compose the layout, see the whole project at once."
         align="right"
         accent="purple"
       >
-        <CreatorCanvasPreview />
+        <CreatorCanvasPreview lang="en" />
       </ProductSection>
 
       <ProductSection
         eyebrow="BRAND KIT"
-        title="Один бренд — усюди однаковий"
-        description="Кольори, шрифти й готові компоненти застосовуються миттєво на будь-якій дошці — жодного ручного підбору щоразу."
+        title="One brand, consistent everywhere"
+        description="Colors, fonts, and ready-made components apply instantly on any board — no manual matching every time."
         align="left"
         accent="purple"
       >
-        <CreatorBrandKitPreview />
+        <CreatorBrandKitPreview lang="en" />
       </ProductSection>
 
       {/* ============================================================
@@ -225,29 +226,30 @@ export default async function Home() {
       <ProductDivider
         icon={FileText}
         productName="Qorax Office"
-        tagline="Працюйте з документами"
+        tagline="Work with documents"
         href="/office"
         accent="lime"
+        lang="en"
       />
 
       <ProductSection
         eyebrow="DOCS"
-        title="AI Writer сам збирає готовий текст"
-        description="Документи з форматуванням, таблицями й AI-помічником, що пише за вас — не аналог Word, а той, хто робить основну роботу."
+        title="AI Writer drafts the finished text for you"
+        description="Documents with formatting, tables, and an AI assistant that writes for you — not a Word clone, but something that does the actual work."
         align="right"
         accent="lime"
       >
-        <OfficeDocsPreview />
+        <OfficeDocsPreview lang="en" />
       </ProductSection>
 
       <ProductSection
-        eyebrow="SHEETS ТА SLIDES"
-        title="Таблиці з формулами. Презентації за описом"
-        description="Прості таблиці з SUM/AVERAGE/COUNT та CSV-імпортом. Презентації, де AI сам будує структуру — від слайда до готового виступу."
+        eyebrow="SHEETS & SLIDES"
+        title="Spreadsheets with formulas. Decks from a description."
+        description="Simple spreadsheets with SUM/AVERAGE/COUNT and CSV import. Presentations where AI builds the structure itself — from slide to finished pitch."
         align="left"
         accent="lime"
       >
-        <OfficeSheetsSlidesPreview />
+        <OfficeSheetsSlidesPreview lang="en" />
       </ProductSection>
 
       {/* ============================================================
@@ -256,39 +258,40 @@ export default async function Home() {
       <ProductDivider
         icon={Globe}
         productName="Qorax Browser"
-        tagline="Досліджуйте інтернет"
+        tagline="Explore the web"
         href="/browser"
         accent="cyan"
+        lang="en"
       />
 
       <ProductSection
         eyebrow="AI SIDEBAR"
-        title="AI пояснює будь-який сайт за клік"
-        description="Site Inspector показує технології, кольори, шрифти, SEO та швидкість конкурента — а AI Sidebar одразу пояснює, що це означає."
+        title="AI explains any website in one click"
+        description="Site Inspector shows a competitor's tech stack, colors, fonts, SEO, and speed — and the AI Sidebar instantly explains what it means."
         align="right"
         accent="cyan"
       >
-        <BrowserInspectorPreview />
+        <BrowserInspectorPreview lang="en" />
       </ProductSection>
 
       <ProductSection
         eyebrow="COLLECTIONS"
-        title="Конкуренти й ідеї в одному місці — не в закладках"
-        description="Збирайте референси просто під час перегляду сайтів і передавайте їх у Creator чи Office одним кліком через Smart Capture."
+        title="Competitors and ideas in one place — not in bookmarks"
+        description="Save references as you browse and send them straight to Creator or Office in one click via Smart Capture."
         align="left"
         accent="cyan"
       >
-        <BrowserCollectionsPreview />
+        <BrowserCollectionsPreview lang="en" />
       </ProductSection>
 
       <FinalCta />
-      <SiteFooterExpanded />
+      <SiteFooterExpanded lang="en" />
     </main>
   );
 }
 
 // ============================================================
-// Hero — Raycast-style centered layout with floating product preview
+// Hero
 // ============================================================
 
 function Hero() {
@@ -297,7 +300,6 @@ function Hero() {
       <HeroAtmosphere />
       <HeroGlassCube />
       <div className="relative z-10 mx-auto max-w-6xl px-6 sm:px-8 pt-20 sm:pt-32 pb-16 sm:pb-20">
-        {/* Centered headline */}
         <div className="text-center max-w-3xl mx-auto">
           <Reveal>
             <span
@@ -309,30 +311,28 @@ function Hero() {
               }}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--lime)] animate-pulse-glow" />
-              Business · Mail · Creator · Office · Browser — один бренд
+              Business · Mail · Creator · Office · Browser — one brand
             </span>
           </Reveal>
 
           <Reveal delay={0.06}>
             <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold leading-[1.05] tracking-tight">
-              Екосистема
+              An ecosystem
               <br />
-              <span className="gradient-text">для ведення бізнесу онлайн</span>
+              <span className="gradient-text">for running your business online</span>
             </h1>
           </Reveal>
 
           <Reveal delay={0.12}>
             <p className="mt-6 text-lg sm:text-xl text-[var(--text-secondary)] leading-relaxed max-w-xl mx-auto">
-              П&apos;ять продуктів під одним дахом: моніторинг сайту, пошта, візуальний
-              редактор, документи та власний браузер — з AI у кожному.
+              Five products under one roof: website monitoring, mail, a visual
+              editor, documents, and your own browser — with AI in every one.
             </p>
           </Reveal>
         </div>
 
-        {/* Product preview with glow */}
         <Reveal delay={0.25} y={30}>
           <div className="mt-14 sm:mt-16 max-w-2xl mx-auto relative">
-            {/* Glow behind the panel */}
             <div
               className="absolute -inset-10 -z-10"
               style={{
@@ -340,24 +340,20 @@ function Hero() {
                 filter: "blur(40px)",
               }}
             />
-            <LiveMonitorPanel />
+            <LiveMonitorPanel lang="en" />
           </div>
         </Reveal>
 
-        {/* Audit CTA — конкретна точка конверсії Qorax Business,
-            навмисно нижче загального позиціювання екосистеми, але
-            все ще на першому екрані — головний безкоштовний вхід не
-            можна губити глибше в скролі. */}
         <Reveal delay={0.3} className="mt-14 sm:mt-16" id="audit">
           <div className="max-w-xl mx-auto text-center">
             <p className="text-sm text-[var(--text-tertiary)] mb-5">
-              Хочете почати з безкоштовної перевірки сайту?
+              Want to start with a free website check?
             </p>
             <div className="flex justify-center">
-              <AuditForm />
+              <AuditForm lang="en" />
             </div>
             <p className="mt-3 text-xs text-[var(--text-tertiary)]">
-              Без реєстрації. Результат за 60 секунд.
+              No sign-up. Results in 60 seconds.
             </p>
           </div>
         </Reveal>
@@ -367,7 +363,7 @@ function Hero() {
 }
 
 // ============================================================
-// ProductSection — Raycast-style showcase with gradient accents
+// ProductSection
 // ============================================================
 
 function ProductSection({
@@ -443,7 +439,7 @@ function ProductSection({
 }
 
 // ============================================================
-// Plans — glassmorphism cards with gradient accents
+// Plans
 // ============================================================
 
 function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: string; starterUrl: string; proUrl: string; agencyUrl: string }) {
@@ -457,14 +453,14 @@ function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: str
               className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono text-[var(--text-tertiary)]"
               style={{ background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)" }}
             >
-              ✦ ТАРИФИ QORAX BUSINESS
+              ✦ QORAX BUSINESS PRICING
             </span>
           </div>
         </Reveal>
         <Reveal delay={0.04}>
           <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-semibold text-center max-w-2xl mx-auto leading-tight">
-            Почніть безкоштовно.{" "}
-            <span className="gradient-text">Ростіть, коли готові</span>
+            Start for free.{" "}
+            <span className="gradient-text">Grow when you&apos;re ready</span>
           </h2>
         </Reveal>
 
@@ -474,13 +470,13 @@ function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: str
               name="Free"
               checkoutUrl={freeUrl}
               price="$0"
-              tagline="Знайомство без картки"
+              tagline="Try it, no card needed"
               features={[
-                "1 сайт, щоденний моніторинг",
-                "Базовий SEO Audit",
-                "Rank до 20 запитів",
-                "Analytics — 30 днів історії",
-                "AI — 20 запитів на місяць",
+                "1 site, daily monitoring",
+                "Basic SEO Audit",
+                "Rank up to 20 queries",
+                "Analytics — 30-day history",
+                "AI — 20 requests/mo",
                 "Telegram Bot",
               ]}
               variant="default"
@@ -492,14 +488,14 @@ function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: str
               name="Starter"
               checkoutUrl={starterUrl}
               price="$12.99"
-              tagline="Фрілансерам і малому бізнесу"
+              tagline="For freelancers and small business"
               features={[
-                "До 10 сайтів, до 50 проєктів",
-                "Моніторинг кожні 30 хв",
-                "500 ключових запитів",
-                "Історія 6 місяців",
-                "AI — 500 запитів",
-                "PDF-звіти, інтеграції, автоматизації",
+                "Up to 10 sites, up to 50 projects",
+                "Monitoring every 30 min",
+                "500 keyword queries",
+                "6 months of history",
+                "AI — 500 requests",
+                "PDF reports, integrations, automations",
               ]}
               variant="default"
             />
@@ -510,14 +506,14 @@ function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: str
               name="Pro"
               checkoutUrl={proUrl}
               price="$24.99"
-              tagline="Для професіоналів"
+              tagline="For professionals"
               features={[
-                "До 100 сайтів, необмежені проєкти",
-                "Моніторинг кожні 5 хв",
-                "5 000 ключових запитів, історія 2 роки",
-                "AI — 5 000 запитів",
-                "White Label звіти, API, AI Copilot",
-                "Команда до 5 осіб",
+                "Up to 100 sites, unlimited projects",
+                "Monitoring every 5 min",
+                "5,000 keyword queries, 2-year history",
+                "AI — 5,000 requests",
+                "White Label reports, API, AI Copilot",
+                "Team up to 5 seats",
               ]}
               variant="highlighted"
             />
@@ -528,14 +524,14 @@ function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: str
               name="Agency"
               checkoutUrl={agencyUrl}
               price="$59.99"
-              tagline="Для агентств і команд"
+              tagline="For agencies and teams"
               features={[
-                "Необмежені сайти й проєкти",
-                "Моніторинг щохвилини",
-                "Необмежені ключові запити, повна історія",
-                "AI — 25 000 запитів",
-                "White Label, повний API",
-                "Команда до 25 осіб, пріоритетна підтримка",
+                "Unlimited sites and projects",
+                "Monitoring every minute",
+                "Unlimited keyword queries, full history",
+                "AI — 25,000 requests",
+                "White Label, full API",
+                "Team up to 25 seats, priority support",
               ]}
               variant="default"
             />
@@ -582,7 +578,7 @@ function PlanCard({
             className="font-mono text-[10px] tracking-wide px-2.5 py-1 rounded-full font-medium"
             style={{ background: "var(--gradient-primary)", color: "#0a0a0a" }}
           >
-            ПОПУЛЯРНИЙ
+            MOST POPULAR
           </span>
         )}
       </div>
@@ -591,7 +587,7 @@ function PlanCard({
         <span className={highlighted ? "gradient-text font-bold" : "text-[var(--text-primary)] font-bold"}>
           {price}
         </span>
-        <span className="text-sm text-[var(--text-tertiary)] font-sans font-normal">/міс</span>
+        <span className="text-sm text-[var(--text-tertiary)] font-sans font-normal">/mo</span>
       </div>
       <ul className="space-y-3 flex-1">
         {features.map((f) => (
@@ -612,9 +608,9 @@ function PlanCard({
         <div
           className="mt-8 w-full py-3 rounded-xl text-sm font-medium text-center block cursor-not-allowed"
           style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-tertiary)" }}
-          title="Реєстрація відкриється найближчим часом"
+          title="Sign-ups open soon"
         >
-          Скоро відкриємо реєстрацію
+          Sign-ups opening soon
         </div>
       ) : (
         <a
@@ -625,7 +621,7 @@ function PlanCard({
             highlighted ? "glow-button justify-center" : "ghost-button justify-center"
           }`}
         >
-          Почати →
+          Get started →
         </a>
       )}
     </div>
@@ -633,14 +629,13 @@ function PlanCard({
 }
 
 // ============================================================
-// Final CTA — gradient background glow section
+// Final CTA
 // ============================================================
 
 function FinalCta() {
   return (
     <section className="relative overflow-hidden">
       <div className="gradient-divider" />
-      {/* Background glow */}
       <div
         className="absolute inset-0 -z-10"
         style={{
@@ -651,17 +646,17 @@ function FinalCta() {
       <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-28 text-center">
         <Reveal>
           <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-semibold max-w-lg mx-auto leading-tight">
-            Дізнайтесь стан сайту —{" "}
-            <span className="gradient-text">це безкоштовно</span>
+            Find out your site&apos;s health —{" "}
+            <span className="gradient-text">it&apos;s free</span>
           </h2>
         </Reveal>
         <Reveal delay={0.06}>
           <p className="mt-4 text-[var(--text-secondary)] max-w-md mx-auto">
-            Без реєстрації, без зобов&apos;язань. AI-аудит за 60 секунд — просто введіть URL.
+            No sign-up, no strings attached. AI audit in 60 seconds — just enter a URL.
           </p>
         </Reveal>
         <Reveal delay={0.1} className="mt-9 flex justify-center">
-          <AuditForm />
+          <AuditForm lang="en" />
         </Reveal>
       </div>
     </section>

@@ -5,7 +5,21 @@
  * Slides AI-generated structure, same card language as AiInsightPreview.
  */
 
-export function OfficeSheetsSlidesPreview() {
+import type { Locale } from "@/app/lib/i18n";
+
+const CELLS: Record<Locale, string[]> = {
+  uk: ["Січень", "42 300", "+8%", "Лютий", "45 900", "+9%", "Березень", "51 200", "+11%"],
+  en: ["January", "42,300", "+8%", "February", "45,900", "+9%", "March", "51,200", "+11%"],
+};
+
+const COPY: Record<Locale, { badge: string; slidesHint: string }> = {
+  uk: { badge: "✦ SHEETS", slidesHint: "Slides: AI будує структуру презентації за описом — від слайда до готового виступу." },
+  en: { badge: "✦ SHEETS", slidesHint: "Slides: AI builds the deck structure from a description — from slide to finished pitch." },
+};
+
+export function OfficeSheetsSlidesPreview({ lang = "uk" }: { lang?: Locale }) {
+  const t = COPY[lang];
+  const cells = CELLS[lang];
   return (
     <div
       className="rounded-2xl p-5 sm:p-6"
@@ -21,13 +35,13 @@ export function OfficeSheetsSlidesPreview() {
           className="font-mono text-[10px] tracking-wide px-2.5 py-1 rounded-full font-medium"
           style={{ background: "rgba(214,255,63,0.12)", border: "1px solid rgba(214,255,63,0.25)", color: "var(--lime)" }}
         >
-          ✦ SHEETS
+          {t.badge}
         </span>
         <span className="font-mono text-[10px] text-[var(--text-tertiary)]">=SUM(B2:B14)</span>
       </div>
 
       <div className="grid grid-cols-3 gap-1.5 mb-4">
-        {["Січень", "42 300", "+8%", "Лютий", "45 900", "+9%", "Березень", "51 200", "+11%"].map((cell, i) => (
+        {cells.map((cell, i) => (
           <div
             key={i}
             className="rounded-md px-2 py-1.5 text-[11px] text-center"
@@ -43,7 +57,7 @@ export function OfficeSheetsSlidesPreview() {
       </div>
 
       <p className="text-xs leading-relaxed text-[var(--text-tertiary)] mb-3">
-        Slides: AI будує структуру презентації за описом — від слайда до готового виступу.
+        {t.slidesHint}
       </p>
 
       <div className="flex gap-1.5">

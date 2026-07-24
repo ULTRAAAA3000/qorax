@@ -6,14 +6,26 @@
  * LiveMonitorPanel.
  */
 
-const INSPECT_ROWS = [
-  { label: "Технології", value: "Next.js, Tailwind" },
-  { label: "Кольорова палітра", value: "5 кольорів" },
-  { label: "SEO-оцінка", value: "82/100" },
-  { label: "Швидкість", value: "1.8s" },
-];
+import type { Locale } from "@/app/lib/i18n";
 
-export function BrowserInspectorPreview() {
+const ROW_LABELS: Record<Locale, string[]> = {
+  uk: ["Технології", "Кольорова палітра", "SEO-оцінка", "Швидкість"],
+  en: ["Technologies", "Color palette", "SEO score", "Speed"],
+};
+
+const ROW_VALUES = ["Next.js, Tailwind", "5 кольорів", "82/100", "1.8s"];
+const ROW_VALUES_EN = ["Next.js, Tailwind", "5 colors", "82/100", "1.8s"];
+
+const COPY: Record<Locale, { domain: string; footer: string }> = {
+  uk: { domain: "competitor-site.com", footer: "AI пояснює будь-який сайт за клік" },
+  en: { domain: "competitor-site.com", footer: "AI explains any site with one click" },
+};
+
+export function BrowserInspectorPreview({ lang = "uk" }: { lang?: Locale }) {
+  const t = COPY[lang];
+  const values = lang === "uk" ? ROW_VALUES : ROW_VALUES_EN;
+  const rows = ROW_LABELS[lang].map((label, i) => ({ label, value: values[i] }));
+
   return (
     <div
       className="rounded-2xl overflow-hidden"
@@ -33,7 +45,7 @@ export function BrowserInspectorPreview() {
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
           <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
         </div>
-        <span className="font-mono text-xs text-[var(--text-tertiary)]">competitor-site.com</span>
+        <span className="font-mono text-xs text-[var(--text-tertiary)]">{t.domain}</span>
       </div>
 
       <div className="px-5 py-4">
@@ -46,7 +58,7 @@ export function BrowserInspectorPreview() {
           </span>
         </div>
         <div className="space-y-2">
-          {INSPECT_ROWS.map((row) => (
+          {rows.map((row) => (
             <div key={row.label} className="flex items-center justify-between">
               <span className="text-xs text-[var(--text-secondary)]">{row.label}</span>
               <span className="font-mono text-xs text-[var(--text-primary)]">{row.value}</span>
@@ -59,7 +71,7 @@ export function BrowserInspectorPreview() {
         className="px-5 py-3 flex items-center justify-between"
         style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)", background: "rgba(255, 255, 255, 0.02)" }}
       >
-        <span className="text-xs text-[var(--text-secondary)]">AI пояснює будь-який сайт за клік</span>
+        <span className="text-xs text-[var(--text-secondary)]">{t.footer}</span>
         <span className="font-mono text-xs" style={{ color: "var(--cyan)" }}>● live</span>
       </div>
     </div>
