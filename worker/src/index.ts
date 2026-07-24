@@ -739,7 +739,7 @@ const worker = {
     }
 
     // LemonSqueezy — Customer Portal URL (для кнопки "Управляти підпискою")
-    // GET /api/ls/portal?org_id=xxx — повертає свіжий portal URL
+    // GET /api/ls/portal?org_id=xxx&product=yyy — повертає свіжий portal URL
     if (url.pathname === "/api/ls/portal" && request.method === "GET") {
       const orgId = url.searchParams.get("org_id");
       if (!orgId) return json({ error: "org_id required" }, 400, origin);
@@ -748,9 +748,19 @@ const worker = {
       const authHeader = request.headers.get("Authorization");
       if (!authHeader) return json({ error: "Unauthorized" }, 401, origin);
 
+      // З 0086 organization може мати кілька активних підписок
+      // одночасно (Business + Mail тощо, кожна — окремий product).
+      // Без product-фільтра "найсвіжіша за created_at" підписка
+      // будь-якого продукту повертається на сторінці тарифів КОЖНОГО
+      // продукту — портал керування веде на чужу підписку. product
+      // опційний для сумісності зі старими викликами (без нього —
+      // стара поведінка, найсвіжіша підписка будь-якого продукту).
+      const product = url.searchParams.get("product");
+      const productFilter = product ? `&product=eq.${encodeURIComponent(product)}` : "";
+
       // Беремо portal URL з БД (зберігається при webhook)
       const subResp = await fetch(
-        `${env.SUPABASE_URL}/rest/v1/subscriptions?select=ls_subscription_id,ls_customer_portal_url&organization_id=eq.${encodeURIComponent(orgId)}&status=in.(active,trialing)&order=created_at.desc&limit=1`,
+        `${env.SUPABASE_URL}/rest/v1/subscriptions?select=ls_subscription_id,ls_customer_portal_url&organization_id=eq.${encodeURIComponent(orgId)}&status=in.(active,trialing)${productFilter}&order=created_at.desc&limit=1`,
         {
           headers: {
             apikey: env.SUPABASE_SERVICE_ROLE_KEY,

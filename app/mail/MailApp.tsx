@@ -5,6 +5,7 @@ import { Inbox, Loader2, Plus, Send, RefreshCw, Mail as MailIcon } from "lucide-
 import { API_BASE_URL } from "@/app/lib/config";
 import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
 import { TourButton } from "@/app/components/TourButton";
+import { UpgradeLinkButton } from "@/app/components/UpgradeLinkButton";
 
 interface MailAccount {
   id: string;
@@ -265,6 +266,7 @@ export function MailApp({ organizationId }: { organizationId: string }) {
             <span className="text-sm font-semibold">{accounts.find(a => a.id === activeAccountId)?.email_address}</span>
           </div>
           <div className="flex items-center gap-1">
+            <UpgradeLinkButton href="/mail/upgrade" />
             <TourButton onStart={startTour} />
             <button onClick={syncNow} disabled={syncing} data-tour="mail-sync" className="text-[var(--text-tertiary)]">
               {syncing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}

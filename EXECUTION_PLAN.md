@@ -6325,3 +6325,80 @@ transition "про запас", забули додати сам hover-стан.
 всюди — найбільший окремий вплив, але більший обсяг роботи, окрема
 фаза), skeleton-завантаження для списків (зараз `Loader2`-спінери),
 плавні відкриття (модалки/панелі), анімовані переходи між сторінками.
+## Checkout UI для всіх 5 продуктів (Business/Mail/Creator/Office/Browser) — підготовка до підключення LemonSqueezy
+
+**Контекст.** Артем: "давай подключу варианты лемонсквизи и ты их
+свяжешь". З'ясувалось, що з 20 запланованих тарифів (5 продуктів × 4
+рівні, 0086) реальний checkout UI існував лише для Business
+(лендинг, `/pricing`, `/dashboard/upgrade`) — Mail/Creator/Office/
+Browser не мали жодної сторінки вибору тарифу. Артем прямо попросив
+спочатку добудувати UI для решти чотирьох продуктів, потім створити
+всі 15 платних варіантів (Free без LS-варіанту) одразу.
+
+**Новий спільний компонент `app/components/ProductUpgradePage.tsx`** —
+рушій сторінки тарифів для БУДЬ-ЯКОГО продукту, той самий принцип, що
+вже застосований для `worker/src/lib/planTiers.ts` (один спільний
+модуль замість копіювання). Приймає `product`/`plans`/тексти як
+props, LemonSqueezy variant id читає за конвенцією env-змінних
+`LS_VARIANT_{PRODUCT}_{TIER}` (напр. `LS_VARIANT_MAIL_STARTER`) —
+дозволяє одному компоненту обслуговувати всі продукти без
+продукт-специфічного коду всередині.
+
+**`app/dashboard/upgrade/page.tsx` (Business) рефакторено** на тонку
+обгортку над спільним компонентом — той самий UI, той самий env var
+naming (`LS_VARIANT_BUSINESS_*`), без зміни поведінки для існуючих
+клієнтів.
+
+**Нові сторінки:** `app/mail/upgrade/page.tsx`,
+`app/creator/upgrade/page.tsx`, `app/office/upgrade/page.tsx`,
+`app/browser/upgrade/page.tsx` — фічі й ціни дослівно з `PRICING.md`
+Частина A і `features` jsonb міграції `0086_ecosystem_pricing.sql`.
+
+**`app/components/UpgradeLinkButton.tsx`** — портативна кнопка
+"Тарифи" (Crown-іконка), той самий патерн, що вже наявний
+`TourButton`/`TelegramConnectButton`. Додана в шапку кожного
+продукту поруч із кнопкою туру: `OfficeHeader.tsx`, `MailApp.tsx`,
+`CreatorBoardsListUI.tsx`, `BrowserUI.tsx`.
+
+**Знайдено і виправлено реальний архітектурний ризик (не було в
+початковому запиті, виявлено під час рефакторингу):**
+`/api/ls/portal` (worker) і `CustomerPortalButton.tsx` бралися за
+"найсвіжішу за created_at" підписку organization БЕЗ фільтра по
+продукту. З 0086 organization може мати кілька активних підписок
+одночасно (Business + Mail тощо) — без фільтра сторінка тарифів
+кожного окремого продукту вела б на портал керування ЧУЖОЮ
+підпискою (напр. кнопка "Управляти підпискою" на `/mail/upgrade`
+могла відкрити портал Business-підписки, якщо та новіша). Виправлено:
+обидва місця тепер приймають опційний `product` — `ProductUpgradePage`
+передає `product="business"`/`"mail"`/тощо в `CustomerPortalButton`,
+той додає `&product=...` до запиту, worker фільтрує
+`subscriptions.product=eq.<product>`. Для Business окремо: легасі-
+підписки (`product IS NULL`, старі starter/growth/agency коди) досі
+рахуються активними на Business-сторінці через `.or("product.eq.
+business,product.is.null")` — інакше існуючий платний клієнт на
+легасі-плані побачив би "нема активної підписки" на власній сторінці
+тарифів.
+
+**Перевірено:** `tsc --noEmit` чисто (фронтенд і worker), `next
+build` успішний — усі 5 `/*/upgrade` роутів у списку (`/dashboard/
+upgrade`, `/mail/upgrade`, `/creator/upgrade`, `/office/upgrade`,
+`/browser/upgrade`), `wrangler deploy --dry-run` успішний (985.96
+KiB, gzip 165.97 KiB — практично без змін від попереднього проходу).
+ESLint чистий на всіх торкнутих файлах (передіснуючі `set-state-in-
+effect`/apostrophe помилки в `MailApp.tsx` підтверджено НЕ моїми
+через `git stash`, той самий підхід, що вже задокументований раніше
+в цьому файлі для того самого компонента).
+
+**Свідомо НЕ зроблено цим проходом:** самі LemonSqueezy-варіанти
+(15 штук, Артем створює вручну) і заповнення `plans.ls_variant_id`
+у Supabase — обидва чекають на variant id від Артема, наступний
+крок одразу після цього коміту. `CHECKOUT_DISABLED` лишається
+`true` — кнопки на всіх 5 нових/оновлених сторінках показують
+"Скоро", доки прапорець не знято окремим рішенням.
+
+**Наступний крок (не цей коміт):** отримати від Артема 15 variant
+id (5 продуктів × Starter/Pro/Agency) + `LS_API_KEY`/`LS_STORE_ID`/
+`LS_WEBHOOK_SECRET` → заповнити `plans.ls_variant_id` в Supabase
+(SQL UPDATE по кожному з 15 рядків) → підтвердити, що всі 15+3
+(Business вже мав) env-змінних `LS_VARIANT_*` виставлені в Cloudflare
+Workers Build → Variables and secrets → зняти `CHECKOUT_DISABLED`.

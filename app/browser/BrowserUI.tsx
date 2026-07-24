@@ -10,6 +10,7 @@ import { DeepSearchPanel } from "./DeepSearchPanel";
 import { AiMemoryPanel } from "./AiMemoryPanel";
 import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
 import { TourButton } from "@/app/components/TourButton";
+import { UpgradeLinkButton } from "@/app/components/UpgradeLinkButton";
 
 interface HistoryItem {
   id: string;
@@ -303,6 +304,7 @@ export function BrowserUI({ organizationId }: Props) {
           >
             <Sparkles size={12} /> AI
           </button>
+          <UpgradeLinkButton href="/browser/upgrade" />
           <TourButton onStart={startTour} />
         </form>
 
