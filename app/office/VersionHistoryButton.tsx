@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { History, Loader2, X, RotateCcw } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { AnimatedDropdown } from "@/app/components/AnimatedDropdown";
 
 interface Version {
   id: string;
@@ -79,10 +80,12 @@ export function VersionHistoryButton({ docType, docId, onRestored }: { docType: 
       <button onClick={openMenu} className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)]">
         <History size={12} /> Історія
       </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20" style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 220, maxHeight: 320, overflowY: "auto" }}>
+      <AnimatedDropdown
+        open={open}
+        onClose={() => setOpen(false)}
+        className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20"
+        style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 220, maxHeight: 320, overflowY: "auto" }}
+      >
             <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
               <span className="text-xs font-medium">Історія версій</span>
               <button onClick={() => setOpen(false)}><X size={12} className="text-[var(--text-tertiary)]" /></button>
@@ -108,9 +111,7 @@ export function VersionHistoryButton({ docType, docId, onRestored }: { docType: 
                 {restoringId === v.id ? <Loader2 size={11} className="animate-spin" /> : <RotateCcw size={11} className="text-[var(--text-tertiary)]" />}
               </button>
             ))}
-          </div>
-        </>
-      )}
+      </AnimatedDropdown>
     </div>
   );
 }

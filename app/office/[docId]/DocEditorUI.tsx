@@ -10,6 +10,7 @@ import { usePresence } from "../usePresence";
 import { PresenceAvatars } from "../PresenceAvatars";
 import { useLiveSync } from "../useLiveSync";
 import { VersionHistoryButton } from "../VersionHistoryButton";
+import { AnimatedDropdown } from "@/app/components/AnimatedDropdown";
 import { CrmContactPicker } from "../CrmContactPicker";
 
 interface Props {
@@ -251,16 +252,16 @@ export function DocEditorUI({ docId, initialTitle, initialContent, organizationI
             >
               {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Експорт
             </button>
-            {showExportMenu && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
-                <div className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20" style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 140 }}>
+            <AnimatedDropdown
+              open={showExportMenu}
+              onClose={() => setShowExportMenu(false)}
+              className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20"
+              style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 140 }}
+            >
                   <button onClick={() => { setShowExportMenu(false); handleExportPdf(); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">PDF</button>
                   <button onClick={() => { setShowExportMenu(false); exportDocToMarkdown(title || "Без назви", blocks); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">Markdown (.md)</button>
                   <button onClick={() => { setShowExportMenu(false); exportDocToHtml(title || "Без назви", blocks); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">HTML</button>
-                </div>
-              </>
-            )}
+            </AnimatedDropdown>
           </div>
           <button
             onClick={handleSaveAsTemplate}
@@ -330,9 +331,7 @@ export function DocEditorUI({ docId, initialTitle, initialContent, organizationI
         <BlockAddButton icon={User} label="CRM-контакт" onClick={() => setShowCrmPicker(true)} />
       </div>
 
-      {showCrmPicker && (
-        <CrmContactPicker organizationId={organizationId} onSelect={addSmartCrmBlock} onClose={() => setShowCrmPicker(false)} />
-      )}
+      <CrmContactPicker open={showCrmPicker} organizationId={organizationId} onSelect={addSmartCrmBlock} onClose={() => setShowCrmPicker(false)} />
     </div>
   );
 }

@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { History, Loader2, X, ExternalLink } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
 
 interface Props {
+  open: boolean;
   organizationId: string;
   url: string;
   getFreshToken: () => Promise<string>;
@@ -25,7 +27,7 @@ interface Snapshot {
 // записи Internet Archive. Знімок відкривається в новій вкладці
 // (web.archive.org сам показує архівну версію сторінки) — не через
 // наш proxy, той не призначений для архівного перегляду.
-export function WebsiteTimelineModal({ organizationId, url, getFreshToken, onClose }: Props) {
+export function WebsiteTimelineModal({ open, organizationId, url, getFreshToken, onClose }: Props) {
   const [snapshots, setSnapshots] = useState<Snapshot[] | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,18 +56,18 @@ export function WebsiteTimelineModal({ organizationId, url, getFreshToken, onClo
   }, [organizationId, url, getFreshToken]);
 
   useEffect(() => {
+    // Тягнемо дані лише коли модалку реально відкрито — компонент
+    // тепер завжди монтований (для exit-анімації AnimatedModalOverlay),
+    // без цієї умови useEffect спрацював би одразу при заході на
+    // Browser, ще до першого відкриття модалки.
+    if (!open) return;
     (async () => {
       await load();
     })();
-  }, [load]);
+  }, [open, load]);
 
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
-      <div
-        className="w-full max-w-md max-h-[70vh] overflow-y-auto rounded-2xl p-5"
-        style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }}
-        onClick={e => e.stopPropagation()}
-      >
+    <AnimatedModalOverlay open={open} onClose={onClose} cardClassName="w-full max-w-md max-h-[70vh] overflow-y-auto rounded-2xl p-5" cardStyle={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }} zIndex={20}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium flex items-center gap-2">
             <History size={14} style={{ color: "var(--cyan)" }} /> Website Timeline
@@ -106,7 +108,6 @@ export function WebsiteTimelineModal({ organizationId, url, getFreshToken, onClo
             ))}
           </div>
         )}
-      </div>
-    </div>
+    </AnimatedModalOverlay>
   );
 }

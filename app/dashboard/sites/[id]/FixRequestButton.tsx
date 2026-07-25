@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Wrench, X, CheckCircle2, Loader2 } from "lucide-react";
 import { createClient } from "@/app/lib/supabase/client";
+import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
 
@@ -102,17 +103,7 @@ export function FixRequestButton({ siteId, insightId, prefillDescription, varian
         {variant === "compact" ? "Замовити виправлення" : "Потрібна допомога з цим сайтом?"}
       </button>
 
-      {open && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4"
-          style={{ background: "rgba(0,0,0,0.6)" }}
-          onClick={closeAndReset}
-        >
-          <div
-            className="w-full max-w-md rounded-2xl p-6"
-            style={{ background: "#0F1420", border: "1px solid var(--border-hairline)" }}
-            onClick={e => e.stopPropagation()}
-          >
+      <AnimatedModalOverlay open={open} onClose={closeAndReset} cardClassName="w-full max-w-md rounded-2xl p-6" cardStyle={{ background: "#0F1420", border: "1px solid var(--border-hairline)" }}>
             {success ? (
               <div className="text-center py-4">
                 <CheckCircle2 size={32} className="mx-auto mb-3" style={{ color: "var(--lime)" }} />
@@ -191,9 +182,7 @@ export function FixRequestButton({ siteId, insightId, prefillDescription, varian
                 </div>
               </>
             )}
-          </div>
-        </div>
-      )}
+      </AnimatedModalOverlay>
     </>
   );
 }

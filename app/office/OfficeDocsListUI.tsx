@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Plus, X, Loader2, FileText, Trash2, LayoutTemplate } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
 
 interface Doc {
   id: string;
@@ -123,12 +124,7 @@ export function OfficeDocsListUI({ organizationId }: Props) {
         <Plus size={14} /> Новий документ
       </button>
 
-      {showCreate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={() => setShowCreate(false)}>
-          <div
-            className="glow-card p-5 max-w-2xl w-full max-h-[80vh] overflow-y-auto"
-            onClick={e => e.stopPropagation()}
-          >
+      <AnimatedModalOverlay open={showCreate} onClose={() => setShowCreate(false)} cardClassName="glow-card p-5 max-w-2xl w-full max-h-[80vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold">Новий документ</h3>
               <button onClick={() => setShowCreate(false)} className="p-1 rounded-lg hover:bg-white/5">
@@ -170,9 +166,7 @@ export function OfficeDocsListUI({ organizationId }: Props) {
                 </button>
               ))}
             </div>
-          </div>
-        </div>
-      )}
+      </AnimatedModalOverlay>
 
       {!docs && (
         <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)] py-8 justify-center">
