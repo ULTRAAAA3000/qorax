@@ -5,7 +5,25 @@
  * suggestion, same glassmorphism panel language as LiveMonitorPanel.
  */
 
-export function OfficeDocsPreview() {
+import type { Locale } from "@/app/lib/i18n";
+
+const COPY: Record<Locale, { filename: string; aiSuggestion: string; footer: string; saved: string }> = {
+  uk: {
+    filename: "Комерційна пропозиція.docx",
+    aiSuggestion: "AI Writer: додати абзац про переваги — на основі вашого Brand Kit",
+    footer: "AI Writer готує текст за вас",
+    saved: "● збережено",
+  },
+  en: {
+    filename: "Sales Proposal.docx",
+    aiSuggestion: "AI Writer: add a benefits paragraph — based on your Brand Kit",
+    footer: "AI Writer drafts the text for you",
+    saved: "● saved",
+  },
+};
+
+export function OfficeDocsPreview({ lang = "uk" }: { lang?: Locale }) {
+  const t = COPY[lang];
   return (
     <div
       className="rounded-2xl overflow-hidden"
@@ -26,7 +44,7 @@ export function OfficeDocsPreview() {
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
           </div>
-          <span className="font-mono text-xs text-[var(--text-tertiary)]">Комерційна пропозиція.docx</span>
+          <span className="font-mono text-xs text-[var(--text-tertiary)]">{t.filename}</span>
         </div>
       </div>
 
@@ -41,7 +59,7 @@ export function OfficeDocsPreview() {
         >
           <span className="h-1.5 w-1.5 rounded-full mt-1.5 shrink-0" style={{ background: "var(--lime)" }} />
           <span className="text-xs text-[var(--text-secondary)] leading-relaxed">
-            AI Writer: додати абзац про переваги — на основі вашого Brand Kit
+            {t.aiSuggestion}
           </span>
         </div>
 
@@ -52,8 +70,8 @@ export function OfficeDocsPreview() {
         className="px-5 py-3 flex items-center justify-between"
         style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)", background: "rgba(255, 255, 255, 0.02)" }}
       >
-        <span className="text-xs text-[var(--text-secondary)]">AI Writer готує текст за вас</span>
-        <span className="font-mono text-xs" style={{ color: "var(--lime)" }}>● збережено</span>
+        <span className="text-xs text-[var(--text-secondary)]">{t.footer}</span>
+        <span className="font-mono text-xs" style={{ color: "var(--lime)" }}>{t.saved}</span>
       </div>
     </div>
   );

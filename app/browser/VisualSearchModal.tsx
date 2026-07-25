@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { ImageIcon, Loader2, X } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
 
 interface Props {
+  open: boolean;
   organizationId: string;
   getFreshToken: () => Promise<string>;
   onClose: () => void;
@@ -26,7 +28,7 @@ interface VisualSearchResult {
 // усередині iframe недоступний (cross-origin, той самий блокер, що
 // решта функцій Browser) — користувач вставляє URL зображення
 // вручну, не виділяє його на сторінці.
-export function VisualSearchModal({ organizationId, getFreshToken, onClose }: Props) {
+export function VisualSearchModal({ open, organizationId, getFreshToken, onClose }: Props) {
   const [imageUrl, setImageUrl] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,12 +62,7 @@ export function VisualSearchModal({ organizationId, getFreshToken, onClose }: Pr
   }
 
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
-      <div
-        className="w-full max-w-md rounded-2xl p-5"
-        style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }}
-        onClick={e => e.stopPropagation()}
-      >
+    <AnimatedModalOverlay open={open} onClose={onClose} cardClassName="w-full max-w-md rounded-2xl p-5" cardStyle={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }} zIndex={20}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium flex items-center gap-2">
             <ImageIcon size={14} style={{ color: "#F4A6A0" }} /> Visual Search
@@ -130,7 +127,6 @@ export function VisualSearchModal({ organizationId, getFreshToken, onClose }: Pr
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </AnimatedModalOverlay>
   );
 }

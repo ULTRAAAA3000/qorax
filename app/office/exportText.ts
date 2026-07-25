@@ -37,6 +37,7 @@ function blockToMarkdown(block: Block): string {
   if (block.type === "heading") return `${"#".repeat(block.level)} ${escapeMd(block.text)}\n`;
   if (block.type === "bullet_list") return block.items.map(i => `- ${escapeMd(i)}`).join("\n") + "\n";
   if (block.type === "image") return block.url ? `![${escapeMd(block.alt ?? "")}](${block.url})\n` : "";
+  if (block.type === "smart_crm_contact") return "_[CRM-контакт]_\n"; // live-блок, статичний експорт лише позначає місце
   // checklist
   return block.items.map(i => `- [${i.checked ? "x" : " "}] ${escapeMd(i.text)}`).join("\n") + "\n";
 }

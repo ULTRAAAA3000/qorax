@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import { Sparkles, Send, ChevronDown, Loader2, X } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { motion, AnimatePresence, useReducedMotion } from "motion/react";
 
 interface Message {
   role: "user" | "model";
@@ -398,6 +399,7 @@ export function QoraxusChat({
 }) {
   const chat = useChat(siteId);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const reduceMotion = useReducedMotion();
 
   return (
     <>
@@ -427,25 +429,31 @@ export function QoraxusChat({
             </button>
           )}
 
-          {mobileOpen && (
-            <div
-              className="fixed inset-0 z-50 flex flex-col sm:inset-auto sm:bottom-5 sm:right-5"
-              style={{
-                background: "#0F1420",
-                border: "1px solid var(--border-hairline)",
-                boxShadow: "0 0 0 1px rgba(255,255,255,0.04), 0 24px 64px rgba(0,0,0,0.5)",
-              }}
-            >
-              <div className="flex-1 min-h-0 sm:w-[380px] sm:h-[560px] sm:rounded-2xl sm:overflow-hidden flex flex-col">
-                <ChatBody
-                  siteName={siteName}
-                  {...chat}
-                  onClose={() => setMobileOpen(false)}
-                  autoFocus
-                />
-              </div>
-            </div>
-          )}
+          <AnimatePresence>
+            {mobileOpen && (
+              <motion.div
+                className="fixed inset-0 z-50 flex flex-col sm:inset-auto sm:bottom-5 sm:right-5"
+                style={{
+                  background: "#0F1420",
+                  border: "1px solid var(--border-hairline)",
+                  boxShadow: "0 0 0 1px rgba(255,255,255,0.04), 0 24px 64px rgba(0,0,0,0.5)",
+                }}
+                initial={reduceMotion ? undefined : { opacity: 0, y: 16, scale: 0.97 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={reduceMotion ? undefined : { opacity: 0, y: 16, scale: 0.97 }}
+                transition={{ duration: 0.2, ease: [0.16, 1, 0.3, 1] }}
+              >
+                <div className="flex-1 min-h-0 sm:w-[380px] sm:h-[560px] sm:rounded-2xl sm:overflow-hidden flex flex-col">
+                  <ChatBody
+                    siteName={siteName}
+                    {...chat}
+                    onClose={() => setMobileOpen(false)}
+                    autoFocus
+                  />
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </>

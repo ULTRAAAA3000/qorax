@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { Reveal } from "./components/Reveal";
 import { AuditForm } from "./components/AuditForm";
 import { LiveMonitorPanel } from "./components/LiveMonitorPanel";
@@ -44,6 +45,21 @@ function lsCheckoutUrl(plan: string): string {
     ? `https://${LS_SUBDOMAIN}.lemonsqueezy.com/checkout/buy/${vid}`
     : `/register?plan=${plan.toLowerCase()}`;
 }
+
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev";
+
+export const metadata: Metadata = {
+  title: "Qorax — Екосистема для ведення бізнесу онлайн",
+  description: "Моніторинг сайту, пошта, візуальний редактор, документи та браузер — п'ять продуктів під одним брендом, з AI у кожному. Почніть безкоштовно.",
+  alternates: {
+    canonical: `${SITE_URL}/`,
+    languages: {
+      uk: `${SITE_URL}/`,
+      en: `${SITE_URL}/en`,
+      "x-default": `${SITE_URL}/`,
+    },
+  },
+};
 
 export default async function Home() {
   // Перевіряємо чи користувач залогінений, щоб показати в шапці

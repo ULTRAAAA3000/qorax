@@ -86,7 +86,7 @@ export function SitesListControls({ sites }: { sites: SiteRow[] }) {
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Пошук за назвою або URL..."
-              className="w-full text-sm rounded-xl pl-8 pr-9 py-2 bg-transparent outline-none transition-colors"
+              className="w-full text-sm rounded-xl pl-8 pr-9 py-2 bg-transparent outline-none transition-colors focus:border-[var(--cyan)]/40 hover:border-white/[0.14]"
               style={{ border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-primary)" }}
             />
             {!query && (
@@ -103,7 +103,7 @@ export function SitesListControls({ sites }: { sites: SiteRow[] }) {
               <button
                 key={opt.key}
                 onClick={() => setSortKey(opt.key)}
-                className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors"
+                className="text-xs font-medium px-3 py-1.5 rounded-lg transition-colors hover:text-[var(--text-secondary)]"
                 style={{
                   background: sortKey === opt.key ? "rgba(214,255,63,0.1)" : "transparent",
                   color: sortKey === opt.key ? "var(--lime)" : "var(--text-tertiary)",

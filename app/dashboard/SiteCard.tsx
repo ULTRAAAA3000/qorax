@@ -44,6 +44,7 @@ export function SiteCard({
       style={{
         background: hovered ? "rgba(255,255,255,0.04)" : "rgba(255,255,255,0.025)",
         border: `1px solid ${hovered ? "rgba(255,255,255,0.12)" : "rgba(255,255,255,0.07)"}`,
+        transform: hovered ? "translateY(-1px)" : "translateY(0)",
       }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
@@ -125,7 +126,7 @@ export function SiteCard({
         </a>
         <Link
           href={`/dashboard/sites/${site.id}`}
-          className="text-sm font-medium px-4 py-2 rounded-xl transition-all"
+          className="text-sm font-medium px-4 py-2 rounded-xl transition-all hover:bg-white/[0.08] hover:border-white/[0.16] hover:-translate-y-px"
           style={{
             background: "rgba(255,255,255,0.05)",
             border: "1px solid rgba(255,255,255,0.08)",

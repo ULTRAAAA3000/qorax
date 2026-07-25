@@ -120,8 +120,11 @@ export function DeveloperApiSettingsForm() {
       </div>
 
       <p className="text-xs text-[var(--text-tertiary)] mb-4 leading-relaxed">
-        SEO Audit API — <code className="font-mono">POST /api/v1/audit</code> з заголовком{" "}
-        <code className="font-mono">Authorization: Bearer &lt;ключ&gt;</code>. 1000 запитів на місяць на ключ.
+        <strong>SEO Audit</strong> — <code className="font-mono">POST /api/v1/audit</code>.{" "}
+        <strong>Schema</strong> — <code className="font-mono">POST /api/v1/schema</code>.{" "}
+        <strong>Reporting</strong> — <code className="font-mono">POST /api/v1/report</code> (параметр <code className="font-mono">format</code>: html або json).{" "}
+        <strong>Monitoring</strong> — <code className="font-mono">POST/GET/DELETE /api/v1/monitor</code> (стежить за title/canonical/schema/robots/швидкістю щогодини).{" "}
+        Заголовок <code className="font-mono">Authorization: Bearer &lt;ключ&gt;</code>. 1000 запитів на місяць на ключ, спільний ліміт на всі чотири ендпоінти.
       </p>
 
       {newKey && (

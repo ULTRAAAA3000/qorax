@@ -52,6 +52,12 @@ export function blockToHtml(block: Block): string {
     // вище для всього PDF-експорту.
     return `<img src="${escapeHtml(block.url)}" crossorigin="anonymous" style="max-width:100%;border-radius:6px;margin:0 0 10px;display:block;" />`;
   }
+  if (block.type === "smart_crm_contact") {
+    // Live-блок — при статичному PDF-експорті немає сенсу тягнути
+    // дані наживо (документ уже "заморожений" на момент експорту).
+    // Позначаємо місце блока текстом, не намагаємось відтворити картку.
+    return `<p style="font-size:12px;color:#888;margin:0 0 10px;font-style:italic;">[CRM-контакт]</p>`;
+  }
   // checklist
   return `<ul style="margin:0 0 10px;padding-left:0;list-style:none;">${block.items
     .map(i => `<li style="font-size:13px;line-height:1.6;${i.checked ? "opacity:0.5;text-decoration:line-through;" : ""}">${i.checked ? "☑" : "☐"} ${escapeHtml(i.text)}</li>`)

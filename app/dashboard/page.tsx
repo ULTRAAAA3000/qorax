@@ -8,6 +8,7 @@ import { SitesListControls } from "./SitesListControls";
 import { OnboardingChecklist } from "./OnboardingChecklist";
 import { PortfolioHealthCard } from "./PortfolioHealthCard";
 import { PlatformSidebar } from "./PlatformSidebar";
+import { DashboardTour } from "./DashboardTour";
 import { getPlatformModules } from "@/app/lib/getPlatformModules";
 
 export const metadata = { title: "Дашборд — Qorax" };
@@ -240,6 +241,7 @@ export default async function DashboardPage({
             <span style={{ color: "rgba(255,255,255,0.12)" }}>/</span>
             <Link
               href="/dashboard/upgrade"
+              data-tour="dashboard-plan"
               className="text-xs font-mono px-2.5 py-1 rounded-md transition-opacity hover:opacity-80"
               style={{ background: planBg, color: planColor, border: `1px solid ${planColor}30` }}
             >
@@ -247,6 +249,7 @@ export default async function DashboardPage({
             </Link>
           </div>
           <div className="flex items-center gap-1">
+            <DashboardTour />
             {!isPaid && (
               <Link href="/dashboard/upgrade"
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg transition-opacity hover:opacity-80 mr-1"
@@ -260,6 +263,7 @@ export default async function DashboardPage({
               <Gift size={15} />
             </Link>
             <Link href="/dashboard/settings"
+              data-tour="dashboard-settings"
               className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors text-[var(--text-tertiary)] hover:text-[var(--text-primary)] hover:bg-white/5">
               <Settings size={15} />
             </Link>
@@ -406,6 +410,7 @@ export default async function DashboardPage({
             </p>
           </div>
           <Link href="/dashboard/sites/new"
+            data-tour="dashboard-add-site"
             className="inline-flex items-center gap-2 text-sm font-semibold rounded-xl px-4 py-2.5 hover:opacity-90 transition-opacity"
             style={{ background: "var(--lime)", color: "#0a0a0a" }}>
             <Plus size={14} />

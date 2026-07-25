@@ -95,7 +95,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
           <div className="flex items-center gap-3 min-w-0">
             <Link href="/dashboard/home"><QoraxLogo size="sm" /></Link>
             <span style={{ color: "rgba(255,255,255,0.12)" }}>/</span>
-            <Link href="/dashboard" className="flex items-center gap-1.5 text-sm transition-colors"
+            <Link href="/dashboard" className="flex items-center gap-1.5 text-sm transition-colors hover:text-[var(--text-secondary)]"
               style={{ color: "var(--text-tertiary)" }}>
               <ArrowLeft size={13} /> Сайти
             </Link>
@@ -112,7 +112,7 @@ export default async function SiteDetailPage({ params }: { params: Promise<{ id:
               }}
             />
             <a href={site.url} target="_blank" rel="noopener noreferrer"
-              className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors"
+              className="h-8 w-8 flex items-center justify-center rounded-lg transition-colors hover:bg-white/5 hover:text-[var(--text-secondary)]"
               style={{ color: "var(--text-tertiary)", border: "1px solid rgba(255,255,255,0.07)" }}>
               <ExternalLink size={13} />
             </a>

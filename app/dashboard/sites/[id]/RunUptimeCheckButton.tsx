@@ -43,7 +43,7 @@ export function RunUptimeCheckButton({ siteId, accessToken, workerUrl }: Props) 
     <button
       onClick={handleClick}
       disabled={state === "loading" || state === "done"}
-      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+      className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg transition-all disabled:opacity-50 enabled:hover:brightness-125"
       style={{
         background: state === "done"
           ? resultStatus === "down" ? "rgba(245,103,90,0.08)" : "rgba(214,255,63,0.08)"

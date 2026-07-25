@@ -182,6 +182,7 @@ import {
 import {
   handleCrmContactsList,
   handleCrmContactCreate,
+  handleCrmContactDetail,
   handleCrmDealsList,
   handleCrmDealCreate,
   handleCrmDealStageUpdate,
@@ -206,6 +207,7 @@ import {
   handleAcademyProgress,
   handleAcademyMentor,
 } from "./lib/academyHandler";
+import { handleTourSeenList, handleTourMarkSeen } from "./lib/tourHandler";
 import {
   handleCroTrack,
   handleCroTrackOptions,
@@ -232,7 +234,8 @@ import { handleBusinessMetrics } from "./lib/businessMetrics";
 import { checkRateLimit, getClientIp } from "./lib/rateLimit";
 import { corsHeaders } from "./lib/cors";
 import { sendSlackMessage } from "./lib/slack";
-import { handleDeveloperAuditV1 } from "./lib/developerApiHandler";
+import { handleDeveloperAuditV1, handleDeveloperSchemaV1, handleDeveloperReportV1 } from "./lib/developerApiHandler";
+import { handleDeveloperMonitorCreate, handleDeveloperMonitorList, handleDeveloperMonitorDelete, runDeveloperMonitorChecks } from "./lib/developerMonitorHandler";
 import { handleDeveloperApiKeys, handleDeveloperApiKeyRevoke } from "./lib/developerApiKeysHandler";
 
 function json(data: unknown, status: number, origin: string | null): Response {
@@ -300,6 +303,64 @@ const worker = {
         headers: {
           "Access-Control-Allow-Origin": "*",
           "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        },
+      });
+    }
+    // Schema API — друга частина Developer API (перша: /api/v1/audit
+    // вище). Той самий API-ключ і requests_limit пул, чиста
+    // шаблонізація без Gemini-виклику (schemaGenerator.ts).
+    if (url.pathname === "/api/v1/schema" && request.method === "POST") {
+      return handleDeveloperSchemaV1(request, env);
+    }
+    if (url.pathname === "/api/v1/schema" && request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        },
+      });
+    }
+    // Reporting API — третя частина Developer API (AI SEO API
+    // свідомо не робимо — достатнє AI-навантаження вже є на
+    // платформі). Той самий API-ключ і requests_limit пул, той
+    // самий аудит-рушій, що /api/v1/audit (без AI, без Gemini).
+    if (url.pathname === "/api/v1/report" && request.method === "POST") {
+      return handleDeveloperReportV1(request, env);
+    }
+    if (url.pathname === "/api/v1/report" && request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "POST, OPTIONS",
+          "Access-Control-Allow-Headers": "Authorization, Content-Type",
+        },
+      });
+    }
+    // Monitoring API — четверта й остання частина Developer API з
+    // початкового списку 5 (AI SEO API свідомо пропущено назавжди).
+    // POST додає URL, GET повертає список+зміни, DELETE знімає з
+    // моніторингу (м'яко, active=false). Той самий API-ключ і
+    // requests_limit пул, що решта трьох ендпоінтів.
+    if (url.pathname === "/api/v1/monitor" && request.method === "POST") {
+      return handleDeveloperMonitorCreate(request, env);
+    }
+    if (url.pathname === "/api/v1/monitor" && request.method === "GET") {
+      return handleDeveloperMonitorList(request, env);
+    }
+    if (url.pathname.startsWith("/api/v1/monitor/") && request.method === "DELETE") {
+      const monitorId = url.pathname.split("/api/v1/monitor/")[1];
+      return handleDeveloperMonitorDelete(monitorId, request, env);
+    }
+    if (url.pathname === "/api/v1/monitor" && request.method === "OPTIONS") {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Access-Control-Allow-Origin": "*",
+          "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
           "Access-Control-Allow-Headers": "Authorization, Content-Type",
         },
       });
@@ -704,7 +765,7 @@ const worker = {
     }
 
     // LemonSqueezy — Customer Portal URL (для кнопки "Управляти підпискою")
-    // GET /api/ls/portal?org_id=xxx — повертає свіжий portal URL
+    // GET /api/ls/portal?org_id=xxx&product=yyy — повертає свіжий portal URL
     if (url.pathname === "/api/ls/portal" && request.method === "GET") {
       const orgId = url.searchParams.get("org_id");
       if (!orgId) return json({ error: "org_id required" }, 400, origin);
@@ -713,9 +774,19 @@ const worker = {
       const authHeader = request.headers.get("Authorization");
       if (!authHeader) return json({ error: "Unauthorized" }, 401, origin);
 
+      // З 0086 organization може мати кілька активних підписок
+      // одночасно (Business + Mail тощо, кожна — окремий product).
+      // Без product-фільтра "найсвіжіша за created_at" підписка
+      // будь-якого продукту повертається на сторінці тарифів КОЖНОГО
+      // продукту — портал керування веде на чужу підписку. product
+      // опційний для сумісності зі старими викликами (без нього —
+      // стара поведінка, найсвіжіша підписка будь-якого продукту).
+      const product = url.searchParams.get("product");
+      const productFilter = product ? `&product=eq.${encodeURIComponent(product)}` : "";
+
       // Беремо portal URL з БД (зберігається при webhook)
       const subResp = await fetch(
-        `${env.SUPABASE_URL}/rest/v1/subscriptions?select=ls_subscription_id,ls_customer_portal_url&organization_id=eq.${encodeURIComponent(orgId)}&status=in.(active,trialing)&order=created_at.desc&limit=1`,
+        `${env.SUPABASE_URL}/rest/v1/subscriptions?select=ls_subscription_id,ls_customer_portal_url&organization_id=eq.${encodeURIComponent(orgId)}&status=in.(active,trialing)${productFilter}&order=created_at.desc&limit=1`,
         {
           headers: {
             apikey: env.SUPABASE_SERVICE_ROLE_KEY,
@@ -1111,6 +1182,10 @@ const worker = {
     if (url.pathname === "/api/crm/contacts" && request.method === "POST") {
       return handleCrmContactCreate(request, env, corsHeaders(origin));
     }
+    const crmContactDetailMatch = url.pathname.match(/^\/api\/crm\/contacts\/([^/]+)$/);
+    if (crmContactDetailMatch && request.method === "GET") {
+      return handleCrmContactDetail(request, env, corsHeaders(origin), crmContactDetailMatch[1]);
+    }
     if (url.pathname === "/api/crm/deals" && request.method === "GET") {
       return handleCrmDealsList(request, env, corsHeaders(origin));
     }
@@ -1169,6 +1244,14 @@ const worker = {
     }
     if (url.pathname === "/api/academy/mentor" && request.method === "POST") {
       return handleAcademyMentor(request, env, corsHeaders(origin));
+    }
+
+    // ── Product Tours routes (інтерактивний тур по продуктах) ────────
+    if (url.pathname === "/api/tours/seen" && request.method === "GET") {
+      return handleTourSeenList(request, env, origin);
+    }
+    if (url.pathname === "/api/tours/seen" && request.method === "POST") {
+      return handleTourMarkSeen(request, env, origin);
     }
 
     // ── AI/Content routes (MODULE_ROADMAP.md, розділ 2) ───────────────
@@ -2201,6 +2284,15 @@ const worker = {
     if (event.cron === "0 * * * *") {
       const s = await runCrmReminders(env);
       console.log("CRM reminders run:", JSON.stringify(s));
+
+      // Developer Monitoring API (0088) — той самий погодинний
+      // тригер, щоб не заводити окремий Cloudflare Cron Trigger.
+      // Незалежно від runCrmReminders — окрема помилка тут не
+      // повинна блокувати вже виконану CRM-задачу вище (тому await
+      // окремо, не Promise.all з можливим спільним падінням логіки
+      // логування).
+      const monitorSummary = await runDeveloperMonitorChecks(env);
+      console.log("Developer Monitoring API run:", JSON.stringify(monitorSummary));
       return;
     }
 

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Loader2, Plus, Trash2, Sparkles, X, CheckCircle2, FileEdit, Globe } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
 
 interface ProjectLanguage {
   id: string;
@@ -344,11 +345,9 @@ export function TranslatorDetailUI({ projectId, projectName }: Props) {
       )}
 
       {/* ── Редагування перекладу ── */}
-      {editingTranslation && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }}>
-          <div className="glow-card p-4 space-y-3 w-full max-w-md">
+      <AnimatedModalOverlay open={editingTranslation !== null} onClose={() => setEditingTranslation(null)} cardClassName="glow-card p-4 space-y-3 w-full max-w-md">
             <div className="flex items-center justify-between">
-              <h3 className="text-sm font-semibold">Редагувати переклад ({editingTranslation.locale})</h3>
+              <h3 className="text-sm font-semibold">Редагувати переклад ({editingTranslation?.locale})</h3>
               <button onClick={() => setEditingTranslation(null)}><X size={14} style={{ color: "var(--text-tertiary)" }} /></button>
             </div>
             <input value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="Title" className="w-full rounded-lg px-3 py-2 text-sm" style={inputStyle} />
@@ -359,9 +358,7 @@ export function TranslatorDetailUI({ projectId, projectName }: Props) {
               </button>
               <button onClick={() => setEditingTranslation(null)} className="text-sm text-[var(--text-tertiary)]">Скасувати</button>
             </div>
-          </div>
-        </div>
-      )}
+      </AnimatedModalOverlay>
     </div>
   );
 }

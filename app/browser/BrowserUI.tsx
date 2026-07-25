@@ -8,6 +8,9 @@ import { QuickActionsMenu } from "./QuickActionsMenu";
 import { ReadingModeView } from "./ReadingModeView";
 import { DeepSearchPanel } from "./DeepSearchPanel";
 import { AiMemoryPanel } from "./AiMemoryPanel";
+import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
+import { TourButton } from "@/app/components/TourButton";
+import { UpgradeLinkButton } from "@/app/components/UpgradeLinkButton";
 
 interface HistoryItem {
   id: string;
@@ -56,6 +59,21 @@ function normalizeUrl(input: string): string | null {
   return null;
 }
 
+const BROWSER_TOUR_STEPS: TourStep[] = [
+  {
+    element: '[data-tour="browser-address-bar"]',
+    title: "Відкрийте будь-який сайт",
+    description: "Введіть адресу — Qorax Browser покаже сторінку прямо тут, з AI-інструментами поруч.",
+    side: "bottom",
+  },
+  {
+    element: '[data-tour="browser-sidebar-tabs"]',
+    title: "AI-інструменти",
+    description: "AI-аналіз сторінки, Inspector (технічні деталі), Колекції, Deep Search і AI-пам'ять — усе в одній панелі.",
+    side: "left",
+  },
+];
+
 export function BrowserUI({ organizationId }: Props) {
   const [addressInput, setAddressInput] = useState("");
   const [currentUrl, setCurrentUrl] = useState<string | null>(null);
@@ -63,6 +81,8 @@ export function BrowserUI({ organizationId }: Props) {
   const [iframeLoading, setIframeLoading] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarTab, setSidebarTab] = useState<"ai" | "inspect" | "collections" | "deep-search" | "ai-memory">("ai");
+
+  const { startTour } = useProductTour("browser", BROWSER_TOUR_STEPS);
   const [summary, setSummary] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analyzeError, setAnalyzeError] = useState<string | null>(null);
@@ -245,7 +265,7 @@ export function BrowserUI({ organizationId }: Props) {
     <div className="flex-1 flex min-h-0">
       <div className="flex-1 flex flex-col min-w-0">
         {/* URL bar */}
-        <form onSubmit={handleAddressSubmit} className="flex items-center gap-2 px-3 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
+        <form onSubmit={handleAddressSubmit} data-tour="browser-address-bar" className="flex items-center gap-2 px-3 py-2.5" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
           <Globe size={15} style={{ color: "var(--text-tertiary)", flexShrink: 0 }} />
           <input
             type="text"
@@ -284,6 +304,8 @@ export function BrowserUI({ organizationId }: Props) {
           >
             <Sparkles size={12} /> AI
           </button>
+          <UpgradeLinkButton href="/browser/upgrade" />
+          <TourButton onStart={startTour} />
         </form>
 
         {loadError && (
@@ -378,38 +400,38 @@ export function BrowserUI({ organizationId }: Props) {
       {sidebarOpen && (
         <aside className="w-80 flex-shrink-0 flex flex-col" style={{ borderLeft: "1px solid rgba(255,255,255,0.06)", background: "rgba(255,255,255,0.02)" }}>
           <div className="flex items-center justify-between px-2 py-2" style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            <div className="flex items-center gap-0.5 rounded-lg p-0.5" style={{ background: "rgba(255,255,255,0.04)" }}>
+            <div className="flex items-center gap-0.5 rounded-lg p-0.5" data-tour="browser-sidebar-tabs" style={{ background: "rgba(255,255,255,0.04)" }}>
               <button
                 onClick={() => setSidebarTab("ai")}
-                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/[0.04]"
                 style={{ background: sidebarTab === "ai" ? "rgba(140,246,255,0.1)" : "transparent", color: sidebarTab === "ai" ? "var(--cyan)" : "var(--text-tertiary)" }}
               >
                 <Sparkles size={12} /> AI
               </button>
               <button
                 onClick={() => setSidebarTab("inspect")}
-                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/[0.04]"
                 style={{ background: sidebarTab === "inspect" ? "rgba(198,255,84,0.1)" : "transparent", color: sidebarTab === "inspect" ? "var(--lime)" : "var(--text-tertiary)" }}
               >
                 <ScanSearch size={12} /> Inspector
               </button>
               <button
                 onClick={() => setSidebarTab("collections")}
-                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/[0.04]"
                 style={{ background: sidebarTab === "collections" ? "rgba(185,140,247,0.12)" : "transparent", color: sidebarTab === "collections" ? "#B98CF7" : "var(--text-tertiary)" }}
               >
                 <Layers size={12} /> Колекції
               </button>
               <button
                 onClick={() => setSidebarTab("deep-search")}
-                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/[0.04]"
                 style={{ background: sidebarTab === "deep-search" ? "rgba(245,103,90,0.1)" : "transparent", color: sidebarTab === "deep-search" ? "#F5675A" : "var(--text-tertiary)" }}
               >
                 <Search size={12} /> Пошук
               </button>
               <button
                 onClick={() => setSidebarTab("ai-memory")}
-                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors"
+                className="px-2 py-1.5 rounded-md text-xs font-medium flex items-center gap-1 transition-colors hover:bg-white/[0.04]"
                 style={{ background: sidebarTab === "ai-memory" ? "rgba(198,255,84,0.1)" : "transparent", color: sidebarTab === "ai-memory" ? "var(--lime)" : "var(--text-tertiary)" }}
               >
                 <Brain size={12} /> Пам&apos;ять

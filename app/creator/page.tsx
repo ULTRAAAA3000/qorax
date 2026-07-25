@@ -55,7 +55,7 @@ export default async function CreatorPage() {
             (/creator/components, бібліотека блоків + Brand Kit) — перші
             реалізовані пункти, решта (Email/Presentation/Whiteboard/
             Social, Smart Components, AI Creator) — пізніші кроки. */}
-        <div className="flex items-center gap-1 p-1 rounded-xl w-fit" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+        <div className="flex items-center gap-1 p-1 rounded-xl w-fit" data-tour="creator-modes" style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
           <span className="flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg" style={{ background: "rgba(140,246,255,0.1)", color: "var(--cyan)" }}>
             <LayoutTemplate size={14} /> Website
           </span>

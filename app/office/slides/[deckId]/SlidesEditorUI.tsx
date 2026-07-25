@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import { Plus, Loader2, Sparkles, Trash2, Type, Heading2, List, CheckSquare, Play, X, ChevronLeft, ChevronRight, Download, Image as ImageIcon } from "lucide-react";
+import { Plus, Loader2, Sparkles, Trash2, Type, Heading2, List, CheckSquare, Play, X, ChevronLeft, ChevronRight, Download, Image as ImageIcon, User } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow, BlockStatic } from "../../BlockEditor";
 import { exportSlidesToPdf } from "../../exportPdf";
@@ -10,6 +10,8 @@ import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
 import { useLiveSync } from "../../useLiveSync";
 import { VersionHistoryButton } from "../../VersionHistoryButton";
+import { AnimatedDropdown } from "@/app/components/AnimatedDropdown";
+import { CrmContactPicker } from "../../CrmContactPicker";
 
 interface Slide {
   id: string;
@@ -20,6 +22,7 @@ interface Props {
   deckId: string;
   initialTitle: string;
   initialSlides: Slide[] | null;
+  organizationId: string;
 }
 
 async function getFreshToken(): Promise<string> {
@@ -45,7 +48,7 @@ function slideLabel(slide: Slide, index: number): string {
 // (BlockEditor.tsx, спільний), обгорнутий у пагінацію: лівий
 // сайдбар з мініатюрами замість суцільного скролу. Present-режим —
 // fullscreen, read-only (BlockStatic), навігація стрілками.
-export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
+export function SlidesEditorUI({ deckId, initialTitle, initialSlides, organizationId }: Props) {
   const presentUsers = usePresence("office_slides", deckId);
   const [title, setTitle] = useState(initialTitle);
   const [slides, setSlides] = useState<Slide[]>(initialSlides?.length ? initialSlides : [{ id: newBlockId(), blocks: [] }]);
@@ -57,6 +60,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
   const [presenting, setPresenting] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
   const [showAi, setShowAi] = useState(false);
+  const [showCrmPicker, setShowCrmPicker] = useState(false);
   const [aiInstruction, setAiInstruction] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string | null>(null);
@@ -128,7 +132,8 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
     });
   }
 
-  function addBlock(type: Block["type"]) {
+  // smart_crm_contact виключено — той самий підхід, що DocEditorUI.tsx.
+  function addBlock(type: Exclude<Block["type"], "smart_crm_contact">) {
     const id = newBlockId();
     const block: Block =
       type === "paragraph" ? { id, type, text: "" } :
@@ -137,6 +142,12 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
       type === "image" ? { id, type, url: "" } :
       { id, type, items: [{ text: "", checked: false }] };
     updateActiveSlideBlocks(blocks => [...blocks, block]);
+  }
+
+  function addSmartCrmBlock(contactId: string) {
+    const block: Block = { id: newBlockId(), type: "smart_crm_contact", contactId };
+    updateActiveSlideBlocks(blocks => [...blocks, block]);
+    setShowCrmPicker(false);
   }
 
   function addSlide() {
@@ -334,16 +345,16 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
               >
                 {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Експорт
               </button>
-              {showExportMenu && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
-                  <div className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20" style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 140 }}>
+              <AnimatedDropdown
+                open={showExportMenu}
+                onClose={() => setShowExportMenu(false)}
+                className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20"
+                style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 140 }}
+              >
                     <button onClick={() => { setShowExportMenu(false); handleExportPdf(); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">PDF</button>
                     <button onClick={() => { setShowExportMenu(false); exportSlidesToMarkdown(title || "Без назви", slides); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">Markdown (.md)</button>
                     <button onClick={() => { setShowExportMenu(false); exportSlidesToHtml(title || "Без назви", slides); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">HTML</button>
-                  </div>
-                </>
-              )}
+              </AnimatedDropdown>
             </div>
             <button onClick={() => setShowAi(v => !v)} className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ background: "rgba(198,255,84,0.08)", border: "1px solid rgba(198,255,84,0.25)", color: "var(--lime)" }}>
               <Sparkles size={12} /> AI
@@ -398,10 +409,13 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides }: Props) {
               <BlockAddButton icon={List} label="Список" onClick={() => addBlock("bullet_list")} />
               <BlockAddButton icon={CheckSquare} label="Чек-лист" onClick={() => addBlock("checklist")} />
               <BlockAddButton icon={ImageIcon} label="Зображення" onClick={() => addBlock("image")} />
+              <BlockAddButton icon={User} label="CRM-контакт" onClick={() => setShowCrmPicker(true)} />
             </div>
           </div>
         </div>
       </div>
+
+      <CrmContactPicker open={showCrmPicker} organizationId={organizationId} onSelect={addSmartCrmBlock} onClose={() => setShowCrmPicker(false)} />
     </div>
   );
 }

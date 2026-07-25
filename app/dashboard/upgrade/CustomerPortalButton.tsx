@@ -8,9 +8,18 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.w
 export function CustomerPortalButton({
   orgId,
   accessToken,
+  product,
 }: {
   orgId: string;
   accessToken: string;
+  // Опційний — з 0086 одна organization може мати кілька активних
+  // підписок одночасно (Business + Mail тощо). Без цього параметра
+  // worker бере "найсвіжішу за created_at" підписку будь-якого
+  // продукту, що на сторінці тарифів КОНКРЕТНОГО продукту веде на
+  // портал керування ЧУЖОЮ підпискою. Не передається — старий
+  // Business-виклик лишається сумісним (worker трактує відсутність
+  // як "будь-який продукт", той самий результат, що й раніше).
+  product?: string;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,8 +28,9 @@ export function CustomerPortalButton({
     setLoading(true);
     setError(null);
     try {
+      const productParam = product ? `&product=${encodeURIComponent(product)}` : "";
       const resp = await fetch(
-        `${API_BASE}/api/ls/portal?org_id=${encodeURIComponent(orgId)}`,
+        `${API_BASE}/api/ls/portal?org_id=${encodeURIComponent(orgId)}${productParam}`,
         {
           headers: { Authorization: `Bearer ${accessToken}` },
         }

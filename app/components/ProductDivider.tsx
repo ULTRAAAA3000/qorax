@@ -1,5 +1,6 @@
 import { ArrowUpRight } from "lucide-react";
 import { Reveal } from "./Reveal";
+import type { Locale } from "@/app/lib/i18n";
 
 /**
  * ProductDivider — великий якір-заголовок перед групою ProductSection
@@ -26,6 +27,10 @@ import { Reveal } from "./Reveal";
  */
 
 const ACCENT_COLORS = { lime: "var(--lime)", cyan: "var(--cyan)", purple: "var(--purple)" } as const;
+const COPY: Record<Locale, { thisIs: string; goTo: string }> = {
+  uk: { thisIs: "ЦЕ — ", goTo: "Перейти в " },
+  en: { thisIs: "THIS IS ", goTo: "Go to " },
+};
 
 export function ProductDivider({
   icon: Icon,
@@ -33,14 +38,17 @@ export function ProductDivider({
   tagline,
   href,
   accent,
+  lang = "uk",
 }: {
   icon: React.ComponentType<{ size?: number; style?: React.CSSProperties; strokeWidth?: number }>;
   productName: string;
   tagline: string;
   href: string;
   accent: keyof typeof ACCENT_COLORS;
+  lang?: Locale;
 }) {
   const color = ACCENT_COLORS[accent];
+  const t = COPY[lang];
 
   return (
     <div className="relative">
@@ -57,7 +65,7 @@ export function ProductDivider({
               </div>
               <div className="min-w-0">
                 <span className="font-mono text-[11px] tracking-wide" style={{ color }}>
-                  ЦЕ — {productName.toUpperCase()}
+                  {t.thisIs}{productName.toUpperCase()}
                 </span>
                 <h2 className="font-display text-xl sm:text-2xl font-semibold leading-tight truncate">
                   {tagline}
@@ -70,7 +78,7 @@ export function ProductDivider({
               className="inline-flex items-center justify-center gap-1.5 text-sm font-medium shrink-0 px-4 py-2.5 sm:py-2 rounded-xl transition-colors w-full sm:w-auto"
               style={{ color, background: `${color}0d`, border: `1px solid ${color}26` }}
             >
-              Перейти в {productName} <ArrowUpRight size={14} />
+              {t.goTo}{productName} <ArrowUpRight size={14} />
             </a>
           </div>
         </Reveal>

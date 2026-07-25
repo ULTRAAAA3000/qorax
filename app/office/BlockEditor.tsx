@@ -1,6 +1,8 @@
 "use client";
 
-import { Plus, Trash2, Heading1, Heading2, Heading3, Check, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Plus, Trash2, Heading1, Heading2, Heading3, Check, X, User, Mail, Phone, ExternalLink } from "lucide-react";
+import { API_BASE_URL } from "@/app/lib/config";
 
 // Спільний блочний тип і рендер-компоненти для Docs і Slides —
 // той самий формат office_documents.content.blocks/office_slides.
@@ -15,10 +17,92 @@ export type Block =
   | { id: string; type: "heading"; level: 1 | 2 | 3; text: string }
   | { id: string; type: "bullet_list"; items: string[] }
   | { id: string; type: "checklist"; items: Array<{ text: string; checked: boolean }> }
-  | { id: string; type: "image"; url: string; alt?: string };
+  | { id: string; type: "image"; url: string; alt?: string }
+  | { id: string; type: "smart_crm_contact"; contactId: string };
 
 export function newBlockId(): string {
   return `b-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// Той самий фікс, що в усіх інших *UI.tsx компонентах Office.
+async function getFreshToken(): Promise<string> {
+  try {
+    const { createClient } = await import("@/app/lib/supabase/client");
+    const supabase = createClient();
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session?.access_token) return session.access_token;
+    const { data: refreshed } = await supabase.auth.refreshSession();
+    return refreshed.session?.access_token ?? "";
+  } catch {
+    return "";
+  }
+}
+
+interface CrmContact {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+}
+
+// Smart Block: CRM-картка контакту з "живою" прив'язкою (MODULE_
+// ROADMAP.md "Qorax Office" — Smart Blocks, той самий концепт, що
+// Smart Components у Creator, застосований до блочної моделі
+// Office). НЕ кешує ім'я/email/телефон у самому блоці — лише
+// contactId, дані підвантажуються при кожному показі через
+// GET /api/crm/contacts/:id (worker перевіряє, що контакт належить
+// організації користувача, незалежно від того, звідки прийшов
+// запит — той самий безпечний патерн, що скрізь у проєкті). Якщо
+// клієнт змінить email у CRM — картка покаже новий email при
+// наступному відкритті документа, без дії користувача над блоком.
+function SmartCrmContactCard({ contactId, editable }: { contactId: string; editable?: boolean }) {
+  const [contact, setContact] = useState<CrmContact | null | undefined>(undefined); // undefined = завантаження, null = помилка/не знайдено
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const token = await getFreshToken();
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/crm/contacts/${contactId}`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (cancelled) return;
+        if (!res.ok) { setContact(null); return; }
+        const data = await res.json();
+        setContact(data.contact ?? null);
+      } catch {
+        if (!cancelled) setContact(null);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [contactId]);
+
+  if (contact === undefined) {
+    return <div className="rounded-xl p-3 text-xs text-[var(--text-tertiary)]" style={{ border: "1px solid rgba(255,255,255,0.08)" }}>Завантаження контакту...</div>;
+  }
+  if (contact === null) {
+    return <div className="rounded-xl p-3 text-xs" style={{ border: "1px solid rgba(255,100,100,0.2)", color: "#ff6b6b" }}>Контакт недоступний або видалений</div>;
+  }
+
+  return (
+    <div className="rounded-xl p-3 flex items-start gap-3" style={{ border: "1px solid rgba(198,255,84,0.2)", background: "rgba(198,255,84,0.03)" }}>
+      <div className="h-8 w-8 rounded-full flex items-center justify-center shrink-0" style={{ background: "rgba(198,255,84,0.15)" }}>
+        <User size={14} style={{ color: "var(--lime)" }} />
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium truncate">{contact.name || "Без імені"}</p>
+        <div className="flex flex-col gap-0.5 mt-1">
+          {contact.email && <span className="text-xs text-[var(--text-tertiary)] flex items-center gap-1"><Mail size={10} />{contact.email}</span>}
+          {contact.phone && <span className="text-xs text-[var(--text-tertiary)] flex items-center gap-1"><Phone size={10} />{contact.phone}</span>}
+        </div>
+      </div>
+      {!editable && (
+        <a href="/dashboard/crm" target="_blank" rel="noopener noreferrer" className="shrink-0" style={{ color: "var(--text-tertiary)" }} title="Відкрити в CRM">
+          <ExternalLink size={12} />
+        </a>
+      )}
+    </div>
+  );
 }
 
 export function BlockAddButton({ icon: Icon, label, onClick }: { icon: typeof Heading1; label: string; onClick: () => void }) {
@@ -159,6 +243,10 @@ export function BlockContent({ block, onChange }: { block: Block; onChange: (upd
     );
   }
 
+  if (block.type === "smart_crm_contact") {
+    return <SmartCrmContactCard contactId={block.contactId} editable />;
+  }
+
   // checklist
   return (
     <div className="space-y-1.5">
@@ -219,6 +307,9 @@ export function BlockStatic({ block }: { block: Block }) {
     if (!block.url) return null;
     // eslint-disable-next-line @next/next/no-img-element -- довільний зовнішній URL, Present-режим і PDF-експорт потребують звичайний <img>
     return <img src={block.url} alt={block.alt ?? ""} className="max-w-full rounded-lg" style={{ maxHeight: "60vh" }} />;
+  }
+  if (block.type === "smart_crm_contact") {
+    return <SmartCrmContactCard contactId={block.contactId} />;
   }
   if (block.type === "bullet_list") {
     return (

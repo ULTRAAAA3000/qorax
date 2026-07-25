@@ -36,7 +36,7 @@ export default async function SlidesDeckPage({ params }: { params: Promise<{ dec
       </header>
 
       <div className="flex-1 min-h-0">
-        <SlidesEditorUI deckId={deck.id} initialTitle={deck.title} initialSlides={deck.slides} />
+        <SlidesEditorUI deckId={deck.id} initialTitle={deck.title} initialSlides={deck.slides} organizationId={deck.organization_id} />
       </div>
     </div>
   );

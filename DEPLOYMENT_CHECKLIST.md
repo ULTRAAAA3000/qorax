@@ -53,6 +53,8 @@ Dashboard, Cloudflare Dashboard, Google Cloud Console). Кожна сесія
 | `0083_office_version_history.sql` | `office_document_versions` — Version History для Docs/Sheets/Slides (append-only знімки, узагальнена схема на всі три редактори) | Кнопка "Історія версій" у `/office`, `/office/sheets/[id]`, `/office/slides/[id]` не працює |
 | `0084_developer_api_keys.sql` | `developer_api_keys` — фундамент Qorax SEO Platform (Developer API), SHA-256 хеш ключів, один на organization | `POST /api/v1/audit` (SEO Audit API) і генерація ключів у `/dashboard/settings` не працюють |
 | `0085_telegram_coach_messages.sql` | `telegram_coach_messages` — дедуплікація Business Coach повідомлень у Telegram-боті | Business Coach (щоденна перевірка сигналів "тиша в контенті"/"покращення швидкості") впаде на insert, сигнали не надсилатимуться взагалі |
+| `0086_ecosystem_pricing.sql` | Екосистемна модель тарифів — 20 нових plan-кодів, старі 6 лишаються в enum без видалення (перехідний період) | Новий checkout/webhook під нову лінійку не працюватиме; `planTiers.ts` (рефакторинг план-гейтингу по 17 файлах) залежить від нових кодів |
+| `0087_product_tours_seen.sql` | `product_tours_seen` — стан переглянутих інтерактивних турів по продуктах (Dashboard/Mail/Creator/Office/Browser), персональний per-user | Автозапуск туру спрацьовуватиме щоразу заново (POST на позначення переглянутим впаде), ручний перезапуск через кнопку "Тур" продовжить працювати |
 
 ---
 

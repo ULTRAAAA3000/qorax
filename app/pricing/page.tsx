@@ -1,8 +1,24 @@
+import type { Metadata } from "next";
 import { Reveal } from "@/app/components/Reveal";
 import { MarketingHeader } from "@/app/components/MarketingHeader";
 import { SiteFooterExpanded } from "@/app/components/SiteFooterExpanded";
 import { createClient } from "@/app/lib/supabase/server";
 import { CHECKOUT_DISABLED } from "@/app/lib/checkoutFlag";
+
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev";
+
+export const metadata: Metadata = {
+  title: "Тарифи — Qorax | Моніторинг сайтів для малого бізнесу",
+  description: "Плани від $12.99/міс. Безкоштовний тариф назавжди, картка не потрібна. Автоматичний технічний моніторинг, SEO-аудити та AI-інсайти для вашого сайту.",
+  alternates: {
+    canonical: `${SITE_URL}/pricing`,
+    languages: {
+      uk: `${SITE_URL}/pricing`,
+      en: `${SITE_URL}/en/pricing`,
+      "x-default": `${SITE_URL}/pricing`,
+    },
+  },
+};
 
 const LS_SUBDOMAIN = process.env.LS_STORE_SUBDOMAIN ?? "qoraxus";
 const LS_VARIANTS: Record<string, string> = {

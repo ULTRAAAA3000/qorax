@@ -17,6 +17,7 @@
     "@supabase/ssr": "^0.12.0",
     "@supabase/supabase-js": "^2.108.2",
     "@xyflow/react": "^12.11.2",
+    "driver.js": "^1.8.0",
     "exceljs": "^4.4.0",
     "gray-matter": "^4.0.3",
     "html2canvas": "^1.4.1",
