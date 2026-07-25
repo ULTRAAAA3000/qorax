@@ -55,6 +55,8 @@ Dashboard, Cloudflare Dashboard, Google Cloud Console). Кожна сесія
 | `0085_telegram_coach_messages.sql` | `telegram_coach_messages` — дедуплікація Business Coach повідомлень у Telegram-боті | Business Coach (щоденна перевірка сигналів "тиша в контенті"/"покращення швидкості") впаде на insert, сигнали не надсилатимуться взагалі |
 | `0086_ecosystem_pricing.sql` | Екосистемна модель тарифів — 20 нових plan-кодів, старі 6 лишаються в enum без видалення (перехідний період) | Новий checkout/webhook під нову лінійку не працюватиме; `planTiers.ts` (рефакторинг план-гейтингу по 17 файлах) залежить від нових кодів |
 | `0087_product_tours_seen.sql` | `product_tours_seen` — стан переглянутих інтерактивних турів по продуктах (Dashboard/Mail/Creator/Office/Browser), персональний per-user | Автозапуск туру спрацьовуватиме щоразу заново (POST на позначення переглянутим впаде), ручний перезапуск через кнопку "Тур" продовжить працювати |
+| `0088_developer_monitoring_api.sql` | `developer_monitored_urls` — четвертий API Qorax SEO Platform (Developer API), baseline-порівняння title/canonical/schema/robots/pagespeed щогодини | `POST/GET` monitoring-ендпоінти Developer API не працюють |
+| `0089_mail_campaigns.sql` | `mail_campaigns` — Шар 2 Qorax Mail (масові розсилки/кампанії) | Функціонал кампаній у Mail не працює |
 
 ---
 
