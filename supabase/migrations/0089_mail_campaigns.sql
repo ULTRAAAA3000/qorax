@@ -1,4 +1,4 @@
--- 0087_mail_campaigns.sql
+-- 0089_mail_campaigns.sql
 -- Qorax Mail — Шар 2: Маркетинг (Campaigns / Automations / Templates)
 -- (MODULE_ROADMAP.md, "Qorax Mail — окремий продукт екосистеми").
 --
