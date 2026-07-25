@@ -3,7 +3,19 @@ import { MarketingHeader } from "@/app/components/MarketingHeader";
 import { SiteFooterExpanded } from "@/app/components/SiteFooterExpanded";
 import { LegalPageLayout } from "@/app/components/LegalPageLayout";
 
-export const metadata = { title: "Політика конфіденційності — Qorax" };
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev";
+
+export const metadata = {
+  title: "Політика конфіденційності — Qorax",
+  alternates: {
+    canonical: `${SITE_URL}/privacy`,
+    languages: {
+      uk: `${SITE_URL}/privacy`,
+      en: `${SITE_URL}/en/privacy`,
+      "x-default": `${SITE_URL}/privacy`,
+    },
+  },
+};
 
 export default async function PrivacyPage() {
   const supabase = await createClient();

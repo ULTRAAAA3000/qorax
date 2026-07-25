@@ -10,10 +10,10 @@ import { HowItWorksSection } from "@/app/components/HowItWorksSection";
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev";
 
 export const metadata = {
-  title: "Можливості — Qorax",
-  description: "Моніторинг, швидкість, SEO, AI-аналіз, конкуренти та автозвіти для вашого сайту — все під одним дахом.",
+  title: "Features — Qorax",
+  description: "Monitoring, speed, SEO, AI analysis, competitor tracking, and automated reports for your website — all under one roof.",
   alternates: {
-    canonical: `${SITE_URL}/features`,
+    canonical: `${SITE_URL}/en/features`,
     languages: {
       uk: `${SITE_URL}/features`,
       en: `${SITE_URL}/en/features`,
@@ -24,98 +24,98 @@ export const metadata = {
 
 const FEATURE_GROUPS = [
   {
-    eyebrow: "МОНІТОРИНГ",
+    eyebrow: "MONITORING",
     accent: "lime" as const,
-    title: "Завжди знаєте, що відбувається",
+    title: "Always know what's happening",
     description:
-      "Uptime-перевірки кожні 5 хвилин, SSL-алерти за 30 і 7 днів до закінчення, автоматичне сповіщення на email і Telegram — ви дізнаєтесь про проблему раніше, ніж клієнт.",
+      "Uptime checks every 5 minutes, SSL alerts 30 and 7 days before expiry, automatic email and Telegram notifications — you find out about an issue before your client does.",
     bullets: [
-      "Uptime кожні 5 хвилин (Starter+)",
-      "SSL: алерт за 30 і 7 днів до закінчення",
-      "Інциденти з таймстемпом і тривалістю",
-      "Email + Telegram сповіщення",
-      "Живий дашборд з графіком відповіді",
+      "Uptime every 5 minutes (Starter+)",
+      "SSL: alert 30 and 7 days before expiry",
+      "Incidents with timestamp and duration",
+      "Email + Telegram notifications",
+      "Live dashboard with a response chart",
     ],
   },
   {
-    eyebrow: "ШВИДКІСТЬ",
+    eyebrow: "SPEED",
     accent: "cyan" as const,
-    title: "Швидкість — це не число, це графік",
+    title: "Speed is a chart, not a number",
     description:
-      "Щоденні заміри часу відповіді та Core Web Vitals через Google PageSpeed Insights API. Через місяць видно чітку картину: де погіршується, де покращується.",
+      "Daily response-time measurements and Core Web Vitals via the Google PageSpeed Insights API. After a month you get a clear picture: what's getting worse, what's improving.",
     bullets: [
-      "Час відповіді — щоденно, зберігається 30 днів",
-      "LCP, INP, CLS — мобіль та десктоп",
-      "Performance Score за Google",
-      "Кольорові індикатори за порогами Google",
-      "Trend-графік прямо в дашборді",
+      "Response time — measured daily, kept for 30 days",
+      "LCP, INP, CLS — mobile and desktop",
+      "Performance Score by Google",
+      "Color-coded indicators by Google's thresholds",
+      "Trend chart right in the dashboard",
     ],
   },
   {
     eyebrow: "SEO",
     accent: "lime" as const,
-    title: "SEO без гадання",
+    title: "SEO without the guesswork",
     description:
-      "Перевірка мета-тегів, H1, schema markup, sitemap.xml та robots.txt щодня. Конкретні проблеми — не абстрактні рекомендації.",
+      "Daily checks of meta tags, H1, schema markup, sitemap.xml, and robots.txt. Concrete issues — not abstract recommendations.",
     bullets: [
-      "Title, meta description — довжина та наявність",
-      "H1: є / немає / більше одного",
+      "Title, meta description — length and presence",
+      "H1: present / missing / multiple",
       "Schema markup (JSON-LD, Microdata)",
-      "sitemap.xml: знайдений, кількість URL",
-      "robots.txt: знайдений, не блокує індексацію",
+      "sitemap.xml: found, URL count",
+      "robots.txt: found, not blocking indexing",
     ],
   },
   {
-    eyebrow: "AI-АНАЛІЗ",
+    eyebrow: "AI ANALYSIS",
     accent: "cyan" as const,
-    title: "Технічні проблеми у вигляді $",
+    title: "Technical issues expressed in $",
     description:
-      "Кожна знайдена проблема отримує AI-пояснення простою мовою та оцінку орієнтовних грошових втрат на місяць. Власник бізнесу розуміє, що виправити в першу чергу.",
+      "Every issue found gets a plain-language AI explanation and an estimated monthly dollar impact. The business owner understands what to fix first.",
     bullets: [
-      "Пояснення без технічного жаргону",
-      "Оцінка втрат у $ на місяць",
-      "Пріоритизація за severity: critical / warning / info",
-      "Рекомендація для кожного інсайту",
-      "Qoraxus AI-чат для уточнень (Growth+)",
+      "Explanations with no technical jargon",
+      "Estimated loss in $ per month",
+      "Prioritized by severity: critical / warning / info",
+      "A recommendation for every insight",
+      "Qoraxus AI chat for follow-up questions (Growth+)",
     ],
   },
   {
-    eyebrow: "КОНКУРЕНТИ",
+    eyebrow: "COMPETITORS",
     accent: "lime" as const,
-    title: "Знайте, коли конкурент щось змінив",
+    title: "Know the moment a competitor changes something",
     description:
-      "SHA-256 хеш-порівняння сторінок конкурентів. Коли вони оновлюють лендінг, змінюють ціни або запускають акцію — ви дізнаєтесь автоматично.",
+      "SHA-256 hash comparison of competitor pages. When they update their landing page, change prices, or launch a promo — you find out automatically.",
     bullets: [
-      "До 1 конкурента на Growth, більше на Agency",
-      "Щоденна перевірка змін",
-      "Email + Telegram при виявленні змін",
-      "Таймстемп кожної зміни",
-      "Не потребує доступу до сайту конкурента",
+      "Up to 1 competitor on Growth, more on Agency",
+      "Daily change checks",
+      "Email + Telegram when a change is detected",
+      "Timestamp for every change",
+      "No access to the competitor's site needed",
     ],
   },
   {
-    eyebrow: "ЗВІТИ",
+    eyebrow: "REPORTS",
     accent: "cyan" as const,
-    title: "PDF для клієнта — без роботи з вашого боку",
+    title: "A client-ready PDF — no work on your end",
     description:
-      "Щомісячний PDF-звіт генерується автоматично і надсилається на email. Для агентств — white-label з вашим логотипом і без згадки Qorax.",
+      "A monthly PDF report is generated automatically and emailed. For agencies — white-label with your own logo, no mention of Qorax.",
     bullets: [
-      "Автоматичний місячний PDF",
-      "Uptime, швидкість, SEO, AI-інсайти",
-      "White-label для Agency-плану",
-      "Разовий аудит-звіт на запит",
-      "Завантаження з дашборду в будь-який час",
+      "Automatic monthly PDF",
+      "Uptime, speed, SEO, AI insights",
+      "White-label on the Agency plan",
+      "One-off audit report on demand",
+      "Download from the dashboard anytime",
     ],
   },
 ];
 
-export default async function FeaturesPage() {
+export default async function FeaturesPageEn() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   return (
     <main className="flex flex-col min-h-screen" style={{ background: "var(--bg)" }}>
-      <MarketingHeader isLoggedIn={!!user} activePath="/features" />
+      <MarketingHeader isLoggedIn={!!user} activePath="/features" lang="en" />
 
       {/* Hero */}
       <section className="relative overflow-hidden">
@@ -136,18 +136,18 @@ export default async function FeaturesPage() {
                 color: "var(--text-tertiary)",
               }}
             >
-              ✦ МОЖЛИВОСТІ
+              ✦ FEATURES
             </span>
           </Reveal>
           <Reveal delay={0.05}>
             <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight max-w-3xl mx-auto">
-              Все що потрібно для{" "}
-              <span className="gradient-text">здорового сайту</span>
+              Everything you need for a{" "}
+              <span className="gradient-text">healthy website</span>
             </h1>
           </Reveal>
           <Reveal delay={0.1}>
             <p className="mt-6 text-lg text-[var(--text-secondary)] max-w-xl mx-auto leading-relaxed">
-              Платформа з шести модулів замість п&apos;яти розрізнених інструментів. Моніторинг, SEO, швидкість, конкуренти та AI-аналіз — вже працюють. Далі — сайти, контент, позиції та аналітика в одній екосистемі.
+              One platform with six modules instead of five separate tools. Monitoring, SEO, speed, competitor tracking, and AI analysis — already working. Coming next: sites, content, rankings, and analytics in one ecosystem.
             </p>
           </Reveal>
           <Reveal delay={0.15}>
@@ -156,13 +156,13 @@ export default async function FeaturesPage() {
                 href="/register"
                 className="glow-button text-sm !py-2.5 !px-6"
               >
-                Спробувати безкоштовно →
+                Try it for free →
               </Link>
               <Link
-                href="/#audit"
+                href="/en#audit"
                 className="ghost-button text-sm !py-2.5 !px-6"
               >
-                Швидкий аудит
+                Quick audit
               </Link>
             </div>
           </Reveal>
@@ -237,13 +237,13 @@ export default async function FeaturesPage() {
       })}
 
       {/* Bento grid */}
-      <FeatureBento />
+      <FeatureBento lang="en" />
 
       {/* Platform-wide narrative — all 6 modules */}
-      <PlatformModulesSection />
+      <PlatformModulesSection lang="en" />
 
       {/* How it works */}
-      <HowItWorksSection />
+      <HowItWorksSection lang="en" />
 
       {/* CTA */}
       <section className="relative overflow-hidden">
@@ -258,23 +258,23 @@ export default async function FeaturesPage() {
         <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-24 text-center">
           <Reveal>
             <h2 className="font-display text-3xl sm:text-4xl font-semibold max-w-lg mx-auto leading-tight">
-              Готові побачити це в дії?
+              Ready to see it in action?
             </h2>
           </Reveal>
           <Reveal delay={0.05}>
             <p className="mt-4 text-[var(--text-secondary)] max-w-sm mx-auto">
-              Безкоштовно назавжди. Картка не потрібна.
+              Free forever. No card required.
             </p>
           </Reveal>
           <Reveal delay={0.1}>
             <a href="/register" className="glow-button text-sm !py-3 !px-8 mt-8 inline-block">
-              Спробувати безкоштовно →
+              Try it for free →
             </a>
           </Reveal>
         </div>
       </section>
 
-      <SiteFooterExpanded />
+      <SiteFooterExpanded lang="en" />
     </main>
   );
 }

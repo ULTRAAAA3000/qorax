@@ -3,7 +3,19 @@ import { MarketingHeader } from "@/app/components/MarketingHeader";
 import { SiteFooterExpanded } from "@/app/components/SiteFooterExpanded";
 import { LegalPageLayout } from "@/app/components/LegalPageLayout";
 
-export const metadata = { title: "Умови використання — Qorax" };
+const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev";
+
+export const metadata = {
+  title: "Умови використання — Qorax",
+  alternates: {
+    canonical: `${SITE_URL}/terms`,
+    languages: {
+      uk: `${SITE_URL}/terms`,
+      en: `${SITE_URL}/en/terms`,
+      "x-default": `${SITE_URL}/terms`,
+    },
+  },
+};
 
 export default async function TermsPage() {
   const supabase = await createClient();
