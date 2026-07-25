@@ -142,12 +142,12 @@ export function DocsCta() {
         </Reveal>
         <Reveal delay={0.05}>
           <p className="text-[var(--text-secondary)] mb-8 max-w-sm mx-auto">
-            14 днів повного доступу безкоштовно. Без кредитної картки.
+            Free-тариф назавжди. Без кредитної картки.
           </p>
         </Reveal>
         <Reveal delay={0.1}>
           <a href="/register" className="glow-button text-sm !py-3 !px-8 inline-block">
-            Почати тріал →
+            Зареєструватися →
           </a>
         </Reveal>
       </div>

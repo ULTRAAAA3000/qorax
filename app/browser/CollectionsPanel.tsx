@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, Trash2, Loader2, FolderOpen, Bookmark, ChevronLeft, FileText } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { SkeletonCompactList } from "@/app/components/Skeleton";
 
 interface Collection {
   id: string;
@@ -224,11 +225,7 @@ export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, on
 
         {error && <p className="text-xs" style={{ color: "#F5675A" }}>{error}</p>}
 
-        {!items && (
-          <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)] py-3">
-            <Loader2 size={12} className="animate-spin" /> Завантаження...
-          </div>
-        )}
+        {!items && <SkeletonCompactList count={4} />}
 
         {items && items.length === 0 && (
           <p className="text-xs text-[var(--text-tertiary)]">Ще немає збережених сайтів у цій колекції.</p>
@@ -268,11 +265,7 @@ export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, on
 
           {showDocPicker && (
             <div className="space-y-1 mb-2 max-h-40 overflow-y-auto rounded-lg p-1.5" style={{ background: "rgba(255,255,255,0.03)" }}>
-              {!availableDocs && (
-                <div className="flex items-center gap-2 text-[11px] text-[var(--text-tertiary)] py-1.5 px-1.5">
-                  <Loader2 size={11} className="animate-spin" /> Завантаження...
-                </div>
-              )}
+              {!availableDocs && <SkeletonCompactList count={3} />}
               {availableDocs && availableDocs.length === 0 && (
                 <p className="text-[11px] text-[var(--text-tertiary)] px-1.5 py-1">Немає документів в Office.</p>
               )}
@@ -354,11 +347,7 @@ export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, on
 
       {error && <p className="text-xs" style={{ color: "#F5675A" }}>{error}</p>}
 
-      {!collections && (
-        <div className="flex items-center gap-2 text-xs text-[var(--text-tertiary)] py-3">
-          <Loader2 size={12} className="animate-spin" /> Завантаження...
-        </div>
-      )}
+      {!collections && <SkeletonCompactList count={4} />}
 
       {collections && collections.length === 0 && (
         <p className="text-xs text-[var(--text-tertiary)]">Колекції групують сайти — конкурентів, референси, ідеї в одному місці замість закладок.</p>

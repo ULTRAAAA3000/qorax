@@ -1,0 +1,44 @@
+---
+title: Reporting API
+orderIndex: 4
+---
+
+Той самий аудит, що SEO Audit API, але у вигляді готового звіту — JSON або оформлений HTML.
+
+## Запит
+
+```
+POST /api/v1/report
+Authorization: Bearer qrx_ваш_ключ
+Content-Type: application/json
+```
+
+```json
+{
+  "url": "https://example.com",
+  "format": "html"
+}
+```
+
+`format` — необов'язкове поле, `"json"` (за замовчуванням) або `"html"`.
+
+## Відповідь: format=json
+
+Той самий формат, що SEO Audit API, з додатковим полем `generatedAt`:
+
+```json
+{
+  "url": "https://example.com",
+  "reachable": true,
+  "httpStatus": 200,
+  "meta": { "title": "Example Domain" },
+  "pageSpeed": { "mobile": { "performanceScore": 87 } },
+  "generatedAt": "2026-07-24T10:00:00.000Z"
+}
+```
+
+## Відповідь: format=html
+
+Повертає готову HTML-сторінку (`Content-Type: text/html`) у фірмовому стилі Qorax — заголовок, ключові метрики, SEO-деталі та кнопка «Зберегти як PDF» (браузерний `window.print()`, оскільки Cloudflare Workers не має власного PDF-рендерера).
+
+Зручно відкрити напряму в браузері або вставити як `iframe` у власний застосунок.

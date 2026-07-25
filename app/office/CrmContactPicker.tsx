@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { X, Loader2, User, Search } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
 
 interface Contact {
   id: string;
@@ -27,11 +28,15 @@ async function getFreshToken(): Promise<string> {
 // CrmContactPicker — вибір контакту для Smart Block (MODULE_ROADMAP.md
 // "Qorax Office" — Smart Blocks). Переюзує вже наявний GET
 // /api/crm/contacts?organization_id=... (список), не новий ендпоінт.
-export function CrmContactPicker({ organizationId, onSelect, onClose }: { organizationId: string; onSelect: (contactId: string) => void; onClose: () => void }) {
+export function CrmContactPicker({ open, organizationId, onSelect, onClose }: { open: boolean; organizationId: string; onSelect: (contactId: string) => void; onClose: () => void }) {
   const [contacts, setContacts] = useState<Contact[] | null>(null);
   const [query, setQuery] = useState("");
 
   useEffect(() => {
+    // Компонент завжди монтований (для exit-анімації) — тягнемо
+    // контакти лише при першому реальному відкритті, не одразу при
+    // рендері редактора документа.
+    if (!open || contacts !== null) return;
     (async () => {
       const token = await getFreshToken();
       const res = await fetch(`${API_BASE_URL}/api/crm/contacts?organization_id=${organizationId}`, {
@@ -40,7 +45,7 @@ export function CrmContactPicker({ organizationId, onSelect, onClose }: { organi
       const data = await res.json();
       setContacts(data.contacts ?? []);
     })();
-  }, [organizationId]);
+  }, [open, contacts, organizationId]);
 
   const filtered = contacts?.filter(c => {
     const q = query.trim().toLowerCase();
@@ -49,8 +54,7 @@ export function CrmContactPicker({ organizationId, onSelect, onClose }: { organi
   }) ?? [];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
-      <div className="glow-card p-4 max-w-sm w-full max-h-[70vh] flex flex-col" onClick={e => e.stopPropagation()}>
+    <AnimatedModalOverlay open={open} onClose={onClose} cardClassName="glow-card p-4 max-w-sm w-full max-h-[70vh] flex flex-col">
         <div className="flex items-center justify-between mb-3">
           <h3 className="text-sm font-semibold">Вставити контакт CRM</h3>
           <button onClick={onClose}><X size={14} className="text-[var(--text-tertiary)]" /></button>
@@ -91,7 +95,6 @@ export function CrmContactPicker({ organizationId, onSelect, onClose }: { organi
             </button>
           ))}
         </div>
-      </div>
-    </div>
+    </AnimatedModalOverlay>
   );
 }

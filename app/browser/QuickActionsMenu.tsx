@@ -6,6 +6,8 @@ import { API_BASE_URL } from "@/app/lib/config";
 import { AiCompareModal } from "./AiCompareModal";
 import { VisualSearchModal } from "./VisualSearchModal";
 import { WebsiteTimelineModal } from "./WebsiteTimelineModal";
+import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
+import { AnimatedDropdown } from "@/app/components/AnimatedDropdown";
 
 interface Props {
   organizationId: string;
@@ -97,11 +99,12 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
         <Zap size={12} /> Дії
       </button>
 
-      {open && (
-        <div
-          className="absolute right-0 top-full mt-1.5 w-56 rounded-xl p-1.5 z-10 shadow-2xl"
-          style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }}
-        >
+      <AnimatedDropdown
+        open={open}
+        onClose={() => setOpen(false)}
+        className="absolute right-0 top-full mt-1.5 w-56 rounded-xl p-1.5 z-10 shadow-2xl"
+        style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }}
+      >
           <ActionItem icon={ScanSearch} label="Analyze SEO" onClick={() => { setOpen(false); onAnalyze(); }} />
           <ActionItem icon={Bookmark} label="Save to Project" onClick={() => { setOpen(false); onSaveToCollection(); }} />
           <ActionItem icon={Scale} label="AI Compare" onClick={() => { setOpen(false); setShowCompare(true); }} />
@@ -113,46 +116,32 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
           <div className="my-1" style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }} />
           <ActionItem icon={Palette} label="Create Design" disabled note="Creator — скоро" />
           <ActionItem icon={Mail} label="Generate Email" disabled note="Mail — скоро" />
-        </div>
-      )}
+      </AnimatedDropdown>
 
-      {showCompare && (
-        <AiCompareModal
-          organizationId={organizationId}
-          competitorUrl={currentUrl}
-          getFreshToken={getFreshToken}
-          onClose={() => setShowCompare(false)}
-        />
-      )}
+      <AiCompareModal
+        open={showCompare}
+        organizationId={organizationId}
+        competitorUrl={currentUrl}
+        getFreshToken={getFreshToken}
+        onClose={() => setShowCompare(false)}
+      />
 
-      {showVisualSearch && (
-        <VisualSearchModal
-          organizationId={organizationId}
-          getFreshToken={getFreshToken}
-          onClose={() => setShowVisualSearch(false)}
-        />
-      )}
+      <VisualSearchModal
+        open={showVisualSearch}
+        organizationId={organizationId}
+        getFreshToken={getFreshToken}
+        onClose={() => setShowVisualSearch(false)}
+      />
 
-      {showTimeline && (
-        <WebsiteTimelineModal
-          organizationId={organizationId}
-          url={currentUrl}
-          getFreshToken={getFreshToken}
-          onClose={() => setShowTimeline(false)}
-        />
-      )}
+      <WebsiteTimelineModal
+        open={showTimeline}
+        organizationId={organizationId}
+        url={currentUrl}
+        getFreshToken={getFreshToken}
+        onClose={() => setShowTimeline(false)}
+      />
 
-      {resultKind && (
-        <div
-          className="fixed inset-0 z-20 flex items-center justify-center p-6"
-          style={{ background: "rgba(0,0,0,0.6)" }}
-          onClick={() => setResultKind(null)}
-        >
-          <div
-            className="w-full max-w-lg max-h-[70vh] overflow-y-auto rounded-2xl p-5"
-            style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }}
-            onClick={e => e.stopPropagation()}
-          >
+      <AnimatedModalOverlay open={resultKind !== null} onClose={() => setResultKind(null)} cardClassName="w-full max-w-lg max-h-[70vh] overflow-y-auto rounded-2xl p-5" cardStyle={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }} zIndex={20}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium flex items-center gap-2">
                 {resultKind === "translate" ? <Languages size={14} style={{ color: "var(--cyan)" }} /> : <FileStack size={14} style={{ color: "var(--lime)" }} />}
@@ -169,9 +158,7 @@ export function QuickActionsMenu({ organizationId, currentUrl, getFreshToken, on
             )}
             {error && <p className="text-xs" style={{ color: "#F5675A" }}>{error}</p>}
             {resultText && <p className="text-sm leading-relaxed text-[var(--text-secondary)] whitespace-pre-wrap">{resultText}</p>}
-          </div>
-        </div>
-      )}
+      </AnimatedModalOverlay>
     </div>
   );
 }

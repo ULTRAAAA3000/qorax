@@ -10,6 +10,7 @@ import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
 import { useLiveSync } from "../../useLiveSync";
 import { VersionHistoryButton } from "../../VersionHistoryButton";
+import { AnimatedDropdown } from "@/app/components/AnimatedDropdown";
 import { CrmContactPicker } from "../../CrmContactPicker";
 
 interface Slide {
@@ -344,16 +345,16 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides, organizati
               >
                 {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Експорт
               </button>
-              {showExportMenu && (
-                <>
-                  <div className="fixed inset-0 z-10" onClick={() => setShowExportMenu(false)} />
-                  <div className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20" style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 140 }}>
+              <AnimatedDropdown
+                open={showExportMenu}
+                onClose={() => setShowExportMenu(false)}
+                className="absolute right-0 top-full mt-1 rounded-xl overflow-hidden z-20"
+                style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 140 }}
+              >
                     <button onClick={() => { setShowExportMenu(false); handleExportPdf(); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">PDF</button>
                     <button onClick={() => { setShowExportMenu(false); exportSlidesToMarkdown(title || "Без назви", slides); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">Markdown (.md)</button>
                     <button onClick={() => { setShowExportMenu(false); exportSlidesToHtml(title || "Без назви", slides); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">HTML</button>
-                  </div>
-                </>
-              )}
+              </AnimatedDropdown>
             </div>
             <button onClick={() => setShowAi(v => !v)} className="text-xs font-medium px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ background: "rgba(198,255,84,0.08)", border: "1px solid rgba(198,255,84,0.25)", color: "var(--lime)" }}>
               <Sparkles size={12} /> AI
@@ -414,9 +415,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides, organizati
         </div>
       </div>
 
-      {showCrmPicker && (
-        <CrmContactPicker organizationId={organizationId} onSelect={addSmartCrmBlock} onClose={() => setShowCrmPicker(false)} />
-      )}
+      <CrmContactPicker open={showCrmPicker} organizationId={organizationId} onSelect={addSmartCrmBlock} onClose={() => setShowCrmPicker(false)} />
     </div>
   );
 }

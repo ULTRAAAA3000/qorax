@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, X, Loader2, ChevronRight, User, Phone, Mail } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { SkeletonBlock, SkeletonTable } from "@/app/components/Skeleton";
 
 interface CrmContact {
   id: string;
@@ -210,8 +211,14 @@ export function CrmBoardUI({ organizationId, accessToken }: Props) {
           </div>
 
           {deals === null ? (
-            <div className="glow-card p-10 text-center">
-              <Loader2 size={20} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} />
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="space-y-2">
+                  <SkeletonBlock className="h-4 w-20" />
+                  <SkeletonBlock className="h-16 w-full rounded-xl" />
+                  <SkeletonBlock className="h-16 w-full rounded-xl" />
+                </div>
+              ))}
             </div>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
@@ -281,8 +288,8 @@ export function CrmBoardUI({ organizationId, accessToken }: Props) {
           </div>
 
           {contacts === null ? (
-            <div className="glow-card p-10 text-center">
-              <Loader2 size={20} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} />
+            <div className="glow-card overflow-hidden">
+              <SkeletonTable rows={5} columns={3} />
             </div>
           ) : contacts.length === 0 ? (
             <div className="glow-card p-10 text-center">

@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback } from "react";
 import { Scale, Loader2, X, ChevronDown } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
 
 interface Props {
+  open: boolean;
   organizationId: string;
   competitorUrl: string;
   getFreshToken: () => Promise<string>;
@@ -36,7 +38,7 @@ interface CompareResult {
 // dashboard/page.tsx читає напряму через Supabase client — тут той
 // самий підхід, не новий worker-ендпоінт для простого списку) або
 // вручну через URL — конкурент vs конкурент теж має сенс.
-export function AiCompareModal({ organizationId, competitorUrl, getFreshToken, onClose }: Props) {
+export function AiCompareModal({ open, organizationId, competitorUrl, getFreshToken, onClose }: Props) {
   const [ownSites, setOwnSites] = useState<OwnSite[] | null>(null);
   const [selectedSiteUrl, setSelectedSiteUrl] = useState<string>("");
   const [manualUrl, setManualUrl] = useState("");
@@ -64,10 +66,15 @@ export function AiCompareModal({ organizationId, competitorUrl, getFreshToken, o
   }, [organizationId]);
 
   useEffect(() => {
+    // Компонент тепер завжди монтований (для exit-анімації) — тягнемо
+    // список сайтів лише при першому реальному відкритті модалки,
+    // не одразу при заході на Browser. ownSites === null означає ще
+    // не завантажено (не порожній масив після завантаження).
+    if (!open || ownSites !== null) return;
     (async () => {
       await loadOwnSites();
     })();
-  }, [loadOwnSites]);
+  }, [open, ownSites, loadOwnSites]);
 
   async function runCompare() {
     const yourUrl = useManual ? manualUrl.trim() : selectedSiteUrl;
@@ -98,12 +105,7 @@ export function AiCompareModal({ organizationId, competitorUrl, getFreshToken, o
   }
 
   return (
-    <div className="fixed inset-0 z-20 flex items-center justify-center p-6" style={{ background: "rgba(0,0,0,0.6)" }} onClick={onClose}>
-      <div
-        className="w-full max-w-xl max-h-[75vh] overflow-y-auto rounded-2xl p-5"
-        style={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }}
-        onClick={e => e.stopPropagation()}
-      >
+    <AnimatedModalOverlay open={open} onClose={onClose} cardClassName="w-full max-w-xl max-h-[75vh] overflow-y-auto rounded-2xl p-5" cardStyle={{ background: "#141414", border: "1px solid rgba(255,255,255,0.1)" }} zIndex={20}>
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-medium flex items-center gap-2">
             <Scale size={14} style={{ color: "#B98CF7" }} /> AI Compare
@@ -175,8 +177,7 @@ export function AiCompareModal({ organizationId, competitorUrl, getFreshToken, o
             </button>
           </div>
         )}
-      </div>
-    </div>
+    </AnimatedModalOverlay>
   );
 }
 

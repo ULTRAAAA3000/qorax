@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { Plus, Loader2, Table2, Trash2 } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { SkeletonBoardGrid } from "@/app/components/Skeleton";
 
 interface Sheet {
   id: string;
@@ -83,11 +84,7 @@ export function OfficeSheetsListUI({ organizationId }: Props) {
         {creating ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />} Нова таблиця
       </button>
 
-      {!sheets && (
-        <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)] py-8 justify-center">
-          <Loader2 size={16} className="animate-spin" /> Завантаження...
-        </div>
-      )}
+      {!sheets && <SkeletonBoardGrid count={6} />}
 
       {sheets?.length === 0 && (
         <div className="glow-card p-8 text-center">
