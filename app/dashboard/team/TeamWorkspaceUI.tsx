@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, X, Loader2, ChevronRight, Activity } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { SkeletonBlock, SkeletonCompactList } from "@/app/components/Skeleton";
 
 interface TeamTask {
   id: string;
@@ -208,8 +209,14 @@ export function TeamWorkspaceUI({ organizationId }: Props) {
         </div>
 
         {tasks === null ? (
-          <div className="glow-card p-10 text-center">
-            <Loader2 size={20} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} />
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="space-y-2">
+                <SkeletonBlock className="h-4 w-20" />
+                <SkeletonBlock className="h-16 w-full rounded-xl" />
+                <SkeletonBlock className="h-16 w-full rounded-xl" />
+              </div>
+            ))}
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -260,9 +267,7 @@ export function TeamWorkspaceUI({ organizationId }: Props) {
           <span className="text-xs font-semibold uppercase tracking-wide text-[var(--text-tertiary)]">Стрічка дій</span>
         </div>
         {activity === null ? (
-          <div className="glow-card p-6 text-center">
-            <Loader2 size={16} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} />
-          </div>
+          <SkeletonCompactList count={4} />
         ) : activity.length === 0 ? (
           <div className="glow-card p-6 text-center">
             <p className="text-xs text-[var(--text-tertiary)]">Ще немає дій.</p>

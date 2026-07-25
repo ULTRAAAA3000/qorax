@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Plus, X, Loader2, FileText, Trash2, LayoutTemplate } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
+import { SkeletonBoardGrid } from "@/app/components/Skeleton";
 
 interface Doc {
   id: string;
@@ -168,11 +169,7 @@ export function OfficeDocsListUI({ organizationId }: Props) {
             </div>
       </AnimatedModalOverlay>
 
-      {!docs && (
-        <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)] py-8 justify-center">
-          <Loader2 size={16} className="animate-spin" /> Завантаження...
-        </div>
-      )}
+      {!docs && <SkeletonBoardGrid count={6} />}
 
       {docs?.length === 0 && (
         <div className="glow-card p-8 text-center">

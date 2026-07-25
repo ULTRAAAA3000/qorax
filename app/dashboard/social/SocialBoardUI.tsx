@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Plus, X, Loader2, Send, Sparkles, Trash2, Clock, CheckCircle2, XCircle, FileEdit } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
+import { SkeletonCompactList, SkeletonBoardGrid } from "@/app/components/Skeleton";
 
 interface SocialConnection {
   id: string;
@@ -260,7 +261,7 @@ export function SocialBoardUI({ organizationId, accessToken }: Props) {
         )}
 
         {connections === null ? (
-          <Loader2 size={16} className="animate-spin" style={{ color: "var(--text-tertiary)" }} />
+          <SkeletonCompactList count={2} />
         ) : activeConnections.length === 0 ? (
           <p className="text-sm text-[var(--text-secondary)]">Ще немає підключених каналів.</p>
         ) : (
@@ -362,9 +363,7 @@ export function SocialBoardUI({ organizationId, accessToken }: Props) {
       <div className="space-y-2">
         <h2 className="text-sm font-semibold px-1">Пости</h2>
         {posts === null ? (
-          <div className="glow-card p-10 text-center">
-            <Loader2 size={20} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} />
-          </div>
+          <SkeletonBoardGrid count={4} />
         ) : posts.length === 0 ? (
           <div className="glow-card p-10 text-center">
             <p className="text-sm text-[var(--text-secondary)]">Ще немає постів — створіть перший.</p>

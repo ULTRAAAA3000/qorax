@@ -5,6 +5,7 @@ import { Inbox, Loader2, Plus, Send, RefreshCw, Mail as MailIcon } from "lucide-
 import { API_BASE_URL } from "@/app/lib/config";
 import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
 import { TourButton } from "@/app/components/TourButton";
+import { SkeletonMailList } from "@/app/components/Skeleton";
 import { UpgradeLinkButton } from "@/app/components/UpgradeLinkButton";
 
 interface MailAccount {
@@ -250,8 +251,13 @@ export function MailApp({ organizationId }: { organizationId: string }) {
 
   if (accounts === null) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ background: "var(--bg)" }}>
-        <Loader2 size={24} className="animate-spin" style={{ color: "var(--text-tertiary)" }} />
+      <div className="flex" style={{ minHeight: "100vh", background: "var(--bg)" }}>
+        <div className="w-80 shrink-0 border-r flex flex-col" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+          <div className="p-4 border-b" style={{ borderColor: "rgba(255,255,255,0.06)" }}>
+            <div className="h-4 w-32 rounded-md animate-pulse" style={{ background: "rgba(255,255,255,0.05)" }} />
+          </div>
+          <SkeletonMailList count={8} />
+        </div>
       </div>
     );
   }
@@ -298,7 +304,7 @@ export function MailApp({ organizationId }: { organizationId: string }) {
         {view === "contacts" ? (
           <div className="flex-1 overflow-y-auto mt-3">
             {contacts === null ? (
-              <div className="p-6 text-center"><Loader2 size={16} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} /></div>
+              <SkeletonMailList count={6} />
             ) : contacts.length === 0 ? (
               <p className="text-xs text-center p-6" style={{ color: "var(--text-tertiary)" }}>Ще немає контактів — з'являться автоматично з листування.</p>
             ) : (
@@ -313,7 +319,7 @@ export function MailApp({ organizationId }: { organizationId: string }) {
         ) : (
         <div className="flex-1 overflow-y-auto mt-3" data-tour="mail-threads-list">
           {threads === null ? (
-            <div className="p-6 text-center"><Loader2 size={16} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} /></div>
+            <SkeletonMailList count={6} />
           ) : threads.length === 0 ? (
             <p className="text-xs text-center p-6" style={{ color: "var(--text-tertiary)" }}>Немає листів. Спробуйте синхронізувати.</p>
           ) : (

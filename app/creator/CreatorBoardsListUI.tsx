@@ -6,6 +6,7 @@ import { Plus, X, Loader2, LayoutTemplate } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
 import { TourButton } from "@/app/components/TourButton";
+import { SkeletonBoardGrid } from "@/app/components/Skeleton";
 import { UpgradeLinkButton } from "@/app/components/UpgradeLinkButton";
 
 interface Board {
@@ -118,11 +119,7 @@ export function CreatorBoardsListUI({ organizationId }: Props) {
         <TourButton onStart={startTour} />
       </div>
 
-      {!boards && (
-        <div className="flex items-center gap-2 text-sm text-[var(--text-tertiary)] py-8 justify-center">
-          <Loader2 size={16} className="animate-spin" /> Завантаження...
-        </div>
-      )}
+      {!boards && <SkeletonBoardGrid count={6} />}
 
       {boards?.length === 0 && (
         <div className="glow-card p-8 text-center">

@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Loader2, Plus, Trash2, Sparkles, X, CheckCircle2, FileEdit, Globe } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
+import { SkeletonBlock, SkeletonTable } from "@/app/components/Skeleton";
 
 interface ProjectLanguage {
   id: string;
@@ -207,7 +208,14 @@ export function TranslatorDetailUI({ projectId, projectName }: Props) {
   const inputStyle = { background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", color: "var(--text-primary)" };
 
   if (languages === null || pages === null || translations === null) {
-    return <div className="glow-card p-10 text-center"><Loader2 size={20} className="animate-spin mx-auto" style={{ color: "var(--text-tertiary)" }} /></div>;
+    return (
+      <div className="space-y-6">
+        <SkeletonBlock className="h-7 w-64" />
+        <div className="glow-card overflow-hidden">
+          <SkeletonTable rows={5} columns={4} />
+        </div>
+      </div>
+    );
   }
 
   return (
