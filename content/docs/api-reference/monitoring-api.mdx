@@ -1,0 +1,80 @@
+---
+title: Monitoring API
+orderIndex: 5
+---
+
+Відстежує зміни title, canonical, наявності schema-розмітки, robots.txt та швидкості сторінки — перевірка щогодини.
+
+## Додати URL під моніторинг
+
+```
+POST /api/v1/monitor
+Authorization: Bearer qrx_ваш_ключ
+Content-Type: application/json
+```
+
+```json
+{ "url": "https://example.com" }
+```
+
+Відповідь одразу містить перший знімок стану (baseline):
+
+```json
+{
+  "id": "3f1a...",
+  "url": "https://example.com",
+  "reachable": true,
+  "baseline": {
+    "title": "Example Domain",
+    "canonical": null,
+    "hasSchema": false,
+    "robotsAllowed": true,
+    "pagespeedMobile": 87
+  }
+}
+```
+
+## Список моніторів і зміни
+
+```
+GET /api/v1/monitor
+Authorization: Bearer qrx_ваш_ключ
+```
+
+```json
+{
+  "monitors": [
+    {
+      "id": "3f1a...",
+      "url": "https://example.com",
+      "active": true,
+      "baseline": { "title": "New Title", "...": "..." },
+      "lastCheckedAt": "2026-07-24T11:00:00.000Z",
+      "lastCheckOk": true,
+      "recentChanges": [
+        { "field": "title", "oldValue": "Example Domain", "newValue": "New Title", "detectedAt": "2026-07-24T11:00:00.000Z" }
+      ]
+    }
+  ]
+}
+```
+
+`recentChanges` — до 100 останніх виявлених змін по всіх моніторах ключа, найновіші спочатку.
+
+## Зняти з моніторингу
+
+```
+DELETE /api/v1/monitor/{id}
+Authorization: Bearer qrx_ваш_ключ
+```
+
+## Як працює виявлення змін
+
+Перевірка виконується автоматично щогодини. Зміна фіксується, якщо:
+
+- змінився `title` або `canonical`
+- зникла або з'явилась schema-розмітка (`application/ld+json`)
+- змінився доступ у `robots.txt`
+- показник PageSpeed (mobile) змінився на 10 і більше пунктів — менші коливання ігноруються як природний шум вимірювання
+
+Після кожної перевірки новий стан стає новим baseline — порівняння завжди йде з попереднім відомим станом, не з першим знімком назавжди.

@@ -1,0 +1,64 @@
+---
+title: Schema API
+orderIndex: 3
+---
+
+Генерує готову JSON-LD розмітку (Schema.org) за структурованими полями — без AI, миттєва відповідь.
+
+## Підтримувані типи
+
+`Organization`, `Product`, `FAQPage`, `LocalBusiness`, `BreadcrumbList`, `Article`, `Event`, `Person`.
+
+## Запит
+
+```
+POST /api/v1/schema
+Authorization: Bearer qrx_ваш_ключ
+Content-Type: application/json
+```
+
+```json
+{
+  "type": "Organization",
+  "fields": {
+    "name": "Qorax",
+    "url": "https://qorax-sites.com",
+    "sameAs": ["https://twitter.com/qorax"]
+  }
+}
+```
+
+## Відповідь
+
+```json
+{
+  "type": "Organization",
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@type": "Organization",
+    "name": "Qorax",
+    "url": "https://qorax-sites.com",
+    "sameAs": ["https://twitter.com/qorax"]
+  },
+  "scriptTag": "<script type=\"application/ld+json\">...</script>"
+}
+```
+
+`scriptTag` — готовий рядок для прямої вставки в `<head>` сторінки, `jsonLd` — той самий вміст як об'єкт для програмної обробки.
+
+## Приклад: FAQPage
+
+```json
+{
+  "type": "FAQPage",
+  "fields": {
+    "questions": [
+      { "question": "Чи є безкоштовний тариф?", "answer": "Так, Free назавжди." }
+    ]
+  }
+}
+```
+
+## Обов'язкові поля по типах
+
+Кожен тип має власні обов'язкові поля (наприклад `name` для `Organization`/`Product`/`LocalBusiness`/`Person`, `startDate` для `Event`, `questions` для `FAQPage`, `items` для `BreadcrumbList`). Якщо обов'язкове поле відсутнє — відповідь `400` з описом, чого саме бракує.

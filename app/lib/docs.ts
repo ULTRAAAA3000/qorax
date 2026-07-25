@@ -16,6 +16,7 @@ import matter from "gray-matter";
 export const DOCS_CATEGORIES = [
   { id: "getting-started", label: "Початок роботи" },
   { id: "guides", label: "Гайди" },
+  { id: "api-reference", label: "Developer API" },
   { id: "faq", label: "FAQ" },
 ] as const;
 

@@ -6,14 +6,29 @@
  * of the landing preview panels.
  */
 
-const BLOCKS = [
-  { label: "Hero-блок", x: 8, y: 12, w: 42, h: 26, accent: "var(--purple)" },
-  { label: "Галерея", x: 54, y: 8, w: 38, h: 34, accent: "var(--cyan)" },
-  { label: "CTA", x: 8, y: 46, w: 30, h: 18, accent: "var(--lime)" },
-  { label: "Відгуки", x: 42, y: 50, w: 50, h: 20, accent: "var(--purple)" },
+import type { Locale } from "@/app/lib/i18n";
+
+const BLOCK_LABELS: Record<Locale, string[]> = {
+  uk: ["Hero-блок", "Галерея", "CTA", "Відгуки"],
+  en: ["Hero block", "Gallery", "CTA", "Testimonials"],
+};
+
+const BLOCK_LAYOUT = [
+  { x: 8, y: 12, w: 42, h: 26, accent: "var(--purple)" },
+  { x: 54, y: 8, w: 38, h: 34, accent: "var(--cyan)" },
+  { x: 8, y: 46, w: 30, h: 18, accent: "var(--lime)" },
+  { x: 42, y: 50, w: 50, h: 20, accent: "var(--purple)" },
 ];
 
-export function CreatorCanvasPreview() {
+const COPY: Record<Locale, { header: string; footer: string; count: string }> = {
+  uk: { header: "Website Mode · Дошка", footer: "Нескінченне полотно, будь-який тип контенту", count: "4 блоки" },
+  en: { header: "Website Mode · Board", footer: "Infinite canvas, any content type", count: "4 blocks" },
+};
+
+export function CreatorCanvasPreview({ lang = "uk" }: { lang?: Locale }) {
+  const t = COPY[lang];
+  const blocks = BLOCK_LAYOUT.map((b, i) => ({ ...b, label: BLOCK_LABELS[lang][i] }));
+
   return (
     <div
       className="rounded-2xl overflow-hidden"
@@ -34,7 +49,7 @@ export function CreatorCanvasPreview() {
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
             <span className="h-2.5 w-2.5 rounded-full" style={{ background: "rgba(255, 255, 255, 0.1)" }} />
           </div>
-          <span className="font-mono text-xs text-[var(--text-tertiary)]">Website Mode · Дошка</span>
+          <span className="font-mono text-xs text-[var(--text-tertiary)]">{t.header}</span>
         </div>
       </div>
 
@@ -47,7 +62,7 @@ export function CreatorCanvasPreview() {
             backgroundSize: "16px 16px",
           }}
         />
-        {BLOCKS.map((b) => (
+        {blocks.map((b) => (
           <div
             key={b.label}
             className="absolute rounded-lg flex items-center justify-center px-2"
@@ -71,8 +86,8 @@ export function CreatorCanvasPreview() {
         className="px-5 py-3 flex items-center justify-between"
         style={{ borderTop: "1px solid rgba(255, 255, 255, 0.06)", background: "rgba(255, 255, 255, 0.02)" }}
       >
-        <span className="text-xs text-[var(--text-secondary)]">Нескінченне полотно, будь-який тип контенту</span>
-        <span className="font-mono text-xs" style={{ color: "var(--purple)" }}>4 блоки</span>
+        <span className="text-xs text-[var(--text-secondary)]">{t.footer}</span>
+        <span className="font-mono text-xs" style={{ color: "var(--purple)" }}>{t.count}</span>
       </div>
     </div>
   );

@@ -1,0 +1,57 @@
+---
+title: SEO Audit API
+orderIndex: 2
+---
+
+Технічний та SEO-аудит будь-якого URL — HTTP-статус, час відповіді, SSL, meta-теги, PageSpeed (mobile і desktop).
+
+## Запит
+
+```
+POST /api/v1/audit
+Authorization: Bearer qrx_ваш_ключ
+Content-Type: application/json
+```
+
+```json
+{
+  "url": "https://example.com"
+}
+```
+
+## Відповідь
+
+```json
+{
+  "url": "https://example.com",
+  "reachable": true,
+  "httpStatus": 200,
+  "responseTimeMs": 342,
+  "sslValid": true,
+  "pageSizeKb": 128,
+  "meta": {
+    "title": "Example Domain",
+    "titleLength": 14,
+    "metaDescription": null,
+    "metaDescriptionLength": null,
+    "hasViewportMeta": true,
+    "hasH1": true,
+    "h1Count": 1
+  },
+  "pageSpeed": {
+    "mobile": { "performanceScore": 87 },
+    "desktop": { "performanceScore": 95 }
+  }
+}
+```
+
+Якщо сайт недоступний, відповідь містить `"reachable": false` і поле `error` з причиною — статус-код відповіді все одно `200` (недоступність сайту це не помилка запиту до API, а результат перевірки).
+
+## Приклад curl
+
+```
+curl -X POST https://qorax-api.mrcru96.workers.dev/api/v1/audit \
+  -H "Authorization: Bearer qrx_ваш_ключ" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
