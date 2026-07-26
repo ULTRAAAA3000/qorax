@@ -5,6 +5,7 @@ import { Plus, Loader2, Sparkles, Trash2, Type, Heading2, List, CheckSquare, Pla
 import { API_BASE_URL } from "@/app/lib/config";
 import { type Block, newBlockId, BlockAddButton, BlockRow, BlockStatic } from "../../BlockEditor";
 import { exportSlidesToPdf } from "../../exportPdf";
+import { exportSlidesToPptx } from "../../exportPptx";
 import { exportSlidesToMarkdown, exportSlidesToHtml } from "../../exportText";
 import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
@@ -56,6 +57,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides, organizati
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [saving, setSaving] = useState(false);
   const [exportingPdf, setExportingPdf] = useState(false);
+  const [exportingPptx, setExportingPptx] = useState(false);
   const [showExportMenu, setShowExportMenu] = useState(false);
   const [presenting, setPresenting] = useState(false);
   const [presentIndex, setPresentIndex] = useState(0);
@@ -222,6 +224,15 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides, organizati
     }
   }
 
+  async function handleExportPptx() {
+    setExportingPptx(true);
+    try {
+      await exportSlidesToPptx(title || "Без назви", slides);
+    } finally {
+      setExportingPptx(false);
+    }
+  }
+
   function startPresenting() {
     setPresentIndex(activeIndex);
     setPresenting(true);
@@ -340,10 +351,10 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides, organizati
             <div className="relative">
               <button
                 onClick={() => setShowExportMenu(v => !v)}
-                disabled={exportingPdf}
+                disabled={exportingPdf || exportingPptx}
                 className="text-xs px-2.5 py-1.5 rounded-lg flex items-center gap-1.5 hover:bg-white/5 text-[var(--text-tertiary)] disabled:opacity-50"
               >
-                {exportingPdf ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Експорт
+                {exportingPdf || exportingPptx ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />} Експорт
               </button>
               <AnimatedDropdown
                 open={showExportMenu}
@@ -352,6 +363,7 @@ export function SlidesEditorUI({ deckId, initialTitle, initialSlides, organizati
                 style={{ background: "var(--bg)", border: "1px solid rgba(255,255,255,0.1)", minWidth: 140 }}
               >
                     <button onClick={() => { setShowExportMenu(false); handleExportPdf(); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">PDF</button>
+                    <button onClick={() => { setShowExportMenu(false); handleExportPptx(); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">PowerPoint (.pptx)</button>
                     <button onClick={() => { setShowExportMenu(false); exportSlidesToMarkdown(title || "Без назви", slides); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">Markdown (.md)</button>
                     <button onClick={() => { setShowExportMenu(false); exportSlidesToHtml(title || "Без назви", slides); }} className="w-full text-left text-xs px-3 py-2 hover:bg-white/5">HTML</button>
               </AnimatedDropdown>

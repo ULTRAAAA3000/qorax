@@ -75,7 +75,14 @@ export async function handleTourMarkSeen(request: Request, env: Env, origin: str
     env.SUPABASE_URL,
     env.SUPABASE_SERVICE_ROLE_KEY
   );
-  if (!res.ok) return json({ error: "Не вдалося зберегти стан туру" }, 500, origin);
+  if (!res.ok) {
+    // Логуємо повну помилку PostgREST — без цього причина 500 (FK/
+    // RLS/конфлікт колонок) невидима в Cloudflare логах, і баг
+    // "тур повторюється щоразу" (markTourSeen мовчки провалюється)
+    // неможливо діагностувати без здогадок.
+    console.error("[tourHandler] upsert product_tours_seen failed:", res.error, "user:", auth.userId, "product:", product);
+    return json({ error: "Не вдалося зберегти стан туру" }, 500, origin);
+  }
 
   return json({ ok: true }, 200, origin);
 }
