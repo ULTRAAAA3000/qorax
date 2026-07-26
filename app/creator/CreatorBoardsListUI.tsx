@@ -8,6 +8,7 @@ import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
 import { TourButton } from "@/app/components/TourButton";
 import { SkeletonBoardGrid } from "@/app/components/Skeleton";
 import { UpgradeLinkButton } from "@/app/components/UpgradeLinkButton";
+import { useToast } from "@/app/components/ToastProvider";
 
 interface Board {
   id: string;
@@ -51,6 +52,7 @@ async function getFreshToken(): Promise<string> {
 }
 
 export function CreatorBoardsListUI({ organizationId }: Props) {
+  const { showToast } = useToast();
   const [boards, setBoards] = useState<Board[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [title, setTitle] = useState("");
@@ -78,14 +80,21 @@ export function CreatorBoardsListUI({ organizationId }: Props) {
     setCreating(true);
     try {
       const token = await getFreshToken();
-      await fetch(`${API_BASE_URL}/api/organizations/${organizationId}/canvas-boards`, {
+      const res = await fetch(`${API_BASE_URL}/api/organizations/${organizationId}/canvas-boards`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ title: title.trim() || undefined }),
       });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        showToast(data.error ?? "Не вдалося створити дошку", "error");
+        return;
+      }
       setTitle("");
       setShowCreate(false);
       await load();
+    } catch {
+      showToast("Помилка з'єднання", "error");
     } finally {
       setCreating(false);
     }

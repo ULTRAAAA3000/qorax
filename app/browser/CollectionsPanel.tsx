@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from "react";
 import { Plus, Trash2, Loader2, FolderOpen, Bookmark, ChevronLeft, FileText } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { SkeletonCompactList } from "@/app/components/Skeleton";
+import { useToast } from "@/app/components/ToastProvider";
 
 interface Collection {
   id: string;
@@ -46,6 +47,7 @@ interface Props {
 // принцип, що InspectSection/TagPill helpers в BrowserUI.tsx, лише
 // для цілого табу, не дрібних елементів.
 export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, onNavigate }: Props) {
+  const { showToast } = useToast();
   const [collections, setCollections] = useState<Collection[] | null>(null);
   const [openCollection, setOpenCollection] = useState<Collection | null>(null);
   const [items, setItems] = useState<CollectionItem[] | null>(null);
@@ -108,13 +110,19 @@ export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, on
     setAddingDoc(true);
     try {
       const token = await getFreshToken();
-      await fetch(`${API_BASE_URL}/api/browser/collections/${openCollection.id}/items`, {
+      const res = await fetch(`${API_BASE_URL}/api/browser/collections/${openCollection.id}/items`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ office_document_id: docId }),
       });
+      if (!res.ok) {
+        showToast("Не вдалося додати документ", "error");
+        return;
+      }
       setShowDocPicker(false);
       await loadItems(openCollection);
+    } catch {
+      showToast("Помилка з'єднання", "error");
     } finally {
       setAddingDoc(false);
     }
@@ -122,12 +130,20 @@ export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, on
 
   async function removeDocItem(itemId: string) {
     if (!openCollection) return;
-    const token = await getFreshToken();
-    await fetch(`${API_BASE_URL}/api/browser/collection-items/${itemId}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    await loadItems(openCollection);
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/browser/collection-items/${itemId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        showToast("Не вдалося видалити елемент", "error");
+        return;
+      }
+      await loadItems(openCollection);
+    } catch {
+      showToast("Помилка з'єднання", "error");
+    }
   }
 
   async function createCollection(e: React.FormEvent) {
@@ -156,13 +172,22 @@ export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, on
   }
 
   async function deleteCollection(id: string) {
-    const token = await getFreshToken();
-    await fetch(`${API_BASE_URL}/api/browser/collections/${id}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (openCollection?.id === id) setOpenCollection(null);
-    await loadCollections();
+    try {
+      const token = await getFreshToken();
+      const res = await fetch(`${API_BASE_URL}/api/browser/collections/${id}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        showToast("Не вдалося видалити колекцію", "error");
+        return;
+      }
+      if (openCollection?.id === id) setOpenCollection(null);
+      await loadCollections();
+      showToast("Колекцію видалено", "success");
+    } catch {
+      showToast("Помилка з'єднання", "error");
+    }
   }
 
   async function saveCurrentSite(collectionId: string) {
@@ -182,6 +207,7 @@ export function CollectionsPanel({ organizationId, currentUrl, getFreshToken, on
         return;
       }
       setSaveNote("");
+      showToast("Сайт збережено у колекцію", "success");
       if (openCollection?.id === collectionId) await loadItems(openCollection);
     } finally {
       setSaving(false);

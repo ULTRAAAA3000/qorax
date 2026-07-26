@@ -8,6 +8,7 @@ import { SheetChart } from "../SheetChart";
 import { usePresence } from "../../usePresence";
 import { PresenceAvatars } from "../../PresenceAvatars";
 import { useLiveSync } from "../../useLiveSync";
+import { useToast } from "@/app/components/ToastProvider";
 import { VersionHistoryButton } from "../../VersionHistoryButton";
 
 interface SheetData {
@@ -47,6 +48,7 @@ const CELL_H = 30;
 // прийнятий для Docs (4 типи блоків, не повний Notion).
 export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
   const presentUsers = usePresence("office_sheets", sheetId);
+  const { showToast } = useToast();
   const [title, setTitle] = useState(initialTitle);
   const [columns, setColumns] = useState(initialData?.columns ?? 12);
   const [rows, setRows] = useState(initialData?.rows ?? 30);
@@ -299,7 +301,7 @@ export function SheetEditorUI({ sheetId, initialTitle, initialData }: Props) {
       setRows(neededRows);
       scheduleSave(newCells, neededCols, neededRows);
     } catch {
-      alert("Не вдалося прочитати файл — переконайтесь, що це коректний .xlsx");
+      showToast("Не вдалося прочитати файл — переконайтесь, що це коректний .xlsx", "error");
     } finally {
       setImportingXlsx(false);
       e.target.value = "";

@@ -5,6 +5,7 @@ import { createClient } from "@/app/lib/supabase/client";
 import { Bell, Mail, Send, Lock, CheckCircle2, Loader2, MessageSquare } from "lucide-react";
 import { API_BASE_URL } from "@/app/lib/config";
 import { CopyButton } from "@/app/components/CopyButton";
+import { useToast } from "@/app/components/ToastProvider";
 
 interface NotifSettings {
   email_enabled: boolean;
@@ -41,6 +42,7 @@ export function NotificationSettingsForm({
   planName,
   telegramBotName,
 }: Props) {
+  const { showToast } = useToast();
   const [settings, setSettings] = useState<NotifSettings>({
     email_enabled: initialSettings?.email_enabled ?? true,
     telegram_enabled: initialSettings?.telegram_enabled ?? false,
@@ -56,13 +58,10 @@ export function NotificationSettingsForm({
 
   const [slackUrlInput, setSlackUrlInput] = useState(initialSettings?.slack_webhook_url ?? "");
   const [slackSaving, setSlackSaving] = useState(false);
-  const [slackSaved, setSlackSaved] = useState(false);
   const [slackError, setSlackError] = useState<string | null>(null);
   const [slackTestState, setSlackTestState] = useState<"idle" | "sending" | "sent" | "error">("idle");
 
   const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   // Стан підключення Telegram:
   //   idle        — ще не починали підключення
@@ -158,8 +157,6 @@ export function NotificationSettingsForm({
 
   async function handleSave() {
     setSaving(true);
-    setError(null);
-    setSaved(false);
     try {
       const supabase = createClient();
       const { error: upsertError } = await supabase
@@ -181,13 +178,12 @@ export function NotificationSettingsForm({
           { onConflict: "organization_id" }
         );
       if (upsertError) {
-        setError("Помилка збереження: " + upsertError.message);
+        showToast("Помилка збереження: " + upsertError.message, "error");
       } else {
-        setSaved(true);
-        setTimeout(() => setSaved(false), 3000);
+        showToast("Налаштування збережено", "success");
       }
     } catch {
-      setError("Щось пішло не так, спробуйте ще раз.");
+      showToast("Щось пішло не так, спробуйте ще раз.", "error");
     } finally {
       setSaving(false);
     }
@@ -196,7 +192,6 @@ export function NotificationSettingsForm({
   async function handleSaveSlackWebhook() {
     setSlackSaving(true);
     setSlackError(null);
-    setSlackSaved(false);
     const trimmed = slackUrlInput.trim();
 
     if (trimmed && !trimmed.startsWith("https://hooks.slack.com/")) {
@@ -218,14 +213,13 @@ export function NotificationSettingsForm({
           { onConflict: "organization_id" }
         );
       if (upsertError) {
-        setSlackError("Помилка збереження: " + upsertError.message);
+        showToast("Помилка збереження: " + upsertError.message, "error");
       } else {
         setSettings(prev => ({ ...prev, slack_enabled: !!trimmed, slack_webhook_url: trimmed || null }));
-        setSlackSaved(true);
-        setTimeout(() => setSlackSaved(false), 3000);
+        showToast(trimmed ? "Slack підключено" : "Slack відключено", "success");
       }
     } catch {
-      setSlackError("Щось пішло не так, спробуйте ще раз.");
+      showToast("Щось пішло не так, спробуйте ще раз.", "error");
     } finally {
       setSlackSaving(false);
     }
@@ -243,6 +237,7 @@ export function NotificationSettingsForm({
         );
       setSettings(prev => ({ ...prev, slack_enabled: false, slack_webhook_url: null }));
       setSlackUrlInput("");
+      showToast("Slack відключено", "success");
     } finally {
       setSlackSaving(false);
     }
@@ -517,14 +512,11 @@ export function NotificationSettingsForm({
               </button>
             </div>
             {slackError && <p className="text-xs" style={{ color: "#F5675A" }}>{slackError}</p>}
-            {slackSaved && <p className="text-xs" style={{ color: "var(--lime)" }}>✓ Slack підключено</p>}
           </div>
         )}
       </div>
 
       {/* Save button — тільки для email-налаштувань */}
-      {error && <p className="text-sm mb-3" style={{ color: "#F5675A" }}>{error}</p>}
-
       <div className="flex items-center gap-3">
         <button
           onClick={handleSave}
@@ -534,7 +526,6 @@ export function NotificationSettingsForm({
         >
           {saving ? "Збереження..." : "Зберегти налаштування"}
         </button>
-        {saved && <span className="text-sm" style={{ color: "var(--lime)" }}>✓ Збережено</span>}
       </div>
     </div>
   );

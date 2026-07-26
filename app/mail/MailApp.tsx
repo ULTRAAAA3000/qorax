@@ -7,6 +7,7 @@ import { useProductTour, type TourStep } from "@/app/lib/useProductTour";
 import { TourButton } from "@/app/components/TourButton";
 import { SkeletonMailList } from "@/app/components/Skeleton";
 import { UpgradeLinkButton } from "@/app/components/UpgradeLinkButton";
+import { useToast } from "@/app/components/ToastProvider";
 
 interface MailAccount {
   id: string;
@@ -86,6 +87,7 @@ const MAIL_TOUR_STEPS: TourStep[] = [
 // звичайні поштові клієнти, MVP без пошуку/папок/лейблів (наступні
 // ітерації Шару 1, не цей прохід).
 export function MailApp({ organizationId }: { organizationId: string }) {
+  const { showToast } = useToast();
   const [view, setView] = useState<"inbox" | "contacts">("inbox");
   const [contacts, setContacts] = useState<MailContact[] | null>(null);
   const [accounts, setAccounts] = useState<MailAccount[] | null>(null);
@@ -185,7 +187,6 @@ export function MailApp({ organizationId }: { organizationId: string }) {
   async function syncNow() {
     if (!activeAccountId) return;
     setSyncing(true);
-    setError(null);
     try {
       const token = await getFreshToken();
       const res = await fetch(`${API_BASE_URL}/api/mail/accounts/${activeAccountId}/sync`, {
@@ -193,7 +194,7 @@ export function MailApp({ organizationId }: { organizationId: string }) {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
-      if (!res.ok) { setError(data.error ?? "Помилка синхронізації"); return; }
+      if (!res.ok) { showToast(data.error ?? "Помилка синхронізації", "error"); return; }
       await loadThreads();
     } finally {
       setSyncing(false);
@@ -223,6 +224,7 @@ export function MailApp({ organizationId }: { organizationId: string }) {
       setComposeSubject("");
       setComposeBody("");
       setShowCompose(false);
+      showToast("Лист надіслано", "success");
       await loadThreads();
     } finally {
       setSending(false);

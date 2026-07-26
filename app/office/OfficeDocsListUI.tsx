@@ -6,6 +6,7 @@ import { Plus, X, Loader2, FileText, Trash2, LayoutTemplate } from "lucide-react
 import { API_BASE_URL } from "@/app/lib/config";
 import { AnimatedModalOverlay } from "@/app/components/AnimatedModalOverlay";
 import { SkeletonBoardGrid } from "@/app/components/Skeleton";
+import { useToast } from "@/app/components/ToastProvider";
 
 interface Doc {
   id: string;
@@ -48,6 +49,7 @@ async function getFreshToken(): Promise<string> {
 }
 
 export function OfficeDocsListUI({ organizationId }: Props) {
+  const { showToast } = useToast();
   const [docs, setDocs] = useState<Doc[] | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [templates, setTemplates] = useState<Template[] | null>(null);
@@ -109,11 +111,18 @@ export function OfficeDocsListUI({ organizationId }: Props) {
     setDeletingId(id);
     try {
       const token = await getFreshToken();
-      await fetch(`${API_BASE_URL}/api/office-documents/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/api/office-documents/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` },
       });
+      if (!res.ok) {
+        showToast("Не вдалося видалити документ", "error");
+        return;
+      }
       setDocs(prev => prev?.filter(d => d.id !== id) ?? null);
+      showToast("Документ видалено", "success");
+    } catch {
+      showToast("Помилка з'єднання", "error");
     } finally {
       setDeletingId(null);
     }

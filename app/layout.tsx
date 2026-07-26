@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import "./globals.css";
+import { ToastProvider } from "./components/ToastProvider";
 
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev";
 
@@ -15,5 +16,5 @@ export default async function RootLayout({ children }: { children: React.ReactNo
   // без переписування всього App Router дерева на [locale]-сегмент.
   const h = await headers();
   const locale = h.get("x-locale") === "en" ? "en" : "uk";
-  return <html lang={locale}><body>{children}</body></html>;
+  return <html lang={locale}><body><ToastProvider>{children}</ToastProvider></body></html>;
 }

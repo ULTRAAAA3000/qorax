@@ -3,11 +3,13 @@
 import { useState } from "react";
 import { createClient } from "@/app/lib/supabase/client";
 import { FileText } from "lucide-react";
+import { useToast } from "@/app/components/ToastProvider";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://qorax-api.mrcru96.workers.dev";
 
 export function ReportButton({ siteId }: { siteId: string }) {
   const [loading, setLoading] = useState(false);
+  const { showToast } = useToast();
 
   async function handleClick() {
     setLoading(true);
@@ -21,7 +23,7 @@ export function ReportButton({ siteId }: { siteId: string }) {
       });
 
       if (!resp.ok) {
-        alert("Не вдалося отримати звіт. Спробуйте пізніше.");
+        showToast("Не вдалося отримати звіт. Спробуйте пізніше.", "error");
         return;
       }
 
@@ -30,7 +32,7 @@ export function ReportButton({ siteId }: { siteId: string }) {
       const url = URL.createObjectURL(blob);
       window.open(url, "_blank");
     } catch {
-      alert("Помилка при завантаженні звіту.");
+      showToast("Помилка при завантаженні звіту.", "error");
     } finally {
       setLoading(false);
     }

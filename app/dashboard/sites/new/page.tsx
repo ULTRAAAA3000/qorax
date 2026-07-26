@@ -4,6 +4,7 @@ import { QoraxLogo } from "@/app/components/QoraxLogo";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { ArrowLeft, Globe, Tag } from "lucide-react";
+import { ToastFromSearchParam } from "@/app/components/ToastFromSearchParam";
 
 export const metadata = { title: "Додати сайт — Qorax" };
 
@@ -12,7 +13,7 @@ export default async function NewSitePage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const { error } = await searchParams;
+  await searchParams;
 
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
@@ -108,12 +109,7 @@ export default async function NewSitePage({
           <div className="rounded-2xl p-6"
             style={{ background: "rgba(255,255,255,0.025)", border: "1px solid rgba(255,255,255,0.07)" }}>
 
-            {error && (
-              <div className="rounded-xl px-4 py-3 mb-5 text-sm"
-                style={{ background: "rgba(245,103,90,0.08)", border: "1px solid rgba(245,103,90,0.2)", color: "#F5675A" }}>
-                {error}
-              </div>
-            )}
+            <ToastFromSearchParam param="error" variant="error" />
 
             <form action={addSite} className="space-y-5">
               {/* URL */}
