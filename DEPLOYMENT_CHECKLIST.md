@@ -167,8 +167,8 @@ POST https://qorax-api.mrcru96.workers.dev/api/admin/setup-telegram-bot
 
 **Це не Cloudflare Dashboard і легко пропустити.** Qorax Mail
 (`mailHandler.ts`) використовує Gmail API з scope `gmail.readonly` +
-`gmail.send`. Обидва — "restricted scopes" за класифікацією Google,
-що типово вимагає:
+`gmail.send` + (з 26.07.2026) `userinfo.email`. Перші два —
+"restricted scopes" за класифікацією Google, що типово вимагає:
 
 1. Gmail API увімкнено в тому самому Google Cloud проєкті, що вже
    видає `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` для GSC/GA4
@@ -183,6 +183,21 @@ POST https://qorax-api.mrcru96.workers.dev/api/admin/setup-telegram-bot
 **Перевір це першим, якщо Qorax Mail після накочування `0078` все
 одно не дає підключити Gmail-акаунт** — найімовірніша причина не в
 коді чи Supabase, а саме тут.
+
+**Баг знайдено 26.07.2026 (Артем: пройшов реєстрацію через Gmail,
+повернуло на `mail_error=profile`):** `GMAIL_SCOPE` запитував лише
+`gmail.readonly`+`gmail.send`, а `handleMailCallback()` після token
+exchange викликає `https://www.googleapis.com/oauth2/v2/userinfo`,
+щоб дізнатись email адресу підключеного акаунту — цей виклик падав
+з 403 (insufficient scope), бо `userinfo.email` не був серед
+запитаних скоупів. Виправлено додаванням цього скоупу до
+`GMAIL_SCOPE`. `userinfo.email` — НЕ restricted/sensitive scope
+(базовий, verification для нього не потрібен), тому додаткової
+Google-review очікувати не варто, але якщо після цього фіксу
+підключення Gmail все одно падає — перевір, що OAuth consent screen
+у Google Cloud Console взагалі показує запит на цей скоуп (Google
+іноді кешує список раніше показаних скоупів на стороні застосунку,
+а не тільки токена).
 
 ---
 

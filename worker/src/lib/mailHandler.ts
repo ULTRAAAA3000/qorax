@@ -19,7 +19,15 @@ import { requireOrgAccess } from "./orgAuth";
 import { encryptToken, decryptToken } from "./tokenCrypto";
 
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
-const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send";
+// gmail.readonly/gmail.send — доступ до самої пошти.
+// userinfo.email — ОКРЕМИЙ скоуп, без якого виклик
+// https://www.googleapis.com/oauth2/v2/userinfo у
+// handleMailCallback() падає з 403 (insufficient scope), навіть
+// якщо token exchange пройшов успішно — саме це давало
+// mail_error=profile на проді (Артем: "прошел рег через Gmail,
+// повернуло на mail_error=profile"). Без цього скоупу неможливо
+// дізнатись email адресу підключеного акаунту взагалі.
+const GMAIL_SCOPE = "https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/gmail.send https://www.googleapis.com/auth/userinfo.email";
 
 async function getUserIdFromToken(token: string, supabaseUrl: string, serviceKey: string): Promise<string | null> {
   try {

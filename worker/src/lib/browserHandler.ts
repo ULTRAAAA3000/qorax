@@ -182,7 +182,20 @@ export async function handleBrowserProxy(request: Request, env: Env, corsHeaders
 
   const contentType = upstream.headers.get("content-type") ?? "";
   if (!upstream.ok) {
-    return json({ error: `Сайт повернув помилку: HTTP ${upstream.status}` }, 502, corsHeaders);
+    // Артем: "если будет писать как есть сейчас, будет ощущение что
+    // мы не компетентны" — раніше тут був голий "Сайт повернув
+    // помилку: HTTP 403", що на сайтах з жорстким anti-bot захистом
+    // (Cloudflare WAF, rate limiting за User-Agent тощо) читалось як
+    // наша поломка, хоча причина завжди на боці цільового сайту.
+    // 401/403 виокремлено окремим повідомленням — це найчастіший
+    // випадок саме "сильного проксі"/захисту від ботів, і тут можна
+    // сказати чому конкретно, не називаючи статус-код. Решта кодів —
+    // загальне "не вдалося завантажити", без деталізації коду.
+    const message =
+      upstream.status === 401 || upstream.status === 403
+        ? "Цей сайт блокує автоматичний перегляд (захист від ботів) — спробуйте відкрити його напряму в новій вкладці."
+        : "Не вдалося завантажити цей сайт. Спробуйте ще раз трохи пізніше.";
+    return json({ error: message }, 502, corsHeaders);
   }
   if (!contentType.includes("text/html")) {
     // Не-HTML ресурс за цим URL (наприклад пряме посилання на PDF/зображення) —
@@ -1149,7 +1162,13 @@ export async function handleVisualSearch(request: Request, env: Env, corsHeaders
   let mimeType: string;
   try {
     const upstream = await fetch(imageUrl.toString(), { signal: controller.signal, headers: { "User-Agent": BROWSER_USER_AGENT } });
-    if (!upstream.ok) return json({ error: `Не вдалося завантажити зображення: HTTP ${upstream.status}` }, 502, corsHeaders);
+    if (!upstream.ok) {
+      const message =
+        upstream.status === 401 || upstream.status === 403
+          ? "Це зображення захищене від автоматичного завантаження."
+          : "Не вдалося завантажити зображення.";
+      return json({ error: message }, 502, corsHeaders);
+    }
     mimeType = upstream.headers.get("content-type") ?? "";
     if (!mimeType.startsWith("image/")) return json({ error: "URL не веде на зображення" }, 415, corsHeaders);
     imageBuffer = await upstream.arrayBuffer();

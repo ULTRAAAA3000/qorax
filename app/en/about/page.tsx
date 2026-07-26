@@ -6,10 +6,10 @@ import { Reveal } from "@/app/components/Reveal";
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev";
 
 export const metadata = {
-  title: "Про нас — Qorax",
-  description: "Qorax будує команда з України, яка на власному досвіді знає, що означає сайт, що провис непоміченим.",
+  title: "About — Qorax",
+  description: "Qorax is built by a team from Ukraine who know firsthand what it means for a website to go down unnoticed.",
   alternates: {
-    canonical: `${SITE_URL}/about`,
+    canonical: `${SITE_URL}/en/about`,
     languages: {
       uk: `${SITE_URL}/about`,
       en: `${SITE_URL}/en/about`,
@@ -18,33 +18,37 @@ export const metadata = {
   },
 };
 
+// NOTE (i18n pass, not a content decision): team roster below is
+// translated 1:1 from the uk page as-is. Flagged separately to
+// Artem — this "team of 4" doesn't match Qorax's actual solo-founder
+// structure per project memory, worth a look independent of i18n.
 const TEAM = [
   {
-    name: "Артем Коваль",
+    name: "Artem Koval",
     role: "Co-founder & CEO",
-    bio: "10+ років у веб-розробці та digital-агентствах. Запустив Qorax після того, як клієнтський інтернет-магазин провисів 4 години непоміченим — і втратив суму, порівнянну з місячним бюджетом на рекламу.",
-    initials: "АК",
+    bio: "10+ years in web development and digital agencies. Started Qorax after a client's online store went down for 4 hours unnoticed — costing them a sum comparable to a month's ad budget.",
+    initials: "AK",
     accent: "lime",
   },
   {
-    name: "Дарія Литвин",
+    name: "Daria Lytvyn",
     role: "Co-founder & CTO",
-    bio: "Архітектор розподілених систем. До Qorax будувала моніторинг-інфраструктуру для фінтех-стартапів у Берліні. Відповідає за надійність: сервіс не може моніторити чужі сайти і падати сам.",
-    initials: "ДЛ",
+    bio: "Distributed-systems architect. Before Qorax, built monitoring infrastructure for fintech startups in Berlin. Owns reliability: a service that monitors other sites can't go down itself.",
+    initials: "DL",
     accent: "cyan",
   },
   {
-    name: "Максим Бондар",
+    name: "Maksym Bondar",
     role: "Head of Product",
-    bio: "Колишній продакт у SaaS B2B. Провів понад 200 інтерв'ю з власниками малого бізнесу та агентствами. Саме він наполіг на Revenue Impact — перекладати технічні проблеми в $ замість «виправте title tag».",
-    initials: "МБ",
+    bio: "Former product manager in B2B SaaS. Ran 200+ interviews with small-business owners and agencies. He's the one who pushed for Revenue Impact — translating technical issues into $ instead of \u201Cfix the title tag.\u201D",
+    initials: "MB",
     accent: "lime",
   },
   {
-    name: "Олена Руденко",
+    name: "Olena Rudenko",
     role: "Growth & Partnerships",
-    bio: "Займається партнерствами з агентствами та фрілансерами по всій Україні. До Qorax — CMO в кількох SaaS-компаніях. Вважає, що найкращий маркетинг — це коли продукт пояснює сам себе.",
-    initials: "ОР",
+    bio: "Runs partnerships with agencies and freelancers across Ukraine. Previously CMO at several SaaS companies. Believes the best marketing is a product that explains itself.",
+    initials: "OR",
     accent: "cyan",
   },
 ];
@@ -52,37 +56,37 @@ const TEAM = [
 const VALUES = [
   {
     icon: "⚡",
-    title: "Простота перш за все",
+    title: "Simplicity first",
     description:
-      "Технічний звіт, який власник бізнесу не розуміє — марна трата часу. Кожна метрика в Qorax пояснюється простою мовою і має прив'язку до грошей.",
+      "A technical report a business owner can't understand is a waste of time. Every metric in Qorax is explained in plain language and tied to a dollar figure.",
   },
   {
     icon: "🛡",
-    title: "Надійність без компромісів",
+    title: "Reliability, no compromises",
     description:
-      "Ми не можемо моніторити чужі сайти і самі падати. Наша інфраструктура розрахована на 99.9% uptime — і ми виміряємо кожну хвилину.",
+      "We can't monitor other sites while going down ourselves. Our infrastructure is built for 99.9% uptime — and we measure every single minute.",
   },
   {
     icon: "🇺🇦",
-    title: "Зроблено в Україні",
+    title: "Made in Ukraine",
     description:
-      "Команда розподілена між Києвом, Дніпром і Львовом. Ми будуємо глобальний продукт з України — і пишаємось цим.",
+      "The team is spread across Kyiv, Dnipro, and Lviv. We're building a global product from Ukraine — and we're proud of it.",
   },
   {
     icon: "🔄",
-    title: "Ітерації, не перфекціонізм",
+    title: "Iteration, not perfectionism",
     description:
-      "Щотижневі релізи, зворотний зв'язок від реальних клієнтів, швидкі виправлення. Ми не чекаємо ідеального моменту — будуємо і покращуємо.",
+      "Weekly releases, real feedback from real customers, fast fixes. We don't wait for the perfect moment — we build and improve.",
   },
 ];
 
-export default async function AboutPage() {
+export default async function AboutPageEn() {
   const supabase = await createClient();
   const { data: { user } } = await supabase.auth.getUser();
 
   return (
     <main className="flex flex-col min-h-screen" style={{ background: "var(--bg)" }}>
-      <MarketingHeader isLoggedIn={!!user} activePath="/about" />
+      <MarketingHeader isLoggedIn={!!user} activePath="/about" lang="en" />
 
       {/* Hero */}
       <section className="relative overflow-hidden">
@@ -104,23 +108,23 @@ export default async function AboutPage() {
                   color: "var(--text-tertiary)",
                 }}
               >
-                ✦ ПРО КОМАНДУ
+                ✦ ABOUT THE TEAM
               </span>
             </Reveal>
             <Reveal delay={0.05}>
               <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight">
-                Ми самі були{" "}
-                <span className="gradient-text">по той бік проблеми</span>
+                We&apos;ve been{" "}
+                <span className="gradient-text">on the other side of this problem</span>
               </h1>
             </Reveal>
             <Reveal delay={0.1}>
               <p className="mt-6 text-lg text-[var(--text-secondary)] leading-relaxed max-w-xl">
-                Qorax з&apos;явився з реального болю: сайт клієнта провисів чотири години — і ніхто не помітив. Ні власник, ні агентство. Перший дізнався покупець, який залишив гнівний відгук.
+                Qorax came out of real pain: a client&apos;s site went down for four hours — and nobody noticed. Not the owner, not the agency. The first person to find out was a customer who left an angry review.
               </p>
             </Reveal>
             <Reveal delay={0.14}>
               <p className="mt-4 text-[var(--text-secondary)] leading-relaxed max-w-xl">
-                Тоді ми вирішили зробити інструмент, який робить те, що мав робити хтось зі сторони: стежити, помічати, попереджати — і пояснювати людською мовою, скільки це коштує.
+                That&apos;s when we decided to build the tool that should have existed all along: watch, notice, warn — and explain in plain language what it&apos;s costing you.
               </p>
             </Reveal>
           </div>
@@ -133,10 +137,10 @@ export default async function AboutPage() {
         <div className="mx-auto max-w-6xl px-6 sm:px-8 py-14 sm:py-16">
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-8">
             {[
-              { value: "2023", label: "Рік заснування" },
-              { value: "4", label: "Людини в команді" },
-              { value: "🇺🇦", label: "Команда з України" },
-              { value: "$0", label: "Зовнішнє фінансування" },
+              { value: "2023", label: "Year founded" },
+              { value: "4", label: "People on the team" },
+              { value: "🇺🇦", label: "Team from Ukraine" },
+              { value: "$0", label: "Outside funding" },
             ].map((stat, i) => (
               <Reveal key={stat.label} delay={i * 0.05}>
                 <div className="text-center">
@@ -162,32 +166,25 @@ export default async function AboutPage() {
                   className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono text-[var(--text-tertiary)] mb-5"
                   style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
                 >
-                  ✦ КУДИ МИ ЙДЕМО
+                  ✦ WHERE WE&apos;RE HEADED
                 </span>
               </Reveal>
               <Reveal delay={0.04}>
                 <h2 className="font-display text-3xl sm:text-4xl font-semibold leading-tight">
-                  Від інструмента —{" "}
-                  <span className="gradient-text">до екосистеми</span>
+                  From a tool —{" "}
+                  <span className="gradient-text">to an ecosystem</span>
                 </h2>
               </Reveal>
             </div>
             <div>
               <Reveal delay={0.06}>
                 <p className="text-[var(--text-secondary)] leading-relaxed">
-                  Моніторинг був лише першим кроком. Ми будуємо Qorax як платформу, де бізнес
-                  проходить весь шлях в одному місці: створює присутність в інтернеті, контролює
-                  її технічний стан, отримує AI-допомогу з контентом, бачить свої позиції в
-                  пошуку і розуміє, звідки приходять клієнти — без перемикання між п&apos;ятьма
-                  різними сервісами.
+                  Monitoring was only the first step. We&apos;re building Qorax as a platform where a business can go through the entire journey in one place: build a presence online, keep control of its technical health, get AI help with content, see its search rankings, and understand where customers come from — without switching between five different services.
                 </p>
               </Reveal>
               <Reveal delay={0.1}>
                 <p className="mt-4 text-[var(--text-secondary)] leading-relaxed">
-                  Audit — моніторинг, швидкість, SEO та AI-аналіз — вже працює і саме ним
-                  користуються наші перші клієнти сьогодні. Sites, AI, Content, Rank та Analytics —
-                  модулі, які ми активно будуємо просто зараз, крок за кроком, разом із
-                  людьми, які вже з нами.
+                  Audit — monitoring, speed, SEO, and AI analysis — already works, and it&apos;s what our first customers use today. Sites, AI, Content, Rank, and Analytics are modules we&apos;re actively building right now, step by step, together with the people already on board.
                 </p>
               </Reveal>
             </div>
@@ -205,13 +202,13 @@ export default async function AboutPage() {
                 className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono text-[var(--text-tertiary)]"
                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
               >
-                ✦ КОМАНДА
+                ✦ TEAM
               </span>
             </div>
           </Reveal>
           <Reveal delay={0.04}>
             <h2 className="font-display text-3xl sm:text-4xl font-semibold mb-12">
-              Хто будує Qorax
+              Who builds Qorax
             </h2>
           </Reveal>
 
@@ -272,13 +269,13 @@ export default async function AboutPage() {
                 className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono text-[var(--text-tertiary)]"
                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)" }}
               >
-                ✦ ЦІННОСТІ
+                ✦ VALUES
               </span>
             </div>
           </Reveal>
           <Reveal delay={0.04}>
             <h2 className="font-display text-3xl sm:text-4xl font-semibold mb-12">
-              Що для нас важливо
+              What matters to us
             </h2>
           </Reveal>
 
@@ -320,10 +317,10 @@ export default async function AboutPage() {
             <Reveal>
               <div>
                 <h2 className="font-display text-2xl sm:text-3xl font-semibold mb-4">
-                  Зв&apos;яжіться з нами
+                  Get in touch
                 </h2>
                 <p className="text-[var(--text-secondary)] mb-6 leading-relaxed text-sm max-w-sm">
-                  Є питання, ідея чи хочете партнерство? Пишіть напряму — ми відповідаємо протягом одного робочого дня.
+                  Have a question, an idea, or want to partner with us? Reach out directly — we reply within one business day.
                 </p>
                 <div className="space-y-3">
                   <a
@@ -363,19 +360,19 @@ export default async function AboutPage() {
                 }}
               >
                 <div>
-                  <p className="font-mono text-xs text-[var(--lime)] mb-3">FREE ЗАВЖДИ</p>
+                  <p className="font-mono text-xs text-[var(--lime)] mb-3">FREE FOREVER</p>
                   <h3 className="font-display text-xl font-semibold mb-2">
-                    Спробуйте Qorax самі
+                    Try Qorax yourself
                   </h3>
                   <p className="text-sm text-[var(--text-secondary)] leading-relaxed">
-                    Без кредитної картки. Безкоштовний тариф назавжди — побачите всі можливості перш ніж вирішувати про апгрейд.
+                    No card required. Free forever tier — see everything before you decide on an upgrade.
                   </p>
                 </div>
                 <a
                   href="/register"
                   className="glow-button text-sm !py-2.5 text-center mt-6 block"
                 >
-                  Спробувати безкоштовно →
+                  Try it for free →
                 </a>
               </div>
             </Reveal>
@@ -383,7 +380,7 @@ export default async function AboutPage() {
         </div>
       </section>
 
-      <SiteFooterExpanded />
+      <SiteFooterExpanded lang="en" />
     </main>
   );
 }

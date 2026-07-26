@@ -9,6 +9,11 @@ export type Locale = "uk" | "en";
 export const LOCALE_PAGE_PAIRS: Array<{ uk: string; en: string }> = [
   { uk: "/", en: "/en" },
   { uk: "/pricing", en: "/en/pricing" },
+  { uk: "/features", en: "/en/features" },
+  { uk: "/about", en: "/en/about" },
+  { uk: "/partners", en: "/en/partners" },
+  { uk: "/terms", en: "/en/terms" },
+  { uk: "/privacy", en: "/en/privacy" },
 ];
 
 // Для сторінки uk-шляху повертає її en-відповідник (або /en, якщо
