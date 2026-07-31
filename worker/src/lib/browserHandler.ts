@@ -53,6 +53,103 @@ function isValidHttpUrl(value: string): URL | null {
   }
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+// Помилки цього ендпоінта завантажуються напряму в <iframe> на
+// фронтенді (BrowserUI.tsx рендерить proxySrc як src iframe) — тобто
+// це НЕ звичайний API-респонс, який фронтенд парсить через fetch()
+// і показує власним компонентом. Голий JSON у відповіді браузер
+// показує як є (текст на білому фоні) прямо всередині iframe, у тому
+// самому темному Workspace, де все інше стилізовано під Cyber Minimal.
+// Тому кожна помилка цього ендпоінта — повноцінна стилізована
+// HTML-сторінка, узгоджена з app/globals.css (--bg/--lime/--cyan/
+// --border-hairline), а не JSON-заглушка.
+function renderProxyErrorPage(message: string, targetUrl?: string, status = 502): Response {
+  const openDirectlyButton = targetUrl
+    ? `<a class="proxy-error-btn" href="${escapeHtml(targetUrl)}" target="_blank" rel="noopener noreferrer">
+        Відкрити напряму
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7"/><path d="M7 7h10v10"/></svg>
+      </a>`
+    : "";
+
+  const html = `<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Qorax Browser</title>
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; height: 100%;
+    background: #0a0a0a;
+  }
+  body {
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; padding: 32px;
+    font-family: "Space Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    color: #f5f5f7;
+  }
+  .proxy-error-card {
+    max-width: 400px;
+    display: flex; flex-direction: column; align-items: center;
+    gap: 14px; text-align: center;
+  }
+  .proxy-error-icon {
+    width: 52px; height: 52px; border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    background: linear-gradient(135deg, rgba(214, 255, 63, 0.15) 0%, rgba(140, 246, 255, 0.15) 100%);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    margin-bottom: 4px;
+  }
+  .proxy-error-title {
+    font-size: 16px; font-weight: 600; margin: 0; color: #f5f5f7;
+  }
+  .proxy-error-message {
+    font-size: 13.5px; line-height: 1.55; color: #a1a1a6; margin: 0;
+  }
+  .proxy-error-btn {
+    margin-top: 6px;
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 18px; border-radius: 10px;
+    font-size: 12.5px; font-weight: 600;
+    background: linear-gradient(135deg, #d6ff3f 0%, #8cf6ff 100%);
+    color: #0a0a0a;
+    text-decoration: none;
+    transition: opacity 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .proxy-error-btn:hover { opacity: 0.85; }
+</style>
+</head>
+<body>
+  <div class="proxy-error-card">
+    <div class="proxy-error-icon">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#d6ff3f" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 2 4 5v6c0 5 3.4 8.7 8 9 4.6-.3 8-4 8-9V5l-8-3Z"/>
+        <path d="M9.5 12.5 11 14l3.5-3.5"/>
+      </svg>
+    </div>
+    <p class="proxy-error-title">Не вдалося відобразити сайт</p>
+    <p class="proxy-error-message">${escapeHtml(message)}</p>
+    ${openDirectlyButton}
+  </div>
+</body>
+</html>`;
+
+  return new Response(html, {
+    status,
+    headers: { "Content-Type": "text/html; charset=utf-8" },
+  });
+}
+
 /**
  * Вставляє <base href="{origin}/"> одразу після <head ...> (або на
  * початок документа, якщо <head> відсутній) — робить усі відносні
@@ -150,20 +247,25 @@ export async function handleBrowserProxy(request: Request, env: Env, corsHeaders
   const url = new URL(request.url);
   const targetUrlRaw = url.searchParams.get("url");
   const token = url.searchParams.get("token");
-  if (!token) return json({ error: "token обов'язковий" }, 400, corsHeaders);
-  if (!targetUrlRaw) return json({ error: "url обов'язковий" }, 400, corsHeaders);
+  // Усі помилки нижче рендеряться як стилізована HTML-сторінка, а не
+  // JSON — ця відповідь вантажиться напряму в <iframe> на фронтенді
+  // (BrowserUI.tsx), не парситься через fetch()+показ React-
+  // компонентом, тож голий JSON показувався б як є (текст на білому
+  // фоні), а не через звичну обробку помилок додатку.
+  if (!token) return renderProxyErrorPage("token обов'язковий", undefined, 400);
+  if (!targetUrlRaw) return renderProxyErrorPage("url обов'язковий", undefined, 400);
 
   // Rate limit по IP — proxy виконує зовнішній fetch на довільний URL,
   // без ліміту Worker можна використати як анонімний HTTP-проксі
   // (відомий пробіл, зафіксований ще в EXECUTION_PLAN.md при MVP).
   const rateLimit = await checkRateLimit(env.RATE_LIMIT_KV, `browser-proxy:${getClientIp(request)}`, 60, 60);
-  if (!rateLimit.allowed) return json({ error: "Забагато запитів, спробуйте пізніше" }, 429, corsHeaders);
+  if (!rateLimit.allowed) return renderProxyErrorPage("Забагато запитів, спробуйте пізніше", targetUrlRaw, 429);
 
   const organizationId = await env.RATE_LIMIT_KV.get(`browser-proxy-token:${token}`);
-  if (!organizationId) return json({ error: "Токен недійсний або прострочений" }, 401, corsHeaders);
+  if (!organizationId) return renderProxyErrorPage("Токен недійсний або прострочений", undefined, 401);
 
   const targetUrl = isValidHttpUrl(targetUrlRaw);
-  if (!targetUrl) return json({ error: "Некоректний URL" }, 400, corsHeaders);
+  if (!targetUrl) return renderProxyErrorPage("Некоректний URL", undefined, 400);
 
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -176,7 +278,7 @@ export async function handleBrowserProxy(request: Request, env: Env, corsHeaders
     });
   } catch {
     clearTimeout(timeout);
-    return json({ error: "Не вдалося завантажити сайт (таймаут або сайт недоступний)" }, 502, corsHeaders);
+    return renderProxyErrorPage("Не вдалося завантажити сайт (таймаут або сайт недоступний)", targetUrl.toString(), 502);
   }
   clearTimeout(timeout);
 
@@ -195,12 +297,12 @@ export async function handleBrowserProxy(request: Request, env: Env, corsHeaders
       upstream.status === 401 || upstream.status === 403
         ? "Цей сайт блокує автоматичний перегляд (захист від ботів) — спробуйте відкрити його напряму в новій вкладці."
         : "Не вдалося завантажити цей сайт. Спробуйте ще раз трохи пізніше.";
-    return json({ error: message }, 502, corsHeaders);
+    return renderProxyErrorPage(message, targetUrl.toString(), 502);
   }
   if (!contentType.includes("text/html")) {
     // Не-HTML ресурс за цим URL (наприклад пряме посилання на PDF/зображення) —
     // proxy MVP свідомо працює лише з HTML-сторінками, не універсальний файловий proxy.
-    return json({ error: "URL веде не на HTML-сторінку" }, 415, corsHeaders);
+    return renderProxyErrorPage("URL веде не на HTML-сторінку", targetUrl.toString(), 415);
   }
 
   const html = await upstream.text();
