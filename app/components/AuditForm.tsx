@@ -12,12 +12,12 @@ import type { Locale } from "@/app/lib/i18n";
  * Raycast-style: clean input with subtle glass bg, prominent gradient
  * submit button with glow shadow.
  *
- * lang перекладає лише статичний UI цієї форми (placeholder, кнопка,
- * тексти помилок). Сам результат аудиту (overallSummary,
- * problemSummary, plainExplanation в AuditResultPanel) генерується
- * AI на боці worker'а і зараз ЗАВЖДИ повертається українською —
- * локалізація самого audit-воркера це окрема задача бекенду, не
- * зроблено цим проходом.
+ * lang перекладає статичний UI цієї форми (placeholder, кнопка,
+ * тексти помилок) І передається в тілі запиту на /api/audit, щоб
+ * AI-пояснення (overallSummary, problemSummary, plainExplanation в
+ * AuditResultPanel) теж генерувались мовою сторінки, а не завжди
+ * українською (MODULE_ROADMAP.md — раніше backend взагалі не читав
+ * мову з запиту).
  */
 
 type RequestState = "idle" | "loading" | "error";
@@ -59,7 +59,7 @@ export function AuditForm({ lang = "uk" }: { lang?: Locale }) {
         const response = await fetch(`${API_BASE_URL}/api/audit`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ url }),
+          body: JSON.stringify({ url, lang }),
         });
         return { response, data: (await response.json()) as AuditResult };
       };

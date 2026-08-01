@@ -2325,6 +2325,12 @@ function scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext): Prom
 interface AuditRequestBody {
   url?: string;
   email?: string;
+  /** Мова сторінки, з якої запущено аудит ("uk"|"en") — MODULE_ROADMAP.md,
+   * "AI-пояснення аудиту завжди українською незалежно від мови сторінки".
+   * Раніше не читалось із запиту взагалі, тому /en-сторінка теж отримувала
+   * AI-текст українською. За замовчуванням "uk", якщо поле відсутнє або
+   * не одне з двох відомих значень — не довіряємо довільному рядку від клієнта. */
+  lang?: string;
 }
 
 async function handleAuditRequest(
@@ -2390,11 +2396,14 @@ async function handleAuditRequest(
   // приоритетный, як основний сигнал для prompt'у, бо Google теж
   // mobile-first при індексації) — десктопний показуємо окремо на UI,
   // але в текст висновку AI не дублюємо, щоб не плутати власника сайту.
+  const auditLang: "uk" | "en" = body.lang === "en" ? "en" : "uk";
+
   const aiAnalysis = await runAiAnalysis(
     validation.hostname,
     basic,
     pageSpeed.mobile,
-    env.GEMINI_API_KEY
+    env.GEMINI_API_KEY,
+    auditLang
   );
 
   // Шаг 3: для бесплатного лид-магнита показываем максимум 2 находки

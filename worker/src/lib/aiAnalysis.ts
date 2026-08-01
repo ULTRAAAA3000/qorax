@@ -28,9 +28,10 @@ export async function runAiAnalysis(
   hostname: string,
   basic: BasicCheckResult,
   pageSpeed: PageSpeedResult,
-  apiKey: string
+  apiKey: string,
+  locale: "uk" | "en" = "uk"
 ): Promise<AiAnalysisResult> {
-  const prompt = buildPrompt(hostname, basic, pageSpeed);
+  const prompt = buildPrompt(hostname, basic, pageSpeed, locale);
 
   try {
     const controller = new AbortController();
@@ -51,43 +52,57 @@ export async function runAiAnalysis(
     clearTimeout(timeout);
 
     if (!response.ok) {
-      return fallbackAnalysis(basic, pageSpeed);
+      return fallbackAnalysis(basic, pageSpeed, locale);
     }
 
     const data = (await response.json()) as GeminiResponse;
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (!text) {
-      return fallbackAnalysis(basic, pageSpeed);
+      return fallbackAnalysis(basic, pageSpeed, locale);
     }
 
     const parsed = JSON.parse(text) as AiAnalysisResult;
     if (!Array.isArray(parsed.findings)) {
-      return fallbackAnalysis(basic, pageSpeed);
+      return fallbackAnalysis(basic, pageSpeed, locale);
     }
 
     return parsed;
   } catch {
-    return fallbackAnalysis(basic, pageSpeed);
+    return fallbackAnalysis(basic, pageSpeed, locale);
   }
 }
 
 function buildPrompt(
   hostname: string,
   basic: BasicCheckResult,
-  pageSpeed: PageSpeedResult
+  pageSpeed: PageSpeedResult,
+  locale: "uk" | "en"
 ): string {
+  // Раніше тут було хардкоджено "українською" в 4 місцях всередині
+  // JSON-схеми промпту — /en-сторінка передавала той самий запит, що
+  // й uk-сторінка, і AI щоразу відповідав українською незалежно від
+  // мови сторінки, з якої прийшов запит (MODULE_ROADMAP.md). Тепер
+  // мова параметризована: сам системний промпт (інструкція ДЛЯ AI)
+  // лишається українською — це не впливає на мову ВІДПОВІДІ, лише
+  // те, якою мовою написані самі текстові значення JSON, а це прямо
+  // вказано нижче через languageInstruction.
+  const languageInstruction =
+    locale === "en"
+      ? "ENGLISH. This is critical — the visitor's page is in English, do not answer in Ukrainian."
+      : "УКРАЇНСЬКОЮ мовою.";
+
   return `Ти — технічний аудитор сайтів, який пояснює проблеми власникам малого бізнесу без технічного жаргону.
-Аналізуй дані нижче про сайт ${hostname} та поверни ЛИШЕ валідний JSON (без markdown, без пояснень навколо) у такому форматі:
+Аналізуй дані нижче про сайт ${hostname} та поверни ЛИШЕ валідний JSON (без markdown, без пояснень навколо) у такому форматі. Усі текстові значення в JSON нижче (overallSummary, problemSummary, plainExplanation, recommendation) напиши ${languageInstruction}
 
 {
-  "overallSummary": "одне речення про загальний стан сайту українською",
+  "overallSummary": "одне речення про загальний стан сайту",
   "findings": [
     {
       "severity": "critical" | "warning" | "info",
-      "problemSummary": "коротко що знайдено, українською",
-      "plainExplanation": "пояснення простою мовою без техн. жаргону, 1-2 речення, українською",
+      "problemSummary": "коротко що знайдено",
+      "plainExplanation": "пояснення простою мовою без техн. жаргону, 1-2 речення",
       "estimatedMonthlyLossUsd": число або null якщо неможливо оцінити,
-      "recommendation": "що конкретно зробити, 1 речення, українською"
+      "recommendation": "що конкретно зробити, 1 речення"
     }
   ]
 }
@@ -120,56 +135,83 @@ interface GeminiResponse {
  */
 function fallbackAnalysis(
   basic: BasicCheckResult,
-  pageSpeed: PageSpeedResult
+  pageSpeed: PageSpeedResult,
+  locale: "uk" | "en" = "uk"
 ): AiAnalysisResult {
   const findings: AiFinding[] = [];
+  const copy =
+    locale === "en"
+      ? {
+          ssl: {
+            problemSummary: "Missing or invalid SSL certificate",
+            plainExplanation:
+              "Browsers show visitors a security warning, which drives most of them away.",
+            recommendation: "Install an SSL certificate as soon as possible — it's a basic security requirement.",
+          },
+          speed: {
+            problemSummary: "Slow page load speed",
+            plainExplanation:
+              "A slow site loses part of its visitors, who close the tab before it finishes loading.",
+            recommendation: "Optimize images and enable caching.",
+          },
+          meta: {
+            problemSummary: "Missing meta description",
+            plainExplanation: "Google shows a random snippet in search results instead of a crafted description.",
+            recommendation: "Add a 120-160 character meta description to each important page.",
+          },
+          h1: {
+            problemSummary: "Missing H1 heading",
+            plainExplanation: "Search engines have a harder time understanding what the page is about without a clear H1.",
+            recommendation: "Add one clear H1 heading per page.",
+          },
+          summaryWithFindings: "Found several issues worth fixing.",
+          summaryNoFindings: "Basic checks passed with no critical issues.",
+        }
+      : {
+          ssl: {
+            problemSummary: "Відсутній або невалідний SSL-сертифікат",
+            plainExplanation:
+              "Браузери показують відвідувачам попередження про небезпеку, що відштовхує більшість з них.",
+            recommendation: "Встановіть SSL-сертифікат якнайшвидше — це базова вимога безпеки.",
+          },
+          speed: {
+            problemSummary: "Низька швидкість завантаження сторінки",
+            plainExplanation:
+              "Повільний сайт втрачає частину відвідувачів, які закривають вкладку не дочекавшись завантаження.",
+            recommendation: "Оптимізуйте зображення та підключіть кешування.",
+          },
+          meta: {
+            problemSummary: "Відсутній meta description",
+            plainExplanation: "Google показує випадковий текст у пошуковій видачі замість продуманого опису.",
+            recommendation: "Додайте meta description 120-160 символів на кожну важливу сторінку.",
+          },
+          h1: {
+            problemSummary: "Відсутній заголовок H1",
+            plainExplanation: "Пошукові системи гірше розуміють, про що сторінка, без чіткого H1.",
+            recommendation: "Додайте один чіткий H1 заголовок на сторінку.",
+          },
+          summaryWithFindings: "Знайдено кілька проблем, які варто виправити.",
+          summaryNoFindings: "Базові перевірки пройдено без критичних проблем.",
+        };
 
   if (!basic.sslValid) {
-    findings.push({
-      severity: "critical",
-      problemSummary: "Відсутній або невалідний SSL-сертифікат",
-      plainExplanation:
-        "Браузери показують відвідувачам попередження про небезпеку, що відштовхує більшість з них.",
-      estimatedMonthlyLossUsd: null,
-      recommendation: "Встановіть SSL-сертифікат якнайшвидше — це базова вимога безпеки.",
-    });
+    findings.push({ severity: "critical", estimatedMonthlyLossUsd: null, ...copy.ssl });
   }
 
   if (pageSpeed.available && (pageSpeed.performanceScore ?? 100) < 50) {
-    findings.push({
-      severity: "warning",
-      problemSummary: "Низька швидкість завантаження сторінки",
-      plainExplanation:
-        "Повільний сайт втрачає частину відвідувачів, які закривають вкладку не дочекавшись завантаження.",
-      estimatedMonthlyLossUsd: null,
-      recommendation: "Оптимізуйте зображення та підключіть кешування.",
-    });
+    findings.push({ severity: "warning", estimatedMonthlyLossUsd: null, ...copy.speed });
   }
 
   if (!basic.metaDescription) {
-    findings.push({
-      severity: "info",
-      problemSummary: "Відсутній meta description",
-      plainExplanation: "Google показує випадковий текст у пошуковій видачі замість продуманого опису.",
-      estimatedMonthlyLossUsd: null,
-      recommendation: "Додайте meta description 120-160 символів на кожну важливу сторінку.",
-    });
+    findings.push({ severity: "info", estimatedMonthlyLossUsd: null, ...copy.meta });
   }
 
   if (!basic.hasH1) {
-    findings.push({
-      severity: "info",
-      problemSummary: "Відсутній заголовок H1",
-      plainExplanation: "Пошукові системи гірше розуміють, про що сторінка, без чіткого H1.",
-      estimatedMonthlyLossUsd: null,
-      recommendation: "Додайте один чіткий H1 заголовок на сторінку.",
-    });
+    findings.push({ severity: "info", estimatedMonthlyLossUsd: null, ...copy.h1 });
   }
 
   return {
-    overallSummary: findings.length
-      ? "Знайдено кілька проблем, які варто виправити."
-      : "Базові перевірки пройдено без критичних проблем.",
+    overallSummary: findings.length ? copy.summaryWithFindings : copy.summaryNoFindings,
     findings,
   };
 }
