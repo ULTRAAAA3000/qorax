@@ -66,7 +66,20 @@ export function blockToHtml(block: Block): string {
 
 function buildContainer(innerHtml: string, widthPx: number): HTMLDivElement {
   const el = document.createElement("div");
-  el.style.cssText = `position:fixed;left:-9999px;top:0;width:${widthPx}px;padding:32px;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;box-sizing:border-box;`;
+  // ВАЖЛИВО: раніше тут було `left:-9999px` — html2canvas (усередині
+  // jsPDF .html()) клонує документ у прихований iframe розміром
+  // windowWidth×windowHeight і вирізає з нього саме координати
+  // цільового елемента. Елемент на x=-9999 фізично лежить ПОЗА цим
+  // рендер-вʼюпортом (він починається з x=0), тому там нічого не
+  // намальовано — на виході порожній/білий canvas → порожній PDF
+  // (відомий баг html2canvas з offscreen-позиціонуванням, воспроизвёл
+  // Артем: "План проєкту.pdf" — повністю білий один лист).
+  // Фікс: тримати елемент у межах (0,0), але невидимим для
+  // користувача через z-index в мінус — контейнер лежить під усім
+  // непрозорим UI застосунку (не через opacity:0 — html2canvas
+  // рендерить obчислені стилі буквально, opacity:0 дав би той самий
+  // порожній canvas).
+  el.style.cssText = `position:fixed;left:0;top:0;z-index:-9999;width:${widthPx}px;padding:32px;font-family:Arial,Helvetica,sans-serif;color:#111;background:#fff;box-sizing:border-box;`;
   el.innerHTML = innerHtml;
   document.body.appendChild(el);
   return el;
