@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { motion } from "motion/react";
 import { API_BASE_URL } from "../lib/config";
-import { isAuditError, type AuditResult } from "../lib/audit";
+import { isAuditError, type AuditResult, type AuditSuccessResult } from "../lib/audit";
 import { AuditResultPanel } from "./AuditResultPanel";
 import type { Locale } from "@/app/lib/i18n";
 
@@ -39,7 +39,21 @@ const COPY: Record<Locale, { placeholder: string; checking: string; submit: stri
   },
 };
 
-export function AuditForm({ lang = "uk" }: { lang?: Locale }) {
+export function AuditForm({
+  lang = "uk",
+  onResult,
+  hideResultPanel = false,
+}: {
+  lang?: Locale;
+  /** Викликається з успішним результатом аудиту (і з null перед
+   * новим запитом) — дозволяє батьківському компоненту (напр.
+   * LossCalculator) показати власне подання тих самих даних без
+   * дублювання fetch-логіки. */
+  onResult?: (result: AuditSuccessResult | null) => void;
+  /** Коли true — AuditResultPanel не рендериться тут (батьківський
+   * компонент сам вирішує, що показати з onResult). */
+  hideResultPanel?: boolean;
+}) {
   const t = COPY[lang];
   const [url, setUrl] = useState("");
   const [state, setState] = useState<RequestState>("idle");
@@ -53,6 +67,7 @@ export function AuditForm({ lang = "uk" }: { lang?: Locale }) {
     setState("loading");
     setErrorMessage(null);
     setResult(null);
+    onResult?.(null);
 
     try {
       const fetchAudit = async () => {
@@ -85,6 +100,7 @@ export function AuditForm({ lang = "uk" }: { lang?: Locale }) {
 
       setResult(data);
       setState("idle");
+      onResult?.(data);
     } catch {
       setErrorMessage(t.networkError);
       setState("error");
@@ -144,7 +160,9 @@ export function AuditForm({ lang = "uk" }: { lang?: Locale }) {
         </p>
       )}
 
-      {result && !isAuditError(result) && <AuditResultPanel result={result} lang={lang} />}
+      {!hideResultPanel && result && !isAuditError(result) && (
+        <AuditResultPanel result={result} lang={lang} />
+      )}
     </div>
   );
 }

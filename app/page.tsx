@@ -23,6 +23,8 @@ import { OfficeDocsPreview } from "./components/OfficeDocsPreview";
 import { OfficeSheetsSlidesPreview } from "./components/OfficeSheetsSlidesPreview";
 import { BrowserInspectorPreview } from "./components/BrowserInspectorPreview";
 import { BrowserCollectionsPreview } from "./components/BrowserCollectionsPreview";
+import { LossCalculator } from "./components/LossCalculator";
+import { BusinessRoiCalculator } from "./components/BusinessRoiCalculator";
 import { createClient } from "./lib/supabase/server";
 import { CHECKOUT_DISABLED } from "./lib/checkoutFlag";
 import { Briefcase, Mail, Palette, FileText, Globe } from "lucide-react";
@@ -281,9 +283,69 @@ export default async function Home() {
         <BrowserCollectionsPreview />
       </ProductSection>
 
+      <LossRoiSection />
       <FinalCta />
       <SiteFooterExpanded />
     </main>
+  );
+}
+
+// ============================================================
+// LossRoiSection — Loss Calculator + Business ROI Calculator
+// (PRICING.md Частина 0, п.2 плану після pivot на B2B/agency
+// позиціонування). Тимчасове розміщення перед FinalCta — весь
+// лендинг переписується окремим кроком під нову подачу, ці два
+// віджети зроблені як самостійні компоненти саме для того, щоб
+// їх можна було легко перенести в нову структуру сторінки.
+// ============================================================
+
+function LossRoiSection() {
+  return (
+    <section className="relative overflow-hidden">
+      <div className="gradient-divider" />
+      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-28">
+        <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16">
+          <Reveal>
+            <span
+              className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-mono mb-6"
+              style={{
+                background: "rgba(255, 255, 255, 0.04)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                color: "var(--text-tertiary)",
+              }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--lime)] animate-pulse-glow" />
+              Для веб-студій, фрілансерів і агентств
+            </span>
+          </Reveal>
+          <Reveal delay={0.06}>
+            <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight">
+              Здали сайт клієнту й попрощались?{" "}
+              <span className="gradient-text">Це втрачений дохід</span>
+            </h2>
+          </Reveal>
+          <Reveal delay={0.12}>
+            <p className="mt-5 text-lg text-[var(--text-secondary)] leading-relaxed">
+              Перевірте, скільки клієнт втрачає прямо зараз — і скільки ви можете
+              заробити, продавши йому моніторинг як щомісячну послугу.
+            </p>
+          </Reveal>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-10 items-start">
+          <Reveal delay={0.15}>
+            <div className="flex justify-center">
+              <LossCalculator />
+            </div>
+          </Reveal>
+          <Reveal delay={0.22}>
+            <div className="flex justify-center">
+              <BusinessRoiCalculator />
+            </div>
+          </Reveal>
+        </div>
+      </div>
+    </section>
   );
 }
 

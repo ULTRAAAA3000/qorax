@@ -23,6 +23,8 @@ import { OfficeDocsPreview } from "@/app/components/OfficeDocsPreview";
 import { OfficeSheetsSlidesPreview } from "@/app/components/OfficeSheetsSlidesPreview";
 import { BrowserInspectorPreview } from "@/app/components/BrowserInspectorPreview";
 import { BrowserCollectionsPreview } from "@/app/components/BrowserCollectionsPreview";
+import { LossCalculator } from "@/app/components/LossCalculator";
+import { BusinessRoiCalculator } from "@/app/components/BusinessRoiCalculator";
 import { createClient } from "@/app/lib/supabase/server";
 import { CHECKOUT_DISABLED } from "@/app/lib/checkoutFlag";
 import { Briefcase, Mail, Palette, FileText, Globe } from "lucide-react";
@@ -284,9 +286,69 @@ export default async function HomeEn() {
         <BrowserCollectionsPreview lang="en" />
       </ProductSection>
 
+      <LossRoiSection />
       <FinalCta />
       <SiteFooterExpanded lang="en" />
     </main>
+  );
+}
+
+// ============================================================
+// LossRoiSection — Loss Calculator + Business ROI Calculator
+// (PRICING.md Частина 0, п.2 плану після pivot на B2B/agency
+// positioning). Placeholder placement before FinalCta — the whole
+// landing gets rewritten in a separate step; these two widgets are
+// standalone components specifically so they drop into the new
+// structure easily later.
+// ============================================================
+
+function LossRoiSection() {
+  return (
+    <section className="relative overflow-hidden">
+      <div className="gradient-divider" />
+      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-28">
+        <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16">
+          <Reveal>
+            <span
+              className="inline-flex items-center gap-2 rounded-full px-4 py-1.5 text-xs font-mono mb-6"
+              style={{
+                background: "rgba(255, 255, 255, 0.04)",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                color: "var(--text-tertiary)",
+              }}
+            >
+              <span className="h-1.5 w-1.5 rounded-full bg-[var(--lime)] animate-pulse-glow" />
+              For web studios, freelancers and agencies
+            </span>
+          </Reveal>
+          <Reveal delay={0.06}>
+            <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight">
+              Shipped the site and said goodbye?{" "}
+              <span className="gradient-text">That&apos;s lost revenue</span>
+            </h2>
+          </Reveal>
+          <Reveal delay={0.12}>
+            <p className="mt-5 text-lg text-[var(--text-secondary)] leading-relaxed">
+              Check how much your client is losing right now — and how much you
+              could earn by selling them monitoring as a monthly service.
+            </p>
+          </Reveal>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-10 items-start">
+          <Reveal delay={0.15}>
+            <div className="flex justify-center">
+              <LossCalculator lang="en" />
+            </div>
+          </Reveal>
+          <Reveal delay={0.22}>
+            <div className="flex justify-center">
+              <BusinessRoiCalculator lang="en" />
+            </div>
+          </Reveal>
+        </div>
+      </div>
+    </section>
   );
 }
 
