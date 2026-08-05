@@ -21,6 +21,10 @@ export interface AuditSuccessResult {
   pageSizeKb: number | null;
   visibleFindings: AuditFinding[];
   hiddenFindingsCount: number;
+  /** Сума estimatedMonthlyLossUsd по ВСІХ findings (включно зі
+   * скритими за лід-магніт лімітом) — агрегат для Loss Calculator,
+   * не розкриває зміст скритих findings, лише підсумкове число. */
+  totalEstimatedMonthlyLossUsd: number;
 }
 
 export interface AuditErrorResult {

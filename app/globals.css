@@ -497,3 +497,56 @@ body {
 .driver-active-element {
   border-radius: 8px !important;
 }
+
+/* ============================================================
+   ROI-slider — кастомний range input для BusinessRoiCalculator
+   (Cyber Minimal: lime thumb, track заповнюється inline через
+   style={background: linear-gradient(...)} з компонента)
+   ============================================================ */
+
+.roi-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+
+.roi-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--lime);
+  box-shadow: 0 0 0 4px rgba(214, 255, 63, 0.15), 0 2px 8px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.roi-slider::-webkit-slider-thumb:hover {
+  transform: scale(1.1);
+  box-shadow: 0 0 0 6px rgba(214, 255, 63, 0.2), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+
+.roi-slider::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--lime);
+  border: none;
+  box-shadow: 0 0 0 4px rgba(214, 255, 63, 0.15), 0 2px 8px rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.roi-slider::-moz-range-thumb:hover {
+  transform: scale(1.1);
+}
+
+.roi-slider::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: transparent;
+}

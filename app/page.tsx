@@ -7,36 +7,28 @@ import { SpeedTrendPreview } from "./components/SpeedTrendPreview";
 import { TelegramPreview } from "./components/TelegramPreview";
 import { HeroAtmosphere } from "./components/HeroAtmosphere";
 import { HeroGlassCubeLazy as HeroGlassCube } from "./components/HeroGlassCubeLazy";
-import { StatsStrip } from "./components/StatsStrip";
 import { FeatureBento } from "./components/FeatureBento";
-import { EcosystemSection } from "./components/EcosystemSection";
+import { PainSolutionSection } from "./components/PainSolutionSection";
+import { LossCalculator } from "./components/LossCalculator";
+import { BusinessRoiCalculator } from "./components/BusinessRoiCalculator";
 import { HowItWorksSection } from "./components/HowItWorksSection";
 import { FaqSection } from "./components/FaqSection";
 import { SiteFooterExpanded } from "./components/SiteFooterExpanded";
 import { MarketingHeader } from "./components/MarketingHeader";
-import { ProductDivider } from "./components/ProductDivider";
-import { MailInboxPreview } from "./components/MailInboxPreview";
-import { MailAiAgentPreview } from "./components/MailAiAgentPreview";
-import { CreatorCanvasPreview } from "./components/CreatorCanvasPreview";
-import { CreatorBrandKitPreview } from "./components/CreatorBrandKitPreview";
-import { OfficeDocsPreview } from "./components/OfficeDocsPreview";
-import { OfficeSheetsSlidesPreview } from "./components/OfficeSheetsSlidesPreview";
-import { BrowserInspectorPreview } from "./components/BrowserInspectorPreview";
-import { BrowserCollectionsPreview } from "./components/BrowserCollectionsPreview";
 import { createClient } from "./lib/supabase/server";
 import { CHECKOUT_DISABLED } from "./lib/checkoutFlag";
-import { Briefcase, Mail, Palette, FileText, Globe } from "lucide-react";
 
-// LemonSqueezy checkout URLs — нова лінійка Business (0086,
-// PRICING.md Частина A): Free/Starter/Pro/Agency замість старих
-// Starter/Growth/Agency. Free не має LemonSqueezy-варіанту взагалі
-// (безкоштовний план призначається автоматично при реєстрації,
-// handle_new_user() 0086) — checkoutUrl для Free завжди веде на
+// LemonSqueezy checkout URLs — лінійка Business (PRICING.md Частина 0,
+// серпень 2026 — ФІНАЛ): Free/Starter/Growth/Agency. Раніше тут була
+// назва "Pro" (стара лінійка Частини A, $12.99/$24.99/$59.99,
+// СКАСОВАНА) — перейменовано на "Growth" під нову ціну $79. Free не
+// має LemonSqueezy-варіанту взагалі (безкоштовний план призначається
+// автоматично при реєстрації) — checkoutUrl для Free завжди веде на
 // /register, ніколи на LS checkout.
 const LS_SUBDOMAIN = process.env.LS_STORE_SUBDOMAIN ?? "qoraxus";
 const LS_VARIANTS: Record<string, string> = {
   Starter: process.env.LS_VARIANT_BUSINESS_STARTER ?? "",
-  Pro:     process.env.LS_VARIANT_BUSINESS_PRO      ?? "",
+  Growth:  process.env.LS_VARIANT_BUSINESS_GROWTH   ?? "",
   Agency:  process.env.LS_VARIANT_BUSINESS_AGENCY   ?? "",
 };
 function lsCheckoutUrl(plan: string): string {
@@ -49,8 +41,8 @@ function lsCheckoutUrl(plan: string): string {
 const SITE_URL = process.env.NEXT_PUBLIC_APP_URL ?? "https://qorax.mrcru96.workers.dev";
 
 export const metadata: Metadata = {
-  title: "Qorax — Екосистема для ведення бізнесу онлайн",
-  description: "Моніторинг сайту, пошта, візуальний редактор, документи та браузер — п'ять продуктів під одним брендом, з AI у кожному. Почніть безкоштовно.",
+  title: "Qorax — MRR для веб-студій і фрілансерів на супроводі сайтів",
+  description: "Перетворіть разову розробку сайту на щомісячний рекурентний дохід. Моніторинг, SEO-аудит, White-Label звіти для клієнтів вашої студії чи фріланс-практики. Почніть безкоштовно.",
   alternates: {
     canonical: `${SITE_URL}/`,
     languages: {
@@ -94,23 +86,15 @@ export default async function Home() {
 
   const freeUrl = user ? "/dashboard" : "/register";
   const starterUrl = checkoutUrl("Starter");
-  const proUrl = checkoutUrl("Pro");
+  const growthUrl = checkoutUrl("Growth");
   const agencyUrl = checkoutUrl("Agency");
 
   return (
     <main className="flex flex-col">
       <MarketingHeader isLoggedIn={!!user} />
       <Hero />
-      <StatsStrip />
-      <EcosystemSection />
-
-      <ProductDivider
-        icon={Briefcase}
-        productName="Qorax Business"
-        tagline="Керуйте бізнесом онлайн"
-        href="/login"
-        accent="lime"
-      />
+      <LossRoiSection />
+      <PainSolutionSection />
 
       <ProductSection
         eyebrow="МОНІТОРИНГ"
@@ -154,132 +138,8 @@ export default async function Home() {
 
       <FeatureBento />
       <HowItWorksSection />
-      <PlansSection freeUrl={freeUrl} starterUrl={starterUrl} proUrl={proUrl} agencyUrl={agencyUrl} />
+      <PlansSection freeUrl={freeUrl} starterUrl={starterUrl} growthUrl={growthUrl} agencyUrl={agencyUrl} />
       <FaqSection />
-
-      {/* ============================================================
-          Qorax Mail
-          ============================================================ */}
-      <ProductDivider
-        icon={Mail}
-        productName="Qorax Mail"
-        tagline="Спілкуйтесь з клієнтами"
-        href="/mail"
-        accent="cyan"
-      />
-
-      <ProductSection
-        eyebrow="СПІЛЬНА ПОШТА"
-        title="Вся команда в одних вхідних"
-        description="Корпоративна пошта і контакти клієнтів в одному робочому просторі — без перемикання між Gmail, нотатками і CRM."
-        align="right"
-        accent="cyan"
-      >
-        <MailInboxPreview />
-      </ProductSection>
-
-      <ProductSection
-        eyebrow="AI-АГЕНТИ"
-        title="Відповідь клієнту — за один клік, не за 10 хвилин"
-        description="AI готує чернетку листа на основі попереднього листування й тону вашого бренду. Ви лише перевіряєте й надсилаєте."
-        align="left"
-        accent="cyan"
-      >
-        <MailAiAgentPreview />
-      </ProductSection>
-
-      {/* ============================================================
-          Qorax Creator
-          ============================================================ */}
-      <ProductDivider
-        icon={Palette}
-        productName="Qorax Creator"
-        tagline="Створюйте візуали"
-        href="/creator"
-        accent="purple"
-      />
-
-      <ProductSection
-        eyebrow="НЕСКІНЧЕННЕ ПОЛОТНО"
-        title="Сайти, презентації й банери — на одній дошці"
-        description="Website Mode вбудовує Sites-редактор прямо в канвас. Перетягуйте блоки, компонуйте макет, бачите весь проєкт одразу."
-        align="right"
-        accent="purple"
-      >
-        <CreatorCanvasPreview />
-      </ProductSection>
-
-      <ProductSection
-        eyebrow="BRAND KIT"
-        title="Один бренд — усюди однаковий"
-        description="Кольори, шрифти й готові компоненти застосовуються миттєво на будь-якій дошці — жодного ручного підбору щоразу."
-        align="left"
-        accent="purple"
-      >
-        <CreatorBrandKitPreview />
-      </ProductSection>
-
-      {/* ============================================================
-          Qorax Office
-          ============================================================ */}
-      <ProductDivider
-        icon={FileText}
-        productName="Qorax Office"
-        tagline="Працюйте з документами"
-        href="/office"
-        accent="lime"
-      />
-
-      <ProductSection
-        eyebrow="DOCS"
-        title="AI Writer сам збирає готовий текст"
-        description="Документи з форматуванням, таблицями й AI-помічником, що пише за вас — не аналог Word, а той, хто робить основну роботу."
-        align="right"
-        accent="lime"
-      >
-        <OfficeDocsPreview />
-      </ProductSection>
-
-      <ProductSection
-        eyebrow="SHEETS ТА SLIDES"
-        title="Таблиці з формулами. Презентації за описом"
-        description="Прості таблиці з SUM/AVERAGE/COUNT та CSV-імпортом. Презентації, де AI сам будує структуру — від слайда до готового виступу."
-        align="left"
-        accent="lime"
-      >
-        <OfficeSheetsSlidesPreview />
-      </ProductSection>
-
-      {/* ============================================================
-          Qorax Browser
-          ============================================================ */}
-      <ProductDivider
-        icon={Globe}
-        productName="Qorax Browser"
-        tagline="Досліджуйте інтернет"
-        href="/browser"
-        accent="cyan"
-      />
-
-      <ProductSection
-        eyebrow="AI SIDEBAR"
-        title="AI пояснює будь-який сайт за клік"
-        description="Site Inspector показує технології, кольори, шрифти, SEO та швидкість конкурента — а AI Sidebar одразу пояснює, що це означає."
-        align="right"
-        accent="cyan"
-      >
-        <BrowserInspectorPreview />
-      </ProductSection>
-
-      <ProductSection
-        eyebrow="COLLECTIONS"
-        title="Конкуренти й ідеї в одному місці — не в закладках"
-        description="Збирайте референси просто під час перегляду сайтів і передавайте їх у Creator чи Office одним кліком через Smart Capture."
-        align="left"
-        accent="cyan"
-      >
-        <BrowserCollectionsPreview />
-      </ProductSection>
 
       <FinalCta />
       <SiteFooterExpanded />
@@ -309,28 +169,44 @@ function Hero() {
               }}
             >
               <span className="h-1.5 w-1.5 rounded-full bg-[var(--lime)] animate-pulse-glow" />
-              Business · Mail · Creator · Office · Browser — один бренд
+              ДЛЯ ВЕБ-СТУДІЙ, ФРІЛАНСЕРІВ І WORDPRESS-РОЗРОБНИКІВ
             </span>
           </Reveal>
 
           <Reveal delay={0.06}>
             <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold leading-[1.05] tracking-tight">
-              Екосистема
+              Перетворіть разову розробку сайтів
               <br />
-              <span className="gradient-text">для ведення бізнесу онлайн</span>
+              <span className="gradient-text">на щомісячний рекурентний дохід</span>
             </h1>
           </Reveal>
 
           <Reveal delay={0.12}>
             <p className="mt-6 text-lg sm:text-xl text-[var(--text-secondary)] leading-relaxed max-w-xl mx-auto">
-              П&apos;ять продуктів під одним дахом: моніторинг сайту, пошта, візуальний
-              редактор, документи та власний браузер — з AI у кожному.
+              Qorax — готова платформа для супроводу сайтів ваших клієнтів. Автоматичний
+              моніторинг аптайму, SEO-аудити простою мовою, трекінг позицій із GSC і CRM
+              для лідів — під вашим брендом.
+            </p>
+          </Reveal>
+
+          <Reveal delay={0.18} className="mt-9 flex flex-col sm:flex-row items-center justify-center gap-4">
+            <a href="/register" className="glow-button text-sm !py-3 !px-7">
+              Почати безкоштовно (без картки) →
+            </a>
+            <a href="#audit" className="ghost-button text-sm !py-3 !px-7">
+              Перевірити сайт клієнта за 10 секунд
+            </a>
+          </Reveal>
+
+          <Reveal delay={0.22}>
+            <p className="mt-5 text-xs text-[var(--text-tertiary)]">
+              Налаштування займає 2 хвилини · Безкоштовний тариф на 1 сайт назавжди
             </p>
           </Reveal>
         </div>
 
         {/* Product preview with glow */}
-        <Reveal delay={0.25} y={30}>
+        <Reveal delay={0.28} y={30}>
           <div className="mt-14 sm:mt-16 max-w-2xl mx-auto relative">
             {/* Glow behind the panel */}
             <div
@@ -343,23 +219,63 @@ function Hero() {
             <LiveMonitorPanel />
           </div>
         </Reveal>
+      </div>
+    </section>
+  );
+}
 
-        {/* Audit CTA — конкретна точка конверсії Qorax Business,
-            навмисно нижче загального позиціювання екосистеми, але
-            все ще на першому екрані — головний безкоштовний вхід не
-            можна губити глибше в скролі. */}
-        <Reveal delay={0.3} className="mt-14 sm:mt-16" id="audit">
-          <div className="max-w-xl mx-auto text-center">
-            <p className="text-sm text-[var(--text-tertiary)] mb-5">
-              Хочете почати з безкоштовної перевірки сайту?
+// ============================================================
+// LossRoiSection — Interactive Lead Magnet (Loss Calculator) +
+// Business ROI Calculator, разом одразу під Hero. Артем: "калькулятор
+// підняти під херо" — обидва віджети клієнтські, самодостатні,
+// об'єднані в одну секцію замість двох окремих проходів по сторінці.
+// ============================================================
+
+function LossRoiSection() {
+  return (
+    <section className="relative overflow-hidden" id="audit">
+      <div className="gradient-divider" />
+      <div className="mx-auto max-w-6xl px-6 sm:px-8 py-20 sm:py-24">
+        <div className="text-center max-w-2xl mx-auto mb-14 sm:mb-16">
+          <Reveal>
+            <span
+              className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono mb-6 text-[var(--text-tertiary)]"
+              style={{ background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)" }}
+            >
+              ✦ ПОКАЖІТЬ КЛІЄНТУ ЦИФРИ
+            </span>
+          </Reveal>
+          <Reveal delay={0.06}>
+            <h2 className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold leading-tight">
+              Здали сайт клієнту й попрощались?{" "}
+              <span className="gradient-text">Це втрачений дохід</span>
+            </h2>
+          </Reveal>
+          <Reveal delay={0.12}>
+            <p className="mt-5 text-lg text-[var(--text-secondary)] leading-relaxed">
+              Перевірте, скільки клієнт втрачає прямо зараз — і скільки ви можете
+              заробити, продавши йому моніторинг як щомісячну послугу.
             </p>
+          </Reveal>
+        </div>
+
+        <div className="grid lg:grid-cols-2 gap-8 lg:gap-10 items-start">
+          <Reveal delay={0.15}>
             <div className="flex justify-center">
-              <AuditForm />
+              <LossCalculator />
             </div>
-            <p className="mt-3 text-xs text-[var(--text-tertiary)]">
-              Без реєстрації. Результат за 60 секунд.
-            </p>
-          </div>
+          </Reveal>
+          <Reveal delay={0.22}>
+            <div className="flex justify-center">
+              <BusinessRoiCalculator />
+            </div>
+          </Reveal>
+        </div>
+
+        <Reveal delay={0.26}>
+          <p className="mt-8 text-center text-xs text-[var(--text-tertiary)]">
+            Без реєстрації. Результат за 60 секунд. Хочете PDF з вашим лого для клієнта? Зареєструйтесь безкоштовно.
+          </p>
         </Reveal>
       </div>
     </section>
@@ -446,7 +362,7 @@ function ProductSection({
 // Plans — glassmorphism cards with gradient accents
 // ============================================================
 
-function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: string; starterUrl: string; proUrl: string; agencyUrl: string }) {
+function PlansSection({ freeUrl, starterUrl, growthUrl, agencyUrl }: { freeUrl: string; starterUrl: string; growthUrl: string; agencyUrl: string }) {
   return (
     <section id="plans" className="relative">
       <div className="gradient-divider" />
@@ -457,7 +373,7 @@ function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: str
               className="inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-mono text-[var(--text-tertiary)]"
               style={{ background: "rgba(255, 255, 255, 0.04)", border: "1px solid rgba(255, 255, 255, 0.08)" }}
             >
-              ✦ ТАРИФИ QORAX BUSINESS
+              ✦ ЗРОЗУМІЛІ ТАРИФИ
             </span>
           </div>
         </Reveal>
@@ -474,14 +390,13 @@ function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: str
               name="Free"
               checkoutUrl={freeUrl}
               price="$0"
-              tagline="Знайомство без картки"
+              tagline="Для власного сайту, назавжди"
               features={[
-                "1 сайт, щоденний моніторинг",
-                "Базовий SEO Audit",
-                "Rank до 20 запитів",
-                "Analytics — 30 днів історії",
-                "AI — 20 запитів на місяць",
-                "Telegram Bot",
+                "1 сайт",
+                "Моніторинг раз на день",
+                "Базовий SEO-аудит",
+                "GSC + GA4 sync",
+                "Email-алерти",
               ]}
               variant="default"
             />
@@ -491,15 +406,14 @@ function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: str
             <PlanCard
               name="Starter"
               checkoutUrl={starterUrl}
-              price="$12.99"
-              tagline="Фрілансерам і малому бізнесу"
+              price="$29"
+              tagline="Перші клієнти на супроводі"
               features={[
-                "До 10 сайтів, до 50 проєктів",
-                "Моніторинг кожні 30 хв",
-                "500 ключових запитів",
-                "Історія 6 місяців",
-                "AI — 500 запитів",
-                "PDF-звіти, інтеграції, автоматизації",
+                "До 3 сайтів",
+                "Моніторинг кожні 5 хв",
+                "GSC + GA4 sync",
+                "Базовий AI",
+                "Email-алерти",
               ]}
               variant="default"
             />
@@ -507,17 +421,17 @@ function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: str
 
           <Reveal delay={0.14}>
             <PlanCard
-              name="Pro"
-              checkoutUrl={proUrl}
-              price="$24.99"
-              tagline="Для професіоналів"
+              name="Growth"
+              checkoutUrl={growthUrl}
+              price="$79"
+              tagline="Коли клієнтів уже десяток"
               features={[
-                "До 100 сайтів, необмежені проєкти",
-                "Моніторинг кожні 5 хв",
-                "5 000 ключових запитів, історія 2 роки",
-                "AI — 5 000 запитів",
-                "White Label звіти, API, AI Copilot",
-                "Команда до 5 осіб",
+                "До 10 сайтів",
+                "Моніторинг щохвилини",
+                "GSC + GA4 sync",
+                "Розширений AI",
+                "Telegram-алерти",
+                "CRM на 500 контактів",
               ]}
               variant="highlighted"
             />
@@ -527,15 +441,14 @@ function PlansSection({ freeUrl, starterUrl, proUrl, agencyUrl }: { freeUrl: str
             <PlanCard
               name="Agency"
               checkoutUrl={agencyUrl}
-              price="$59.99"
-              tagline="Для агентств і команд"
+              price="$179"
+              tagline="Для студій і команд"
               features={[
-                "Необмежені сайти й проєкти",
+                "До 30 сайтів (+$29/сайт понад ліміт)",
                 "Моніторинг щохвилини",
-                "Необмежені ключові запити, повна історія",
-                "AI — 25 000 запитів",
-                "White Label, повний API",
-                "Команда до 25 осіб, пріоритетна підтримка",
+                "Безлімітний AI",
+                "White-Label PDF зі своїм лого",
+                "Розмежування прав для команди",
               ]}
               variant="default"
             />

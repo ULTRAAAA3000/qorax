@@ -2412,6 +2412,14 @@ async function handleAuditRequest(
   const visibleFindings = aiAnalysis.findings.slice(0, 2);
   const hiddenCount = Math.max(aiAnalysis.findings.length - visibleFindings.length, 0);
 
+  // Сумма по ВСЕМ findings (включая скрытые за $19/підписку) — самe
+  // число безпечно віддавати клієнту (Loss Calculator на лендингу),
+  // це не розкриває зміст/текст скритих findings, лише агрегат.
+  const totalEstimatedMonthlyLossUsd = aiAnalysis.findings.reduce(
+    (sum, f) => sum + (f.estimatedMonthlyLossUsd ?? 0),
+    0
+  );
+
   const previewResults = {
     overallSummary: aiAnalysis.overallSummary,
     performanceScoreMobile: pageSpeed.mobile.performanceScore,
@@ -2447,6 +2455,7 @@ async function handleAuditRequest(
       pageSizeKb: basic.pageSizeKb,
       visibleFindings,
       hiddenFindingsCount: hiddenCount,
+      totalEstimatedMonthlyLossUsd,
     },
     200,
     origin
